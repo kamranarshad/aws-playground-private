@@ -18,8 +18,12 @@ Decisions made during brainstorming:
 ## 1. Architecture
 
 - New Start app in `web/` (TypeScript, own private `package.json`).
-  Built with `vite build` → `web/.output/`; production server entry is
-  `web/.output/server/index.mjs`, which respects `PORT` and `HOST`.
+  Built with `vite build` → `web/dist/`: static client assets in
+  `dist/client` plus a fetch-handler server module at
+  `dist/server/server.js` (Start 1.168's Vite build no longer emits a
+  self-running Nitro server). A small dependency-free Node runner,
+  `server/serve-web.js`, serves the static assets and forwards other
+  requests to the fetch handler.
 - The API endpoints become Start server routes. They import the existing
   plain-JS modules (`server/store.js`, `server/detect.js`,
   `server/invoker.js`) unchanged.
@@ -29,12 +33,10 @@ Decisions made during brainstorming:
   thin adapters (parse request → call handler → JSON response).
   `server/index.js` (Express) and the `express` dependency are deleted,
   along with `public/`.
-- `bin/cli.js` spawns `node web/.output/server/index.mjs` with
-  `HOST=127.0.0.1` (preserving loopback-only binding), `PORT` (default
-  4590, `--port` flag), and `AWS_PLAYGROUND_DATA_DIR` passed through,
-  waits for the port to accept connections, then opens the browser
-  (`--no-open` supported). If `web/.output` is missing it exits with a
-  "run `npm run build` first" message.
+- `bin/cli.js` starts the runner in-process on `127.0.0.1` (preserving
+  loopback-only binding) at port 4590 (`--port` flag), then opens the
+  browser (`--no-open` supported). If `web/dist` is missing it exits
+  with a "run `npm run build` first" message.
 
 ## 2. Persistent invoke history
 
@@ -103,10 +105,11 @@ fetching.
   history endpoints.
 - New `tests/history.test.js`: append/list/clear, 50-entry cap, 64 KB
   truncation, deletion on function removal.
-- New `tests/web.test.js` E2E smoke: if `web/.output` exists, spawn the
-  built server on a random free port with a temp data dir, assert `/`
-  returns the app shell (200, html) and `/api/health` returns runtime
-  JSON; skip (like the Java tests) when the build output is absent.
+- New `tests/web.test.js` E2E smoke: if `web/dist` exists, boot the
+  built app in-process via `server/serve-web.js` on an ephemeral port
+  with a temp data dir, assert `/` returns the app shell (200, html)
+  and `/api/health` returns runtime JSON; skip (like the Java tests)
+  when the build output is absent.
 - `tests/frontend.test.js` is deleted (superseded by `web.test.js`).
   Store/detect/invoker/harness tests are untouched.
 
@@ -115,7 +118,7 @@ fetching.
 - Root `engines.node` → `>=22.12.0` (TanStack Start's requirement).
   This is the requirement to *run the playground*; the node runtime row
   in the README (user Lambda projects need node >= 18) is unchanged.
-- Root `files` gains `web/.output` and drops `public`. `express` is
+- Root `files` gains `web/dist` and drops `public`. `express` is
   removed from dependencies. `prepublishOnly` runs the web build so the
   published package (and `npm install -g .` from a built checkout)
   always ships a fresh build.

@@ -4,7 +4,7 @@
 
 **Goal:** Replace the vanilla-JS/Express frontend with a TanStack Start + shadcn/ui app (split-pane UI, persistent invoke history, command palette), with Start owning the whole server.
 
-**Architecture:** The Express route logic is first extracted into a framework-agnostic `server/api.js` (plain functions returning `{status, body}`), which both the temporary Express adapter and the new Start server routes call. A new `server/history.js` persists invokes as JSONL. The Start app lives in `web/` (TypeScript, Tailwind v4, shadcn/ui, TanStack Query, CodeMirror 6) and builds to `web/.output/`; the CLI spawns `web/.output/server/index.mjs`. The final task deletes Express and `public/`.
+**Architecture:** The Express route logic is first extracted into a framework-agnostic `server/api.js` (plain functions returning `{status, body}`), which both the temporary Express adapter and the new Start server routes call. A new `server/history.js` persists invokes as JSONL. The Start app lives in `web/` (TypeScript, Tailwind v4, shadcn/ui, TanStack Query, CodeMirror 6) and builds to `web/dist/` — static client assets in `dist/client` plus a fetch-handler server module at `dist/server/server.js` (Start 1.168's Vite build no longer emits a self-running Nitro server; discovered in Task 4). A small dependency-free Node runner (`server/serve-web.js`) serves both, and the CLI starts it in-process. The final task deletes Express and `public/`.
 
 **Tech Stack:** TanStack Start ^1.168, TanStack Router, TanStack Query v5, React 19, Vite 7, Tailwind v4 (`@tailwindcss/vite`), shadcn/ui (new-york, neutral), `@uiw/react-codemirror` + `@codemirror/lang-json`, sonner, lucide-react. Backend modules stay CommonJS.
 
@@ -1260,15 +1260,16 @@ git commit -m "feat: web foundation - types, api client, query hooks, theme prov
 
 ---
 
-### Task 6: Start server routes adapting `server/api.js` + built-server smoke test
+### Task 6: Start server routes adapting `server/api.js` + Node runner + built-server smoke test
 
 **Files:**
 - Create: `web/src/lib/backend.ts`, `web/src/routes/api.health.ts`, `web/src/routes/api.functions.ts`, `web/src/routes/api.functions.$id.ts`, `web/src/routes/api.functions.$id.history.ts`, `web/src/routes/api.detect.ts`, `web/src/routes/api.invoke.ts`
+- Create: `server/serve-web.js` (Node runner for the built app)
 - Create: `tests/web.test.js`
 
 **Interfaces:**
-- Consumes: every `server/api.js` handler from Tasks 1 & 3.
-- Produces: HTTP endpoints identical to the Express adapter (same paths, methods, status codes, JSON bodies) served by the Start server, in dev (`vite dev`) and in the built output.
+- Consumes: every `server/api.js` handler from Tasks 1 & 3; the built output at `web/dist` (`dist/client` static assets, `dist/server/server.js` exporting a `{ fetch(Request): Promise<Response> }` server entry).
+- Produces: HTTP endpoints identical to the Express adapter (same paths, methods, status codes, JSON bodies) served by the Start server in dev (`vite dev`), and `startWebServer({ distDir, port, host }) -> Promise<http.Server>` from `server/serve-web.js` (used by Task 13's CLI and by the smoke test; `port: 0` picks an ephemeral port).
 
 - [ ] **Step 1: Write `web/src/lib/backend.ts`** (server-only bridge to the CJS modules)
 
@@ -1401,42 +1402,106 @@ export const Route = createFileRoute('/api/invoke')({
 })
 ```
 
-- [ ] **Step 3: Write `tests/web.test.js` (fails until the build exists)**
+- [ ] **Step 3: Write `server/serve-web.js`** (dependency-free Node runner: serves `dist/client` statically, forwards everything else to the fetch handler)
+
+```js
+const fs = require('fs');
+const http = require('http');
+const path = require('path');
+const { Readable } = require('stream');
+const { pathToFileURL } = require('url');
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json',
+};
+
+function staticFile(clientDir, urlPath) {
+  const resolved = path.resolve(clientDir, '.' + urlPath);
+  if (resolved !== clientDir && !resolved.startsWith(clientDir + path.sep)) return null;
+  try {
+    if (fs.statSync(resolved).isFile()) return resolved;
+  } catch {}
+  return null;
+}
+
+async function startWebServer({ distDir, port, host }) {
+  const entryUrl = pathToFileURL(path.join(distDir, 'server', 'server.js')).href;
+  const clientDir = path.join(distDir, 'client');
+  const mod = await import(entryUrl);
+  const entry = mod.default ?? mod;
+
+  const server = http.createServer(async (req, res) => {
+    try {
+      if (req.method === 'GET' || req.method === 'HEAD') {
+        const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+        const file = staticFile(clientDir, urlPath);
+        if (file) {
+          res.writeHead(200, {
+            'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
+          });
+          if (req.method === 'HEAD') return res.end();
+          return fs.createReadStream(file).pipe(res);
+        }
+      }
+      const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+      const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, {
+        method: req.method,
+        headers: req.headers,
+        body: hasBody ? Readable.toWeb(req) : undefined,
+        duplex: hasBody ? 'half' : undefined,
+      });
+      const response = await entry.fetch(request);
+      const headers = {};
+      response.headers.forEach((value, key) => { headers[key] = value; });
+      res.writeHead(response.status, headers);
+      res.end(Buffer.from(await response.arrayBuffer()));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain' });
+      res.end(`aws-playground web server error: ${err.message}`);
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, resolve);
+  });
+  return server;
+}
+
+module.exports = { startWebServer };
+```
+
+- [ ] **Step 3b: Write `tests/web.test.js` (in-process boot via the runner)**
 
 ```js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const ENTRY = path.join(__dirname, '..', 'web', '.output', 'server', 'index.mjs');
-const built = fs.existsSync(ENTRY);
-
-async function waitForOk(url, timeoutMs) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url);
-      if (res.ok) return res;
-    } catch {}
-    await new Promise(r => setTimeout(r, 250));
-  }
-  throw new Error(`server did not answer at ${url}`);
-}
+const DIST = path.join(__dirname, '..', 'web', 'dist');
+const built = fs.existsSync(path.join(DIST, 'server', 'server.js'));
 
 test('built web app serves the shell and the API',
-  { skip: built ? false : 'web/.output missing - run npm run build first' }, async () => {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-web-'));
-  const port = 4700 + Math.floor(Math.random() * 200);
-  const child = spawn(process.execPath, [ENTRY], {
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1',
-      AWS_PLAYGROUND_DATA_DIR: dataDir },
-    stdio: 'ignore',
-  });
+  { skip: built ? false : 'web/dist missing - run npm run build first' }, async () => {
+  process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-web-'));
+  const { startWebServer } = require('../server/serve-web');
+  const server = await startWebServer({ distDir: DIST, port: 0, host: '127.0.0.1' });
+  const port = server.address().port;
   try {
-    const health = await waitForOk(`http://127.0.0.1:${port}/api/health`, 20000);
+    const health = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.strictEqual(health.status, 200);
     const body = await health.json();
     assert.ok(body.runtimes.node.available);
 
@@ -1447,8 +1512,11 @@ test('built web app serves the shell and the API',
 
     const fns = await fetch(`http://127.0.0.1:${port}/api/functions`);
     assert.deepStrictEqual(await fns.json(), { functions: [] });
+
+    const missing = await fetch(`http://127.0.0.1:${port}/api/functions/nope/history`);
+    assert.strictEqual(missing.status, 404);
   } finally {
-    child.kill('SIGKILL');
+    server.close();
   }
 });
 ```
@@ -1469,8 +1537,8 @@ Run: `npm test` → all pass (web test runs because `.output` now exists).
 - [ ] **Step 6: Commit**
 
 ```bash
-git add web/src tests/web.test.js
-git commit -m "feat: TanStack Start server routes over server/api.js with built-server smoke test"
+git add web/src server/serve-web.js tests/web.test.js
+git commit -m "feat: TanStack Start server routes over server/api.js with Node runner and smoke test"
 ```
 
 ---
@@ -2622,7 +2690,7 @@ git commit -m "style: design polish pass over playground UI"
 - Modify: `package.json` (root), `README.md`, `tests/web.test.js` (one added assertion, optional)
 
 **Interfaces:**
-- Consumes: `web/.output/server/index.mjs` (from Task 4's build), which honors `PORT`/`HOST`/`AWS_PLAYGROUND_DATA_DIR`.
+- Consumes: `startWebServer({ distDir, port, host })` from `server/serve-web.js` (Task 6) and the built output at `web/dist` (Task 4's build).
 - Produces: `aws-playground [--port <n>] [--no-open]` behaves as before, now serving the new UI.
 
 - [ ] **Step 1: Rewrite `bin/cli.js`**
@@ -2631,8 +2699,8 @@ git commit -m "style: design polish pass over playground UI"
 #!/usr/bin/env node
 const { spawn } = require('child_process');
 const fs = require('fs');
-const net = require('net');
 const path = require('path');
+const { startWebServer } = require('../server/serve-web');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -2651,28 +2719,17 @@ Starts the Lambda Playground server and opens it in your browser.
   process.exit(0);
 }
 
-const SERVER_ENTRY = path.join(__dirname, '..', 'web', '.output', 'server', 'index.mjs');
-if (!fs.existsSync(SERVER_ENTRY)) {
-  console.error('aws-playground: web app not built (web/.output missing).');
+const DIST = path.join(__dirname, '..', 'web', 'dist');
+if (!fs.existsSync(path.join(DIST, 'server', 'server.js'))) {
+  console.error('aws-playground: web app not built (web/dist missing).');
   console.error('From a source checkout, run: npm run build');
   process.exit(1);
 }
 
 const port = parseInt(optValue('--port', '4590'), 10);
-const child = spawn(process.execPath, [SERVER_ENTRY], {
-  env: { ...process.env, PORT: String(port), HOST: '127.0.0.1' },
-  stdio: 'inherit',
-});
-child.on('exit', (code) => process.exit(code ?? 0));
-for (const sig of ['SIGINT', 'SIGTERM']) {
-  process.on(sig, () => { child.kill(sig); });
-}
-
-function waitForPort(retriesLeft) {
-  const socket = net.connect(port, '127.0.0.1');
-  socket.once('connect', () => {
-    socket.destroy();
-    const url = `http://localhost:${port}`;
+startWebServer({ distDir: DIST, port, host: '127.0.0.1' })
+  .then((server) => {
+    const url = `http://localhost:${server.address().port}`;
     console.log(`aws-playground listening at ${url}`);
     if (!flag('--no-open')) {
       const opener = process.platform === 'darwin' ? 'open'
@@ -2680,19 +2737,14 @@ function waitForPort(retriesLeft) {
       const openArgs = process.platform === 'win32' ? ['/c', 'start', '""', url] : [url];
       spawn(opener, openArgs, { stdio: 'ignore', detached: true }).unref();
     }
-  });
-  socket.once('error', () => {
-    socket.destroy();
-    if (child.exitCode !== null) return; // server died; its own error is already printed
-    if (retriesLeft <= 0) {
-      console.error(`aws-playground: server did not start on port ${port} within 30s`);
-      child.kill('SIGKILL');
+  })
+  .catch((err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${port} is already in use. Try: aws-playground --port ${port + 1}`);
       process.exit(1);
     }
-    setTimeout(() => waitForPort(retriesLeft - 1), 300);
+    throw err;
   });
-}
-waitForPort(100);
 ```
 
 - [ ] **Step 2: Delete the superseded pieces**
@@ -2715,7 +2767,7 @@ npm uninstall express
     "test": "node --test tests/*.test.js",
     "prepublishOnly": "npm --prefix web install && npm --prefix web run build"
   },
-  "files": ["bin", "server", "harnesses", "web/.output"]
+  "files": ["bin", "server", "harnesses", "web/dist"]
 }
 ```
 
