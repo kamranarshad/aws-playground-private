@@ -109,3 +109,18 @@ test('history endpoints 404 for unknown function', () => {
   assert.strictEqual(api.listHistory('missing').status, 404);
   assert.strictEqual(api.clearHistory('missing').status, 404);
 });
+
+test('history write failure does not break invoke', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'histfail', path: path.join(FIXTURES, 'python-hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const histDir = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history');
+  fs.rmSync(histDir, { recursive: true, force: true });
+  fs.writeFileSync(histDir, 'block'); // a file where the history dir should be -> append throws
+  try {
+    const r = await api.invokeFunction({ functionId: created.body.id, event: { q: 1 } });
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.ok, true);
+  } finally {
+    fs.rmSync(histDir, { force: true });
+  }
+});

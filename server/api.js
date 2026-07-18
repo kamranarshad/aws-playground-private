@@ -83,16 +83,20 @@ async function invokeFunction(input) {
       memoryMb: input.memoryMb ?? fn.memoryMb,
       jarPath: fn.jarPath || findJar(fn.path),
     });
-    history.append(fn.id, {
-      handler: input.handler ?? fn.handler,
-      event: input.event ?? {},
-      response: result.response,
-      error: result.error ?? null,
-      logs: result.logs,
-      report: result.report,
-      durationMs: result.report.durationMs,
-      ok: result.ok,
-    });
+    try {
+      history.append(fn.id, {
+        handler: input.handler ?? fn.handler,
+        event: input.event ?? {},
+        response: result.response,
+        error: result.error ?? null,
+        logs: result.logs,
+        report: result.report,
+        durationMs: result.report.durationMs,
+        ok: result.ok,
+      });
+    } catch (err) {
+      console.warn(`aws-playground: failed to record invoke history: ${err.message}`);
+    }
     return { status: 200, body: result };
   } catch (err) {
     return { status: 500, body: { error: err.message } };
