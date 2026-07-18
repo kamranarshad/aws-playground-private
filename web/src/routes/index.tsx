@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { AddFunctionDialog } from '@/components/add-function-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
+import { EnvEditor } from '@/components/env-editor'
+import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useFunctions } from '@/lib/queries'
@@ -36,8 +38,12 @@ function App() {
           onSelect={setSelectedId} onAdd={() => setAddOpen(true)} />
         <main className="min-w-0 flex-1">
           {selected ? (
-            <div className="p-4 text-sm text-muted-foreground">
-              Workspace for {selected.name} (coming in the next tasks)
+            <div className="flex h-full flex-col">
+              <FunctionHeader fn={selected} onDeleted={() => setSelectedId(null)} />
+              <EnvEditor fn={selected} />
+              <div className="p-4 text-sm text-muted-foreground">
+                Invoke workspace (next task)
+              </div>
             </div>
           ) : (
             <div className="flex h-full items-center justify-center text-muted-foreground">
