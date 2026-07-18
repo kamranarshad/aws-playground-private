@@ -1,0 +1,15 @@
+{
+  "name": "aws-playground",
+  "version": "0.1.0",
+  "description": "Local Postman-like playground for AWS Lambda handlers - no Docker, no RIE, no SAM",
+  "license": "MIT",
+  "bin": { "aws-playground": "bin/cli.js" },
+  "main": "server/index.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node bin/cli.js --no-open",
+    "test": "node --test tests/"
+  },
+  "dependencies": { "express": "^4.19.2" },
+  "files": ["bin", "server", "harnesses", "public"]
+}
