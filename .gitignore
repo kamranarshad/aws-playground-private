@@ -3,3 +3,5 @@ harnesses/java/gson.jar
 harnesses/java/build/
 fixtures/java-hello/lambda-core.jar
 fixtures/java-hello/build/
+__pycache__/
+*.pyc
