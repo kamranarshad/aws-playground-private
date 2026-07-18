@@ -16,6 +16,8 @@ cold-start semantics, and your latest code edits are always picked up).
 
 Flags: `--port <n>` (default 4590), `--no-open`.
 
+Running the playground itself requires Node >= 22.12.
+
 ## Supported runtimes
 
 | Runtime | Needs on your machine | Handler syntax |
@@ -42,7 +44,10 @@ Registered functions, per-function env vars, and saved events live in
 ## Development
 
     npm install
+    npm run build      # builds the web UI (web/.output) — required once before npm start
     npm start          # server without auto-opening the browser
+    npm run dev        # web UI dev server with hot reload (also serves the API)
     npm test           # node --test; language tests auto-skip missing runtimes
 
-Architecture and design: `docs/superpowers/specs/2026-07-18-lambda-playground-design.md`.
+Architecture and design: `docs/superpowers/specs/2026-07-18-lambda-playground-design.md` and
+`docs/superpowers/specs/2026-07-18-tanstack-start-shadcn-ui-design.md`.
