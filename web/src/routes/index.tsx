@@ -40,7 +40,7 @@ function App() {
           {selected ? (
             <div className="flex h-full flex-col">
               <FunctionHeader fn={selected} onDeleted={() => setSelectedId(null)} />
-              <EnvEditor fn={selected} />
+              <EnvEditor key={selected.id} fn={selected} />
               <div className="p-4 text-sm text-muted-foreground">
                 Invoke workspace (next task)
               </div>

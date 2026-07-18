@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { ChevronsUpDown, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -11,12 +11,10 @@ import type { FunctionDef } from '@/lib/types'
 type Row = { key: string; value: string }
 
 export function EnvEditor({ fn }: { fn: FunctionDef }) {
-  const [rows, setRows] = useState<Row[]>([])
+  const [rows, setRows] = useState<Row[]>(() =>
+    Object.entries(fn.env).map(([key, value]) => ({ key, value }))
+  )
   const update = useUpdateFunction()
-
-  useEffect(() => {
-    setRows(Object.entries(fn.env).map(([key, value]) => ({ key, value })))
-  }, [fn.id, fn.env])
 
   function save(next: Row[]) {
     setRows(next)
