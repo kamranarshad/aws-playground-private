@@ -47,6 +47,8 @@ function App() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (target?.closest?.('[role="dialog"], [role="alertdialog"]')) return
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && selectedId) {
         e.preventDefault()
         runInvoke(selectedId)
