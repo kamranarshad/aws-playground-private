@@ -110,7 +110,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setSaveOpen(false)}>
+            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName('') }}>
               Cancel
             </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>

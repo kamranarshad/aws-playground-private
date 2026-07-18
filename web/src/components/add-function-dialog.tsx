@@ -32,6 +32,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
   }
 
   function cancel() {
+    reset()
     onOpenChange(false)
   }
 
@@ -64,6 +65,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
       { name: name.trim(), path: dir.trim(), runtime, handler: handler.trim() },
       {
         onSuccess: (fn) => {
+          reset()
           onOpenChange(false)
           toast.success(`Registered ${fn.name}`)
           onCreated(fn.id)
