@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// Works from web/src/lib (dev) and web/.output/server (built): walk up
+// Works from web/src/lib (dev) and web/dist/server (built): walk up
 // until the repo's server/ directory is found.
 function serverDir(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url))

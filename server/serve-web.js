@@ -16,6 +16,10 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.woff2': 'font/woff2',
   '.map': 'application/json',
+  '.wasm': 'application/wasm',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.webp': 'image/webp',
 };
 
 function staticFile(clientDir, urlPath) {
@@ -39,11 +43,13 @@ async function startWebServer({ distDir, port, host }) {
         const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
         const file = staticFile(clientDir, urlPath);
         if (file) {
+          const stream = fs.createReadStream(file);
+          stream.on('error', () => { res.destroy(); });
           res.writeHead(200, {
             'content-type': MIME[path.extname(file)] ?? 'application/octet-stream',
           });
-          if (req.method === 'HEAD') return res.end();
-          return fs.createReadStream(file).pipe(res);
+          if (req.method === 'HEAD') { stream.destroy(); return res.end(); }
+          return stream.pipe(res);
         }
       }
       const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
@@ -54,9 +60,8 @@ async function startWebServer({ distDir, port, host }) {
         duplex: hasBody ? 'half' : undefined,
       });
       const response = await entry.fetch(request);
-      const headers = {};
-      response.headers.forEach((value, key) => { headers[key] = value; });
-      res.writeHead(response.status, headers);
+      res.statusCode = response.status;
+      response.headers.forEach((value, key) => { res.appendHeader(key, value); });
       res.end(Buffer.from(await response.arrayBuffer()));
     } catch (err) {
       res.writeHead(500, { 'content-type': 'text/plain' });
