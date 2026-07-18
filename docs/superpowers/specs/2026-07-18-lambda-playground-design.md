@@ -46,7 +46,7 @@ harnesses/
   node/harness.mjs
   java/               harness source + prebuilt harness.jar
 public/               UI (sidebar, event editor, result tabs)
-data/projects.json    persisted registry of functions
+data/functions.json   persisted registry of functions
 fixtures/             tiny real Lambda projects used by tests
 ```
 
@@ -64,11 +64,13 @@ this architecture; it is out of scope for v1.
 2. Server resolves the interpreter (venv Python → system python3; node; java
    with classpath = user jar + harness jar).
 3. Server spawns the harness with `cwd` = project folder and a **clean
-   environment**: basics (`PATH`, `HOME`) + Lambda-standard vars
-   (`AWS_LAMBDA_FUNCTION_NAME`, `AWS_REGION`, `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`,
-   `AWS_LAMBDA_FUNCTION_TIMEOUT`, request id) + the user's per-function env
-   vars. Nothing AWS-related is inherited from the server's own environment.
-   The event JSON is passed on stdin.
+   environment**: host basics (`PATH`, `HOME`, `TMPDIR`, `LANG`, and
+   `JAVA_HOME` if set) + Lambda-standard vars (`AWS_LAMBDA_FUNCTION_NAME`,
+   `AWS_LAMBDA_FUNCTION_MEMORY_SIZE`, `AWS_LAMBDA_FUNCTION_VERSION`,
+   `AWS_REGION` defaulting to `us-east-1`) + the user's per-function env
+   vars, which take precedence over the defaults. Nothing AWS-related is
+   inherited from the server's own environment. The event JSON is passed on
+   stdin.
 4. Harness loads the handler, builds a faithful `context` object (request id,
    function name, memory size, `get_remaining_time_in_millis` wired to the
    configured timeout), invokes it, and writes a result envelope to a **temp
@@ -113,7 +115,7 @@ design system from the original README):
   - Session-only invocation history (click a past invoke to re-view its
     result; not persisted).
 
-Persistence is server-side in `data/projects.json`:
+Persistence is server-side in `data/functions.json`:
 
 ```json
 { "functions": [ {
