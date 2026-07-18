@@ -6,6 +6,7 @@ import { EnvEditor } from '@/components/env-editor'
 import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
+import { HistoryList } from '@/components/history-list'
 import { ResultPanel } from '@/components/result-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
@@ -86,7 +87,16 @@ function App() {
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
-                  <ResultPanel result={result} />
+                  <ResultPanel
+                    result={result}
+                    historyTab={
+                      <HistoryList
+                        fnId={selected.id}
+                        onLoadEvent={(text) =>
+                          setDrafts((d) => ({ ...d, [selected.id]: text }))}
+                      />
+                    }
+                  />
                 </ResizablePanel>
               </ResizablePanelGroup>
             </div>
