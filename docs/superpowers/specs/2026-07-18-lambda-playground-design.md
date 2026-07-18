@@ -36,7 +36,15 @@ but never runs installs or builds.
 Node.js + Express server (port 4590) serving a static vanilla-JS frontend,
 plus one small harness per language. No build step for the app itself.
 
+The app is an **installable npm CLI package**. Running the `aws-playground`
+command (via `npm install -g` or `npx`) starts the server and opens the
+default browser at the UI. Flags: `--port <n>` (default 4590) and
+`--no-open`. Because the CLI can run from anywhere, persisted data lives in
+the user's home directory at `~/.aws-playground/functions.json`, not inside
+the package.
+
 ```
+bin/cli.js            CLI entry point: parse flags, start server, open browser
 server/
   index.js          Express: /api/functions, /api/invoke, /api/health
   invoker.js        Spawns harness processes, enforces timeout, collects results
@@ -46,9 +54,10 @@ harnesses/
   node/harness.mjs
   java/               harness source + prebuilt harness.jar
 public/               UI (sidebar, event editor, result tabs)
-data/functions.json   persisted registry of functions
 fixtures/             tiny real Lambda projects used by tests
 ```
+
+`~/.aws-playground/functions.json` holds the registry (schema below).
 
 ### Execution model: fresh subprocess per invoke
 
@@ -115,7 +124,7 @@ design system from the original README):
   - Session-only invocation history (click a past invoke to re-view its
     result; not persisted).
 
-Persistence is server-side in `data/functions.json`:
+Persistence is server-side in `~/.aws-playground/functions.json`:
 
 ```json
 { "functions": [ {
