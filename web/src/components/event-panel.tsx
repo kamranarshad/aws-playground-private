@@ -58,7 +58,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1.5 border-b px-2 py-1.5">
+      <div className="flex items-center gap-1.5 border-b px-3 py-1.5">
         <Select value="" onValueChange={(name) =>
           onEventTextChange(JSON.stringify(EVENT_TEMPLATES[name], null, 2))}>
           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Template…" /></SelectTrigger>
@@ -86,14 +86,19 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           <Save className="size-3.5" /> Save
         </Button>
         <div className="ml-auto flex items-center gap-2">
-          {jsonError && <span className="text-xs text-destructive">invalid JSON</span>}
-          <Button size="sm" onClick={onInvoke} disabled={!!jsonError || invoking}>
+          {jsonError && (
+            <span className="whitespace-nowrap text-xs text-destructive" title={jsonError}>
+              invalid JSON
+            </span>
+          )}
+          <Button size="sm" onClick={onInvoke} disabled={!!jsonError || invoking}
+            className="bg-brand text-brand-foreground hover:bg-brand/90">
             <Play className="size-3.5" /> {invoking ? 'Invoking…' : 'Invoke'}
-            <kbd className="ml-1 text-[10px] opacity-60">⌘⏎</kbd>
+            <kbd className="ml-1 font-mono text-[10px] opacity-70">⌘⏎</kbd>
           </Button>
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto font-mono text-sm">
+      <div className="cm-host min-h-0 flex-1 overflow-auto font-mono text-sm">
         {mounted && (
           <CodeMirror value={eventText} height="100%" theme={theme}
             extensions={[json()]} onChange={onEventTextChange} />
@@ -105,7 +110,9 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setSaveOpen(false)}>Cancel</Button>
+            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName('') }}>
+              Cancel
+            </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>
           </DialogFooter>
         </DialogContent>

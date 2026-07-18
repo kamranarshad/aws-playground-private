@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { toast } from 'sonner'
 import { AddFunctionDialog } from '@/components/add-function-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
 import { CommandPalette } from '@/components/command-palette'
@@ -40,6 +41,7 @@ function App() {
     try {
       event = JSON.parse(drafts[functionId] ?? '{}')
     } catch {
+      toast.error('Event is not valid JSON')
       return
     }
     invoke.mutate({ functionId, event }, { onSuccess: setResult })
@@ -63,10 +65,13 @@ function App() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
-        <h1 className="text-sm font-semibold">λ Lambda Playground</h1>
+        <h1 className="flex items-baseline gap-1.5 text-sm font-semibold">
+          <span className="font-mono text-base leading-none text-brand">λ</span>
+          Lambda Playground
+        </h1>
         <div className="flex items-center gap-3">
           <HealthChips />
-          <kbd className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
+          <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
           <ThemeToggle />
         </div>
       </header>
@@ -106,8 +111,18 @@ function App() {
               </ResizablePanelGroup>
             </div>
           ) : (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              Register a function to get started.
+            <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
+              <span className="font-mono text-5xl leading-none text-brand/80">λ</span>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">No functions yet</p>
+                <p className="max-w-xs text-xs text-muted-foreground">
+                  Register a Lambda handler to run it locally — no deploy, no Docker.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Add one from the sidebar, or press{' '}
+                <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px]">⌘K</kbd>.
+              </p>
             </div>
           )}
         </main>
@@ -115,6 +130,7 @@ function App() {
       <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={setSelectedId} />
       <CommandPalette
         functions={functions}
+        canInvoke={!!selectedId}
         onSelect={setSelectedId}
         onAdd={() => setAddOpen(true)}
         onInvoke={() => selectedId && runInvoke(selectedId)}

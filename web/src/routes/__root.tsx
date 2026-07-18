@@ -34,10 +34,15 @@ function RootComponent() {
   )
 }
 
+// Set the theme class before first paint so a stored dark preference never
+// flashes light during hydration. Reads the same key the ThemeProvider writes.
+const themeScript = `(function(){try{var t=localStorage.getItem('awsplay-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.toggle('dark',t==='dark');}catch(e){}})();`
+
 function RootDocument({ children }: { children: ReactNode }) {
   return (
     <html suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <HeadContent />
       </head>
       <body>

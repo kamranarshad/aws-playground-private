@@ -16,7 +16,7 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
     <div className="flex items-center gap-2 border-b px-4 py-2">
       <h2 className="truncate text-sm font-semibold">{fn.name}</h2>
       <Badge variant="secondary">{fn.runtime}</Badge>
-      <span className="truncate font-mono text-xs text-muted-foreground">
+      <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>
       <div className="ml-auto flex items-center gap-1">
@@ -36,8 +36,16 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={() => del.mutate(fn.id, { onSuccess: onDeleted })}>
-                Delete
+              <AlertDialogAction
+                disabled={del.isPending}
+                onClick={(e) => {
+                  // Keep the dialog open so the pending state stays visible;
+                  // the header unmounts on success once the function is gone.
+                  e.preventDefault()
+                  del.mutate(fn.id, { onSuccess: onDeleted })
+                }}
+              >
+                {del.isPending ? 'Deleting…' : 'Delete'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

@@ -25,13 +25,17 @@ export function SettingsSheet({ fn }: { fn: FunctionDef }) {
   }, [fn])
 
   function save() {
+    // Empty/garbage input (NaN) keeps the current value; an explicit 0 clamps
+    // up to the minimum rather than silently reverting.
+    const t = parseInt(timeoutMs, 10)
+    const m = parseInt(memoryMb, 10)
     update.mutate(
       {
         id: fn.id,
         patch: {
           handler: handler.trim(),
-          timeoutMs: Math.max(100, parseInt(timeoutMs, 10) || fn.timeoutMs),
-          memoryMb: Math.max(128, parseInt(memoryMb, 10) || fn.memoryMb),
+          timeoutMs: Math.max(100, Number.isNaN(t) ? fn.timeoutMs : t),
+          memoryMb: Math.max(128, Number.isNaN(m) ? fn.memoryMb : m),
           jarPath: fn.runtime === 'java' ? (jarPath.trim() || null) : fn.jarPath,
         },
       },

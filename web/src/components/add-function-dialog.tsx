@@ -26,6 +26,16 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
   const [error, setError] = useState('')
   const create = useCreateFunction()
 
+  function reset() {
+    setDir(''); setName(''); setRuntime('python'); setHandler('')
+    setCandidates([]); setError('')
+  }
+
+  function cancel() {
+    onOpenChange(false)
+    reset()
+  }
+
   async function runDetect() {
     if (!dir.trim()) return
     try {
@@ -36,9 +46,15 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
       }
       setError('')
       if (d.runtime) setRuntime(d.runtime)
-      if (!name) setName(dir.trim().split('/').filter(Boolean).pop() ?? '')
+      // Detect runs after the path field blurs, so the user may have typed a
+      // name/handler while the request was in flight. Only fill blanks — never
+      // clobber what they entered — by checking the *current* state.
+      const detectedName = dir.trim().split('/').filter(Boolean).pop() ?? ''
+      setName((cur) => cur || detectedName)
       setCandidates(d.handlerCandidates.slice(0, 6))
-      if (d.handlerCandidates.length > 0 && !handler) setHandler(d.handlerCandidates[0])
+      if (d.handlerCandidates.length > 0) {
+        setHandler((cur) => cur || d.handlerCandidates[0])
+      }
     } catch (e) {
       setError((e as Error).message)
     }
@@ -50,7 +66,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
       {
         onSuccess: (fn) => {
           onOpenChange(false)
-          setDir(''); setName(''); setHandler(''); setCandidates([]); setError('')
+          reset()
           toast.success(`Registered ${fn.name}`)
           onCreated(fn.id)
         },
@@ -106,9 +122,9 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="ghost" onClick={cancel}>Cancel</Button>
           <Button onClick={submit} disabled={create.isPending || !dir.trim() || !name.trim()}>
-            Register
+            {create.isPending ? 'Registering…' : 'Register'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -10,10 +10,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light')
 
   useEffect(() => {
-    const stored = localStorage.getItem('awsplay-theme') as Theme | null
-    const preferred =
-      stored ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    setTheme(preferred)
+    // The pre-paint script in __root already resolved and applied the theme
+    // class. Adopt it so the provider and the DOM never disagree.
+    setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light')
   }, [])
 
   useEffect(() => {

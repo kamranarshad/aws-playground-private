@@ -30,14 +30,14 @@ export function HistoryList({ fnId, onLoadEvent }: {
   if (openEntry) {
     return (
       <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b px-2 py-1.5">
+        <div className="flex items-center gap-2 border-b px-3 py-1.5">
           <Button variant="ghost" size="sm" onClick={() => setOpenEntry(null)}>
             <ArrowLeft className="size-3.5" /> Back
           </Button>
           <Badge variant={openEntry.ok ? 'secondary' : 'destructive'} className="text-[10px]">
             {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
           </Badge>
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs tabular-nums text-muted-foreground">
             {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
             {openEntry.truncated ? ' · truncated' : ''}
           </span>
@@ -47,7 +47,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
           </Button>
         </div>
         <ScrollArea className="min-h-0 flex-1">
-          <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs">
+          <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">
             {`EVENT\n${displayValue(openEntry.event, openEntry.truncated)}\n\n` +
               (openEntry.ok
                 ? `RESPONSE\n${displayValue(openEntry.response, openEntry.truncated)}`
@@ -61,8 +61,8 @@ export function HistoryList({ fnId, onLoadEvent }: {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-2 py-1">
-        <span className="text-xs text-muted-foreground">{entries.length} runs (max 50 kept)</span>
+      <div className="flex items-center justify-between border-b px-3 py-1">
+        <span className="text-xs tabular-nums text-muted-foreground">{entries.length} runs (max 50 kept)</span>
         <Button variant="ghost" size="sm" disabled={entries.length === 0}
           onClick={() => clear.mutate(fnId)}>
           <Trash2 className="size-3.5" /> Clear
@@ -79,8 +79,8 @@ export function HistoryList({ fnId, onLoadEvent }: {
                 <Badge variant={e.ok ? 'secondary' : 'destructive'} className="text-[10px]">
                   {e.ok ? 'OK' : 'ERR'}
                 </Badge>
-                <span className="font-mono">{e.handler}</span>
-                <span className="ml-auto text-muted-foreground">
+                <span className="truncate font-mono">{e.handler}</span>
+                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                   {e.durationMs ?? '?'}ms · {age(e.ts)}
                 </span>
               </button>

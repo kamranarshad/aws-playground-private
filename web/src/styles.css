@@ -3,49 +3,60 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Lambda Playground palette.
+  Neutrals carry a faint cool-slate tint (hue ~260) so the whole console reads
+  as a deliberate cool surface rather than default achromatic gray. One warm
+  amber "brand" is reserved for the single live action — invoking a function —
+  and the λ mark, so the eye lands where the work happens.
+*/
 :root {
-  --radius: 0.5rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --radius: 0.4rem;
+  --background: oklch(0.993 0.003 255);
+  --foreground: oklch(0.20 0.018 262);
+  --card: oklch(0.997 0.002 255);
+  --card-foreground: oklch(0.20 0.018 262);
+  --popover: oklch(0.997 0.002 255);
+  --popover-foreground: oklch(0.20 0.018 262);
+  --primary: oklch(0.24 0.02 262);
+  --primary-foreground: oklch(0.99 0.003 255);
+  --secondary: oklch(0.965 0.005 258);
+  --secondary-foreground: oklch(0.24 0.02 262);
+  --muted: oklch(0.965 0.005 258);
+  --muted-foreground: oklch(0.505 0.02 260);
+  --accent: oklch(0.955 0.007 258);
+  --accent-foreground: oklch(0.24 0.02 262);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.908 0.006 260);
+  --input: oklch(0.908 0.006 260);
+  --ring: oklch(0.64 0.02 260);
+  --brand: oklch(0.705 0.152 58);
+  --brand-foreground: oklch(0.24 0.04 62);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.172 0.008 262);
+  --foreground: oklch(0.968 0.004 255);
+  --card: oklch(0.212 0.01 262);
+  --card-foreground: oklch(0.968 0.004 255);
+  --popover: oklch(0.212 0.01 262);
+  --popover-foreground: oklch(0.968 0.004 255);
+  --primary: oklch(0.92 0.006 255);
+  --primary-foreground: oklch(0.212 0.01 262);
+  --secondary: oklch(0.272 0.012 262);
+  --secondary-foreground: oklch(0.968 0.004 255);
+  --muted: oklch(0.272 0.012 262);
+  --muted-foreground: oklch(0.702 0.014 260);
+  --accent: oklch(0.285 0.014 262);
+  --accent-foreground: oklch(0.968 0.004 255);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
+  --border: oklch(1 0 0 / 11%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.55 0.02 260);
+  --brand: oklch(0.76 0.148 62);
+  --brand-foreground: oklch(0.205 0.04 60);
 }
 
 @theme inline {
@@ -72,8 +83,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
   --font-sans: ui-sans-serif, system-ui, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 @layer base {
@@ -83,4 +96,47 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Handlers, paths, logs, and reports are data — align digits so metrics
+     line up column-to-column. */
+  code, kbd, pre, .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/*
+  CodeMirror 6 surface reconciliation.
+  The @uiw light/dark themes ship their own editor chrome (a blue-gray dark
+  background that clashes with our cool card surface). Override the chrome to
+  inherit shadcn tokens while keeping the theme's syntax colors. Rules live
+  outside @layer base with !important so they win over CM's runtime-injected
+  StyleModule sheet regardless of load order.
+*/
+.cm-host .cm-editor {
+  background: transparent !important;
+  height: 100%;
+}
+.cm-host .cm-editor.cm-focused {
+  outline: none !important;
+}
+.cm-host .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+.cm-host .cm-gutters {
+  background: transparent !important;
+  border-right: 1px solid var(--border) !important;
+  color: var(--muted-foreground) !important;
+}
+.cm-host .cm-activeLine,
+.cm-host .cm-activeLineGutter {
+  background: color-mix(in oklab, var(--muted) 55%, transparent) !important;
+}
+.cm-host .cm-cursor,
+.cm-host .cm-dropCursor {
+  border-left-color: var(--foreground) !important;
+}
+.cm-host .cm-selectionBackground,
+.cm-host .cm-focused .cm-selectionBackground,
+.cm-host .cm-content ::selection {
+  background: color-mix(in oklab, var(--brand) 28%, transparent) !important;
 }

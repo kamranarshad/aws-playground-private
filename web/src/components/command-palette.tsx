@@ -6,8 +6,9 @@ import {
 import { useTheme } from '@/lib/theme'
 import type { FunctionDef } from '@/lib/types'
 
-export function CommandPalette({ functions, onSelect, onAdd, onInvoke }: {
+export function CommandPalette({ functions, canInvoke, onSelect, onAdd, onInvoke }: {
   functions: FunctionDef[]
+  canInvoke: boolean
   onSelect: (id: string) => void
   onAdd: () => void
   onInvoke: () => void
@@ -37,7 +38,7 @@ export function CommandPalette({ functions, onSelect, onAdd, onInvoke }: {
       <CommandList>
         <CommandEmpty>No results.</CommandEmpty>
         <CommandGroup heading="Actions">
-          <CommandItem onSelect={() => run(onInvoke)}>
+          <CommandItem disabled={!canInvoke} onSelect={() => run(onInvoke)}>
             <Play className="size-4" /> Invoke current function
           </CommandItem>
           <CommandItem onSelect={() => run(onAdd)}>

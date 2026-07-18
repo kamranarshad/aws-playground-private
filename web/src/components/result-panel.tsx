@@ -7,7 +7,7 @@ import type { InvokeResult } from '@/lib/types'
 function Pane({ children }: { children: ReactNode }) {
   return (
     <ScrollArea className="h-full">
-      <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs">{children}</pre>
+      <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">{children}</pre>
     </ScrollArea>
   )
 }
@@ -18,7 +18,7 @@ export function ResultPanel({ result, historyTab }: {
 }) {
   return (
     <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
-      <div className="flex items-center gap-2 border-b px-2 py-1.5">
+      <div className="flex items-center gap-2 border-b px-3 py-1.5">
         <TabsList className="h-8">
           <TabsTrigger value="response" className="text-xs">Response</TabsTrigger>
           <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
@@ -26,7 +26,8 @@ export function ResultPanel({ result, historyTab }: {
           {historyTab && <TabsTrigger value="history" className="text-xs">History</TabsTrigger>}
         </TabsList>
         {result && (
-          <Badge variant={result.ok ? 'secondary' : 'destructive'} className="ml-auto text-[10px]">
+          <Badge variant={result.ok ? 'secondary' : 'destructive'}
+            className="ml-auto tabular-nums text-[10px]">
             {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}
             {' · '}{result.report.durationMs}ms
           </Badge>
