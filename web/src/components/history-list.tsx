@@ -9,9 +9,14 @@ import type { HistoryEntry } from '@/lib/types'
 function age(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
   if (s < 60) return `${s}s ago`
-  if (s < 3600) return `${Math.round(s / 60)}m ago`
-  if (s < 86400) return `${Math.round(s / 3600)}h ago`
-  return `${Math.round(s / 86400)}d ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+function displayValue(value: unknown, truncated: boolean): string {
+  if (truncated && typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
 }
 
 export function HistoryList({ fnId, onLoadEvent }: {
@@ -37,15 +42,15 @@ export function HistoryList({ fnId, onLoadEvent }: {
             {openEntry.truncated ? ' · truncated' : ''}
           </span>
           <Button variant="ghost" size="sm" className="ml-auto"
-            onClick={() => onLoadEvent(JSON.stringify(openEntry.event, null, 2))}>
+            onClick={() => onLoadEvent(displayValue(openEntry.event, openEntry.truncated))}>
             <Download className="size-3.5" /> Load event
           </Button>
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs">
-            {`EVENT\n${JSON.stringify(openEntry.event, null, 2)}\n\n` +
+            {`EVENT\n${displayValue(openEntry.event, openEntry.truncated)}\n\n` +
               (openEntry.ok
-                ? `RESPONSE\n${JSON.stringify(openEntry.response, null, 2)}`
+                ? `RESPONSE\n${displayValue(openEntry.response, openEntry.truncated)}`
                 : `ERROR\n${openEntry.error?.type}: ${openEntry.error?.message}`) +
               `\n\nLOGS\n${openEntry.logs || '(none)'}`}
           </pre>

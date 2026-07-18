@@ -91,6 +91,7 @@ function App() {
                     result={result}
                     historyTab={
                       <HistoryList
+                        key={selected.id}
                         fnId={selected.id}
                         onLoadEvent={(text) =>
                           setDrafts((d) => ({ ...d, [selected.id]: text }))}
