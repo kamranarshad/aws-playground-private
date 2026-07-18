@@ -104,13 +104,13 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
             extensions={[json()]} onChange={onEventTextChange} />
         )}
       </div>
-      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+      <Dialog open={saveOpen} onOpenChange={(o) => { setSaveOpen(o); if (!o) setSaveName('') }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Save event</DialogTitle></DialogHeader>
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName('') }}>
+            <Button variant="ghost" onClick={() => setSaveOpen(false)}>
               Cancel
             </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>

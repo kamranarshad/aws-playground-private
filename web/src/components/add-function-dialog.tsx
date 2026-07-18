@@ -33,7 +33,6 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
 
   function cancel() {
     onOpenChange(false)
-    reset()
   }
 
   async function runDetect() {
@@ -66,7 +65,6 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
       {
         onSuccess: (fn) => {
           onOpenChange(false)
-          reset()
           toast.success(`Registered ${fn.name}`)
           onCreated(fn.id)
         },
@@ -76,7 +74,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o) }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add function</DialogTitle>
