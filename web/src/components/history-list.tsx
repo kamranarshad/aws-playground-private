@@ -3,6 +3,7 @@ import { ArrowLeft, Download, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { HttpStatusBadge } from '@/components/http-status-badge'
 import { useClearHistory, useHistoryQuery } from '@/lib/queries'
 import type { HistoryEntry } from '@/lib/types'
 
@@ -37,6 +38,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
           <Badge variant={openEntry.ok ? 'secondary' : 'destructive'} className="text-[10px]">
             {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
           </Badge>
+          {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
           <span className="text-xs tabular-nums text-muted-foreground">
             {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
             {openEntry.truncated ? ' · truncated' : ''}
@@ -79,6 +81,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
                 <Badge variant={e.ok ? 'secondary' : 'destructive'} className="text-[10px]">
                   {e.ok ? 'OK' : 'ERR'}
                 </Badge>
+                {e.ok && <HttpStatusBadge response={e.response} prefix={false} />}
                 <span className="truncate font-mono">{e.handler}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                   {e.durationMs ?? '?'}ms · {age(e.ts)}

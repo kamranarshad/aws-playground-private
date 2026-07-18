@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { HttpStatusBadge } from '@/components/http-status-badge'
 import type { InvokeResult } from '@/lib/types'
 
 function Pane({ children }: { children: ReactNode }) {
@@ -26,11 +27,14 @@ export function ResultPanel({ result, historyTab }: {
           {historyTab && <TabsTrigger value="history" className="text-xs">History</TabsTrigger>}
         </TabsList>
         {result && (
-          <Badge variant={result.ok ? 'secondary' : 'destructive'}
-            className="ml-auto tabular-nums text-[10px]">
-            {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}
-            {' · '}{result.report.durationMs}ms
-          </Badge>
+          <div className="ml-auto flex items-center gap-1.5">
+            {result.ok && <HttpStatusBadge response={result.response} />}
+            <Badge variant={result.ok ? 'secondary' : 'destructive'}
+              className="tabular-nums text-[10px]">
+              {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}
+              {' · '}{result.report.durationMs}ms
+            </Badge>
+          </div>
         )}
       </div>
       <TabsContent value="response" className="min-h-0 flex-1">
