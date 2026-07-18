@@ -77,3 +77,35 @@ test('second concurrent invoke of same function -> 409', { skip: noPy }, async (
   const done = await first;
   assert.strictEqual(done.body.error.type, 'Sandbox.Timedout');
 });
+
+test('invoke records history; delete clears it', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'hist', path: path.join(FIXTURES, 'python-hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const id = created.body.id;
+
+  let h = api.listHistory(id);
+  assert.strictEqual(h.status, 200);
+  assert.deepStrictEqual(h.body.entries, []);
+
+  await api.invokeFunction({ functionId: id, event: { q: 1 } });
+  h = api.listHistory(id);
+  assert.strictEqual(h.body.entries.length, 1);
+  assert.strictEqual(h.body.entries[0].ok, true);
+  assert.deepStrictEqual(h.body.entries[0].event, { q: 1 });
+  assert.ok(h.body.entries[0].report.requestId);
+
+  const cleared = api.clearHistory(id);
+  assert.strictEqual(cleared.status, 204);
+  assert.deepStrictEqual(api.listHistory(id).body.entries, []);
+
+  await api.invokeFunction({ functionId: id, event: {} });
+  api.deleteFunction(id);
+  assert.strictEqual(api.listHistory(id).status, 404);
+  const history = require('../server/history');
+  assert.deepStrictEqual(history.list(id), []);
+});
+
+test('history endpoints 404 for unknown function', () => {
+  assert.strictEqual(api.listHistory('missing').status, 404);
+  assert.strictEqual(api.clearHistory('missing').status, 404);
+});

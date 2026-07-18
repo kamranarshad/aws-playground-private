@@ -18,6 +18,8 @@ function createApp() {
   app.delete('/api/functions/:id', (req, res) => send(res, api.deleteFunction(req.params.id)));
   app.post('/api/detect', (req, res) => send(res, api.detect(req.body || {})));
   app.post('/api/invoke', async (req, res) => send(res, await api.invokeFunction(req.body || {})));
+  app.get('/api/functions/:id/history', (req, res) => send(res, api.listHistory(req.params.id)));
+  app.delete('/api/functions/:id/history', (req, res) => send(res, api.clearHistory(req.params.id)));
 
   app.use(express.static(path.join(__dirname, '..', 'public')));
   return app;

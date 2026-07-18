@@ -4,6 +4,7 @@ const store = require('./store');
 const { detectProject } = require('./detect');
 const { findJar } = require('./detect');
 const { invoke } = require('./invoker');
+const history = require('./history');
 
 const RUNTIMES = ['python', 'node', 'java'];
 const inFlight = new Set();
@@ -52,6 +53,7 @@ function updateFunction(id, patch) {
 
 function deleteFunction(id) {
   if (!store.remove(id)) return { status: 404, body: { error: 'function not found' } };
+  history.clear(id);
   return { status: 204 };
 }
 
@@ -81,6 +83,16 @@ async function invokeFunction(input) {
       memoryMb: input.memoryMb ?? fn.memoryMb,
       jarPath: fn.jarPath || findJar(fn.path),
     });
+    history.append(fn.id, {
+      handler: input.handler ?? fn.handler,
+      event: input.event ?? {},
+      response: result.response,
+      error: result.error ?? null,
+      logs: result.logs,
+      report: result.report,
+      durationMs: result.report.durationMs,
+      ok: result.ok,
+    });
     return { status: 200, body: result };
   } catch (err) {
     return { status: 500, body: { error: err.message } };
@@ -89,5 +101,16 @@ async function invokeFunction(input) {
   }
 }
 
+function listHistory(functionId) {
+  if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
+  return { status: 200, body: { entries: history.list(functionId) } };
+}
+
+function clearHistory(functionId) {
+  if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
+  history.clear(functionId);
+  return { status: 204 };
+}
+
 module.exports = { health, listFunctions, createFunction, updateFunction,
-  deleteFunction, detect, invokeFunction, RUNTIMES };
+  deleteFunction, detect, invokeFunction, listHistory, clearHistory, RUNTIMES };
