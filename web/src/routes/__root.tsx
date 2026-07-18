@@ -1,6 +1,13 @@
 import type { ReactNode } from 'react'
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from '@/components/ui/sonner'
+import { ThemeProvider } from '@/lib/theme'
 import appCss from '../styles.css?url'
+
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
+})
 
 export const Route = createRootRoute({
   head: () => ({
@@ -17,7 +24,12 @@ export const Route = createRootRoute({
 function RootComponent() {
   return (
     <RootDocument>
-      <Outlet />
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <Outlet />
+          <Toaster richColors />
+        </ThemeProvider>
+      </QueryClientProvider>
     </RootDocument>
   )
 }
