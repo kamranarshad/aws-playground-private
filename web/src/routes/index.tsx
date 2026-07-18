@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { AddFunctionDialog } from '@/components/add-function-dialog'
 import { AppSidebar } from '@/components/app-sidebar'
+import { CommandPalette } from '@/components/command-palette'
 import { EnvEditor } from '@/components/env-editor'
 import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
@@ -63,6 +64,7 @@ function App() {
         <h1 className="text-sm font-semibold">λ Lambda Playground</h1>
         <div className="flex items-center gap-3">
           <HealthChips />
+          <kbd className="rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground">⌘K</kbd>
           <ThemeToggle />
         </div>
       </header>
@@ -109,6 +111,12 @@ function App() {
         </main>
       </div>
       <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={setSelectedId} />
+      <CommandPalette
+        functions={functions}
+        onSelect={setSelectedId}
+        onAdd={() => setAddOpen(true)}
+        onInvoke={() => selectedId && runInvoke(selectedId)}
+      />
     </div>
   )
 }
