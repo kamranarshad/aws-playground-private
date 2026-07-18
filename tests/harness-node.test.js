@@ -68,6 +68,73 @@ test('missing export -> phase:init Runtime.HandlerNotFound', async () => {
   assert.strictEqual(envelope.error.type, 'Runtime.HandlerNotFound');
 });
 
+function apigwEvent({ method = 'GET', path = '/', query, body, isBase64Encoded = false } = {}) {
+  return {
+    version: '2.0',
+    routeKey: '$default',
+    rawPath: path,
+    rawQueryString: '',
+    headers: { 'content-type': 'application/json' },
+    queryStringParameters: query,
+    requestContext: { http: { method, path } },
+    body,
+    isBase64Encoded,
+  };
+}
+
+test('apigw fixture: GET /hello greets by query param', async () => {
+  const { envelope } = await runHarness({
+    fixture: 'node-apigw', handler: 'index.handler',
+    event: apigwEvent({ method: 'GET', path: '/hello', query: { name: 'Kamran' } }) });
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(envelope.response.statusCode, 200);
+  assert.strictEqual(envelope.response.headers['content-type'], 'application/json');
+  assert.deepStrictEqual(JSON.parse(envelope.response.body), { message: 'hello, Kamran' });
+});
+
+test('apigw fixture: POST /echo returns base64-decoded JSON body', async () => {
+  const payload = { order: 42, items: ['a', 'b'] };
+  const { envelope } = await runHarness({
+    fixture: 'node-apigw', handler: 'index.handler',
+    event: apigwEvent({ method: 'POST', path: '/echo',
+      body: Buffer.from(JSON.stringify(payload)).toString('base64'), isBase64Encoded: true }) });
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(envelope.response.statusCode, 200);
+  assert.deepStrictEqual(JSON.parse(envelope.response.body), { received: payload });
+});
+
+test('apigw fixture: POST /echo with invalid JSON -> 400', async () => {
+  const { envelope } = await runHarness({
+    fixture: 'node-apigw', handler: 'index.handler',
+    event: apigwEvent({ method: 'POST', path: '/echo', body: 'not json{' }) });
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(envelope.response.statusCode, 400);
+  assert.deepStrictEqual(JSON.parse(envelope.response.body), { error: 'invalid JSON body' });
+});
+
+test('apigw fixture: unknown route -> 404', async () => {
+  const { envelope } = await runHarness({
+    fixture: 'node-apigw', handler: 'index.handler',
+    event: apigwEvent({ method: 'DELETE', path: '/nope' }) });
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(envelope.response.statusCode, 404);
+  assert.deepStrictEqual(JSON.parse(envelope.response.body), { error: 'not found' });
+});
+
+test('apigw fixture: shipped sample events drive the handler', async () => {
+  const eventsDir = path.join(FIXTURES, 'node-apigw', 'events');
+  const getHello = JSON.parse(fs.readFileSync(path.join(eventsDir, 'get-hello.json'), 'utf8'));
+  const postEcho = JSON.parse(fs.readFileSync(path.join(eventsDir, 'post-echo.json'), 'utf8'));
+
+  const hello = await runHarness({ fixture: 'node-apigw', handler: 'index.handler', event: getHello });
+  assert.strictEqual(hello.envelope.response.statusCode, 200);
+  assert.match(JSON.parse(hello.envelope.response.body).message, /^hello, /);
+
+  const echo = await runHarness({ fixture: 'node-apigw', handler: 'index.handler', event: postEcho });
+  assert.strictEqual(echo.envelope.response.statusCode, 200);
+  assert.ok(JSON.parse(echo.envelope.response.body).received);
+});
+
 test('malformed handler string -> phase:init Runtime.MalformedHandlerName', async () => {
   const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'nodots' });
   assert.strictEqual(envelope.ok, false);

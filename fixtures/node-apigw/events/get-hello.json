@@ -1,0 +1,34 @@
+{
+  "version": "2.0",
+  "routeKey": "GET /hello",
+  "rawPath": "/hello",
+  "rawQueryString": "name=Kamran",
+  "headers": {
+    "accept": "*/*",
+    "host": "abc123defg.execute-api.eu-west-1.amazonaws.com",
+    "user-agent": "curl/8.7.1",
+    "x-forwarded-for": "203.0.113.10",
+    "x-forwarded-proto": "https"
+  },
+  "queryStringParameters": {
+    "name": "Kamran"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "abc123defg",
+    "domainName": "abc123defg.execute-api.eu-west-1.amazonaws.com",
+    "http": {
+      "method": "GET",
+      "path": "/hello",
+      "protocol": "HTTP/1.1",
+      "sourceIp": "203.0.113.10",
+      "userAgent": "curl/8.7.1"
+    },
+    "requestId": "JKJaXmiIjoEEMIw=",
+    "routeKey": "GET /hello",
+    "stage": "$default",
+    "time": "18/Jul/2026:12:00:00 +0000",
+    "timeEpoch": 1784548800000
+  },
+  "isBase64Encoded": false
+}
