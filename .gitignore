@@ -5,3 +5,10 @@ fixtures/java-hello/lambda-core.jar
 fixtures/java-hello/build/
 __pycache__/
 *.pyc
+
+web/node_modules/
+web/.output/
+web/.nitro/
+web/.tanstack/
+web/dist/
+web/src/routeTree.gen.ts
