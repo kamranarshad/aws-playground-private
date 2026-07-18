@@ -14,7 +14,8 @@ function capString(s) {
   if (typeof s !== 'string' || Buffer.byteLength(s, 'utf8') <= MAX_FIELD_BYTES) {
     return { value: s, truncated: false };
   }
-  const cut = Buffer.from(s, 'utf8').subarray(0, MAX_FIELD_BYTES).toString('utf8');
+  let cut = Buffer.from(s, 'utf8').subarray(0, MAX_FIELD_BYTES).toString('utf8');
+  while (Buffer.byteLength(cut, 'utf8') > MAX_FIELD_BYTES) cut = cut.slice(0, -1);
   return { value: cut, truncated: true };
 }
 
@@ -24,7 +25,8 @@ function capJson(value) {
   if (str === undefined || Buffer.byteLength(str, 'utf8') <= MAX_FIELD_BYTES) {
     return { value, truncated: false };
   }
-  const cut = Buffer.from(str, 'utf8').subarray(0, MAX_FIELD_BYTES).toString('utf8');
+  let cut = Buffer.from(str, 'utf8').subarray(0, MAX_FIELD_BYTES).toString('utf8');
+  while (Buffer.byteLength(cut, 'utf8') > MAX_FIELD_BYTES) cut = cut.slice(0, -1);
   return { value: cut, truncated: true };
 }
 
@@ -47,6 +49,7 @@ function append(functionId, entry) {
   const logs = capString(entry.logs ?? '');
   const event = capJson(entry.event);
   const response = capJson(entry.response);
+  const report = capJson(entry.report ?? null);
   const stored = {
     id: crypto.randomUUID(),
     ts: Date.now(),
@@ -55,10 +58,10 @@ function append(functionId, entry) {
     response: response.value,
     error: entry.error ?? null,
     logs: logs.value,
-    report: entry.report ?? null,
+    report: report.value,
     durationMs: entry.durationMs ?? null,
     ok: !!entry.ok,
-    truncated: logs.truncated || event.truncated || response.truncated,
+    truncated: logs.truncated || event.truncated || response.truncated || report.truncated,
   };
   const oldestFirst = list(functionId).reverse();
   oldestFirst.push(stored);

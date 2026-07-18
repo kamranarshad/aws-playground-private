@@ -61,3 +61,25 @@ test('clear removes the file', () => {
   assert.deepStrictEqual(history.list('fn5'), []);
   assert.strictEqual(history.clear('fn5'), false);
 });
+
+test('truncation never exceeds the cap on multi-byte input', () => {
+  const multiByteStr = 'é'.repeat(history.MAX_FIELD_BYTES);
+  const stored = history.append('fn6', entry({ logs: multiByteStr }));
+  assert.strictEqual(stored.truncated, true);
+  const logsByteLength = Buffer.byteLength(stored.logs, 'utf8');
+  assert.ok(logsByteLength <= history.MAX_FIELD_BYTES,
+    `logs byte length (${logsByteLength}) exceeds MAX_FIELD_BYTES (${history.MAX_FIELD_BYTES})`);
+});
+
+test('oversized report is capped and flagged', () => {
+  const stored = history.append('fn7', entry({
+    report: { requestId: 'r', blob: 'x'.repeat(history.MAX_FIELD_BYTES + 1000) }
+  }));
+  assert.strictEqual(stored.truncated, true);
+  const reportByteLength = Buffer.byteLength(JSON.stringify(stored.report), 'utf8');
+  assert.ok(reportByteLength <= history.MAX_FIELD_BYTES + 16,
+    `report byte length (${reportByteLength}) exceeds MAX_FIELD_BYTES + 16 (${history.MAX_FIELD_BYTES + 16})`);
+  const listed = history.list('fn7')[0];
+  assert.strictEqual(listed.truncated, true);
+  assert.ok(listed.report);
+});
