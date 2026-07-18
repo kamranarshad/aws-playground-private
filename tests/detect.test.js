@@ -52,3 +52,16 @@ test('returns error for a non-directory', () => {
 test('findVenvPython returns null when absent', () => {
   assert.strictEqual(findVenvPython(tmpDir()), null);
 });
+
+test('skips directory entries named like source files instead of throwing', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'app.py'),
+    'def handler(event, context):\n    return {}\n');
+  // A directory literally named "sub.py" — readFileSync on this would throw
+  // EISDIR if not guarded.
+  fs.mkdirSync(path.join(dir, 'sub.py'));
+  let res;
+  assert.doesNotThrow(() => { res = detectProject(dir); });
+  assert.strictEqual(res.runtime, 'python');
+  assert.deepStrictEqual(res.handlerCandidates, ['app.handler']);
+});

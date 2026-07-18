@@ -34,7 +34,9 @@ but never runs installs or builds.
 ## Architecture
 
 Node.js + Express server (port 4590) serving a static vanilla-JS frontend,
-plus one small harness per language. No build step for the app itself.
+plus one small harness per language. No build step for the app itself. The
+server binds to 127.0.0.1 only — the invoke API executes local code, so it
+must never listen on non-loopback interfaces.
 
 The app is an **installable npm CLI package**. Running the `aws-playground`
 command (via `npm install -g` or `npx`) starts the server and opens the

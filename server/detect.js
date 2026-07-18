@@ -15,18 +15,37 @@ function findJar(dir) {
   for (const sub of ['target', path.join('build', 'libs')]) {
     const d = path.join(dir, sub);
     if (!fs.existsSync(d)) continue;
-    const jars = fs.readdirSync(d).filter(f =>
+    let entries;
+    try {
+      entries = fs.readdirSync(d);
+    } catch {
+      continue; // unreadable target/build dir — skip it, don't blow up detection
+    }
+    const jars = entries.filter(f =>
       f.endsWith('.jar') && !f.endsWith('-sources.jar') && !f.endsWith('-javadoc.jar'));
     if (jars.length) return path.join(d, jars.sort()[0]);
   }
   return null;
 }
 
+// Reads a file's contents, skipping (returning null) anything that isn't a
+// plain readable file — e.g. a directory that happens to share the
+// extension we're scanning for, or a file we lack permission to read.
+function tryReadFile(full) {
+  try {
+    if (!fs.statSync(full).isFile()) return null;
+    return fs.readFileSync(full, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 function pythonHandlerCandidates(dir) {
   const out = [];
   for (const f of fs.readdirSync(dir)) {
     if (!f.endsWith('.py')) continue;
-    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const src = tryReadFile(path.join(dir, f));
+    if (src === null) continue;
     for (const m of src.matchAll(/^def\s+([A-Za-z_]\w*)\s*\(\s*event\s*,\s*context\b/gm)) {
       out.push(`${f.slice(0, -3)}.${m[1]}`);
     }
@@ -38,7 +57,8 @@ function nodeHandlerCandidates(dir) {
   const out = [];
   for (const f of fs.readdirSync(dir)) {
     if (!/\.(m?js|cjs)$/.test(f)) continue;
-    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    const src = tryReadFile(path.join(dir, f));
+    if (src === null) continue;
     const base = f.replace(/\.(m?js|cjs)$/, '');
     const re = /(?:exports\.([A-Za-z_]\w*)\s*=|export\s+(?:const|async\s+function|function)\s+([A-Za-z_]\w*))/g;
     for (const m of src.matchAll(re)) out.push(`${base}.${m[1] || m[2]}`);

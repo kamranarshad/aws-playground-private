@@ -67,3 +67,10 @@ test('missing export -> phase:init Runtime.HandlerNotFound', async () => {
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.HandlerNotFound');
 });
+
+test('malformed handler string -> phase:init Runtime.MalformedHandlerName', async () => {
+  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'nodots' });
+  assert.strictEqual(envelope.ok, false);
+  assert.strictEqual(envelope.phase, 'init');
+  assert.strictEqual(envelope.error.type, 'Runtime.MalformedHandlerName');
+});

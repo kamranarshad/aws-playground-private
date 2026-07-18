@@ -40,3 +40,28 @@ test('list returns empty array when file missing', () => {
   process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-empty-'));
   assert.deepStrictEqual(store.list().filter(f => f.name === 'nope'), []);
 });
+
+test('corrupted registry file is quarantined, not silently wiped', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-corrupt-'));
+  process.env.AWS_PLAYGROUND_DATA_DIR = dir;
+  const dataFile = path.join(dir, 'functions.json');
+  const corruptFile = path.join(dir, 'functions.json.corrupt');
+  const garbage = '{ this is not valid json ][';
+  fs.writeFileSync(dataFile, garbage);
+
+  assert.deepStrictEqual(store.list(), []);
+  assert.ok(fs.existsSync(corruptFile), 'functions.json.corrupt should exist after load');
+  assert.strictEqual(fs.readFileSync(corruptFile, 'utf8'), garbage);
+  assert.ok(!fs.existsSync(dataFile), 'the corrupted functions.json should have been moved away');
+
+  // a subsequent create() should work fine against a fresh registry
+  const fn = store.create({ name: 'after-corruption', path: '/tmp/after-corruption', runtime: 'python' });
+  assert.ok(fn.id);
+  assert.strictEqual(store.list().length, 1);
+  assert.strictEqual(store.list()[0].name, 'after-corruption');
+
+  // corrupting again and reloading should overwrite the previous .corrupt file
+  fs.writeFileSync(dataFile, 'still garbage');
+  assert.deepStrictEqual(store.list(), []);
+  assert.strictEqual(fs.readFileSync(corruptFile, 'utf8'), 'still garbage');
+});

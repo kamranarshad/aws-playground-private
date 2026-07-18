@@ -17,7 +17,20 @@ function dataFile() {
 function load() {
   try {
     return JSON.parse(fs.readFileSync(dataFile(), 'utf8'));
-  } catch {
+  } catch (err) {
+    if (err.code === 'ENOENT') return { functions: [] };
+    // Registry exists but is unreadable as JSON (corrupted file, partial
+    // write, etc). Don't silently discard the user's data: quarantine the
+    // bad file so it can be inspected/recovered, then start fresh.
+    const corruptFile = dataFile() + '.corrupt';
+    try {
+      fs.renameSync(dataFile(), corruptFile);
+    } catch {
+      // best effort — if we can't even rename it, fall through and start fresh
+    }
+    console.warn(
+      `aws-playground: ${dataFile()} could not be read (${err.message}); ` +
+      `moved it to ${corruptFile} and starting with an empty function registry.`);
     return { functions: [] };
   }
 }

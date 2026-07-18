@@ -21,7 +21,7 @@ Starts the Lambda Playground server and opens it in your browser.
 
 const port = parseInt(optValue('--port', '4590'), 10);
 const app = createApp();
-const server = app.listen(port, () => {
+const server = app.listen(port, '127.0.0.1', () => {
   const url = `http://localhost:${server.address().port}`;
   console.log(`aws-playground listening at ${url}`);
   if (!flag('--no-open')) {
