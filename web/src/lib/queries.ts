@@ -32,7 +32,12 @@ export function useCreateFunction() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (input: Partial<FunctionDef>) => api.createFunction(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['functions'] }),
+    onSuccess: (fn) => {
+      qc.setQueryData<{ functions: FunctionDef[] }>(['functions'], (d) =>
+        d ? { functions: [...d.functions.filter((f) => f.id !== fn.id), fn] } : d,
+      )
+      qc.invalidateQueries({ queryKey: ['functions'] })
+    },
   })
 }
 
