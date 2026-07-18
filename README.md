@@ -40,11 +40,13 @@ AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 
 Registered functions, per-function env vars, and saved events live in
 `~/.aws-playground/functions.json` (override with `AWS_PLAYGROUND_DATA_DIR`).
+Invoke history lives in `<dataDir>/history/<functionId>.jsonl` (50 runs per
+function).
 
 ## Development
 
     npm install
-    npm run build      # builds the web UI (web/.output) — required once before npm start
+    npm run build      # builds the web UI (web/dist) — required once before npm start
     npm start          # server without auto-opening the browser
     npm run dev        # web UI dev server with hot reload (also serves the API)
     npm test           # node --test; language tests auto-skip missing runtimes

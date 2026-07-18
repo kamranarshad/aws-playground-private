@@ -39,8 +39,20 @@ async function startWebServer({ distDir, port, host }) {
 
   const server = http.createServer(async (req, res) => {
     try {
+      const hostHeader = String(req.headers.host ?? '');
+      const hostname = hostHeader.replace(/:\d+$/, '');
+      if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
+        res.writeHead(403, { 'content-type': 'text/plain' });
+        return res.end('Forbidden: invalid Host header');
+      }
       if (req.method === 'GET' || req.method === 'HEAD') {
-        const urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+        let urlPath;
+        try {
+          urlPath = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+        } catch {
+          res.writeHead(400, { 'content-type': 'text/plain' });
+          return res.end('Bad request path');
+        }
         const file = staticFile(clientDir, urlPath);
         if (file) {
           const stream = fs.createReadStream(file);

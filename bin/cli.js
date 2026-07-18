@@ -29,6 +29,10 @@ if (!fs.existsSync(path.join(DIST, 'server', 'server.js'))) {
 }
 
 const port = parseInt(optValue('--port', '4590'), 10);
+if (Number.isNaN(port) || port < 0 || port > 65535) {
+  console.error('aws-playground: invalid --port value');
+  process.exit(1);
+}
 startWebServer({ distDir: DIST, port, host: '127.0.0.1' })
   .then((server) => {
     const url = `http://localhost:${server.address().port}`;

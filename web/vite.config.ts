@@ -11,4 +11,5 @@ export default defineConfig({
   server: { port: 4590 },
   resolve: { alias: { '@': path.resolve(dirname, './src') } },
   plugins: [tailwindcss(), tanstackStart(), viteReact()],
+  ssr: { noExternal: true },
 })
