@@ -1,10 +1,15 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { ChevronsUpDown, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { Input } from '@/components/ui/input'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select'
+import { api } from '@/lib/api'
 import { useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
@@ -15,6 +20,13 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
     Object.entries(fn.env).map(([key, value]) => ({ key, value }))
   )
   const update = useUpdateFunction()
+  const { data: envFiles = [] } = useQuery({
+    queryKey: ['envfiles', fn.path],
+    queryFn: () => api.detect(fn.path),
+    select: (d) => d.envFiles ?? [],
+  })
+  const envFile = fn.envFile ?? 'auto'
+  const hasDotEnv = envFiles.includes('.env')
 
   function save(next: Row[]) {
     setRows(next)
@@ -30,9 +42,29 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
 
   return (
     <Collapsible defaultOpen={rows.length > 0} className="border-b px-4 py-2">
-      <CollapsibleTrigger className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
-      </CollapsibleTrigger>
+      <div className="flex items-center justify-between gap-2">
+        <CollapsibleTrigger className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
+        </CollapsibleTrigger>
+        <Select value={envFile}
+          onValueChange={(v) => update.mutate({ id: fn.id, patch: { envFile: v } })}>
+          <SelectTrigger size="sm" className="h-7 w-44 text-xs" aria-label="Env file">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="auto">
+              {hasDotEnv ? 'Auto (.env)' : 'Auto (no .env)'}
+            </SelectItem>
+            <SelectItem value="none">None</SelectItem>
+            {(envFiles.includes(envFile) || envFile === 'auto' || envFile === 'none'
+              ? envFiles
+              : [...envFiles, envFile]
+            ).map((f) => (
+              <SelectItem key={f} value={f}>{f}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <CollapsibleContent className="pt-2">
         <div className="grid gap-1.5">
           {rows.map((row, i) => (

@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const envfile = require('./envfile');
 
 function findVenvPython(dir) {
   for (const v of ['venv', '.venv', 'env']) {
@@ -80,7 +81,8 @@ function detectProject(dir) {
   const handlerCandidates =
     runtime === 'python' ? pythonHandlerCandidates(dir) :
     runtime === 'node' ? nodeHandlerCandidates(dir) : [];
-  return { runtime, handlerCandidates, venvPython, jarPath };
+  return { runtime, handlerCandidates, venvPython, jarPath,
+    envFiles: envfile.list(dir) };
 }
 
 module.exports = { detectProject, findVenvPython, findJar };

@@ -36,6 +36,12 @@ real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` to hit real
 AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 (e.g. MinIO for S3). Nothing is inherited from your shell silently.
 
+A project's `.env` file is loaded automatically when present, re-read on
+every invoke. The env-vars section has a picker to choose a different
+`.env.*` file or `None` per function. Precedence, lowest to highest:
+.env file → UI env vars → per-invoke overrides. Plain `KEY=VALUE` lines
+only (comments and quoted values supported; no interpolation).
+
 ## Data
 
 Registered functions, per-function env vars, and saved events live in

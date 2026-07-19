@@ -15,6 +15,7 @@ export interface FunctionDef {
   memoryMb: number
   jarPath: string | null
   env: Record<string, string>
+  envFile: string
   savedEvents: SavedEvent[]
 }
 
@@ -33,6 +34,7 @@ export interface Detection {
   handlerCandidates: string[]
   venvPython?: string | null
   jarPath?: string | null
+  envFiles?: string[]
 }
 
 export interface LambdaError {

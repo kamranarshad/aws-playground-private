@@ -3,6 +3,7 @@ const { execFile } = require('child_process');
 const store = require('./store');
 const { detectProject } = require('./detect');
 const { findJar } = require('./detect');
+const envfile = require('./envfile');
 const { invoke } = require('./invoker');
 const history = require('./history');
 
@@ -78,7 +79,11 @@ async function invokeFunction(input) {
       runtime: fn.runtime,
       handler: input.handler ?? fn.handler,
       event: input.event ?? {},
-      env: { ...fn.env, ...(input.envVars || {}) },
+      env: {
+        ...envfile.resolve(fn.path, input.envFile ?? fn.envFile ?? 'auto'),
+        ...fn.env,
+        ...(input.envVars || {}),
+      },
       timeoutMs: input.timeoutMs ?? fn.timeoutMs,
       memoryMb: input.memoryMb ?? fn.memoryMb,
       jarPath: fn.jarPath || findJar(fn.path),
