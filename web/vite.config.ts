@@ -7,9 +7,12 @@ import tailwindcss from '@tailwindcss/vite'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: { port: 4590 },
   resolve: { alias: { '@': path.resolve(dirname, './src') } },
   plugins: [tailwindcss(), tanstackStart(), viteReact()],
-  ssr: { noExternal: true },
-})
+  // Build only: bundle all deps so dist/server is self-contained for npm
+  // packaging. In dev this would force CJS deps (react) through the
+  // ESM-only module runner ("module is not defined") — externalize there.
+  ssr: command === 'build' ? { noExternal: true } : undefined,
+}))
