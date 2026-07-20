@@ -22,13 +22,14 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
   const [name, setName] = useState('')
   const [runtime, setRuntime] = useState<Runtime>('python')
   const [handler, setHandler] = useState('')
+  const [buildCommand, setBuildCommand] = useState('')
   const [candidates, setCandidates] = useState<string[]>([])
   const [error, setError] = useState('')
   const create = useCreateFunction()
 
   function reset() {
     setDir(''); setName(''); setRuntime('python'); setHandler('')
-    setCandidates([]); setError('')
+    setBuildCommand(''); setCandidates([]); setError('')
   }
 
   function cancel() {
@@ -55,6 +56,9 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
       if (d.handlerCandidates.length > 0) {
         setHandler((cur) => cur || d.handlerCandidates[0])
       }
+      if (d.buildCommand) {
+        setBuildCommand((cur) => cur || d.buildCommand!)
+      }
     } catch (e) {
       setError((e as Error).message)
     }
@@ -62,7 +66,8 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
 
   function submit() {
     create.mutate(
-      { name: name.trim(), path: dir.trim(), runtime, handler: handler.trim() },
+      { name: name.trim(), path: dir.trim(), runtime, handler: handler.trim(),
+        buildCommand: buildCommand.trim() },
       {
         onSuccess: (fn) => {
           reset()
@@ -118,6 +123,12 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
                 ))}
               </div>
             )}
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="fn-build">Build command (optional)</Label>
+            <Input id="fn-build" value={buildCommand}
+              onChange={(e) => setBuildCommand(e.target.value)}
+              placeholder="e.g. npm run build" spellCheck={false} autoComplete="off" />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>

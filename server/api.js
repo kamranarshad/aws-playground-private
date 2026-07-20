@@ -4,6 +4,7 @@ const store = require('./store');
 const { detectProject } = require('./detect');
 const { findJar } = require('./detect');
 const envfile = require('./envfile');
+const { runBuild } = require('./build');
 const { invoke } = require('./invoker');
 const history = require('./history');
 
@@ -73,21 +74,46 @@ async function invokeFunction(input) {
   }
   inFlight.add(fn.id);
   try {
-    const result = await invoke({
-      name: fn.name,
-      dir: fn.path,
-      runtime: fn.runtime,
-      handler: input.handler ?? fn.handler,
-      event: input.event ?? {},
-      env: {
-        ...envfile.resolve(fn.path, input.envFile ?? fn.envFile ?? 'auto'),
-        ...fn.env,
-        ...(input.envVars || {}),
-      },
-      timeoutMs: input.timeoutMs ?? fn.timeoutMs,
-      memoryMb: input.memoryMb ?? fn.memoryMb,
-      jarPath: fn.jarPath || findJar(fn.path),
-    });
+    let result;
+    let buildInfo = null;
+    if (fn.buildCommand) {
+      buildInfo = await runBuild({ dir: fn.path, command: fn.buildCommand });
+    }
+    if (buildInfo && !buildInfo.ok) {
+      result = {
+        ok: false,
+        phase: 'build',
+        error: {
+          type: 'Build.Failed',
+          message: `Build command failed (exit ${buildInfo.exitCode ?? 'n/a'}): ${fn.buildCommand}`,
+          stackTrace: [],
+        },
+        logs: buildInfo.output,
+        report: { requestId: '', durationMs: 0, billedMs: 0,
+          memoryMb: input.memoryMb ?? fn.memoryMb, timedOut: false,
+          buildMs: buildInfo.durationMs },
+      };
+    } else {
+      result = await invoke({
+        name: fn.name,
+        dir: fn.path,
+        runtime: fn.runtime,
+        handler: input.handler ?? fn.handler,
+        event: input.event ?? {},
+        env: {
+          ...envfile.resolve(fn.path, input.envFile ?? fn.envFile ?? 'auto'),
+          ...fn.env,
+          ...(input.envVars || {}),
+        },
+        timeoutMs: input.timeoutMs ?? fn.timeoutMs,
+        memoryMb: input.memoryMb ?? fn.memoryMb,
+        jarPath: fn.jarPath || findJar(fn.path),
+      });
+      if (buildInfo) {
+        result.logs = `=== build ===\n${buildInfo.output}\n=== invoke ===\n${result.logs}`;
+        result.report.buildMs = buildInfo.durationMs;
+      }
+    }
     try {
       history.append(fn.id, {
         handler: input.handler ?? fn.handler,

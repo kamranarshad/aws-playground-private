@@ -65,3 +65,53 @@ test('skips directory entries named like source files instead of throwing', () =
   assert.strictEqual(res.runtime, 'python');
   assert.deepStrictEqual(res.handlerCandidates, ['app.handler']);
 });
+
+test('detects typescript project with build script and outDir candidates', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'src.ts'), ''); // any .ts implies node runtime
+  fs.rmSync(path.join(dir, 'src.ts'));
+  fs.writeFileSync(path.join(dir, 'index.ts'),
+    'export const handler = async (event: unknown) => ({ ok: true })\n' +
+    'export function helper(x: number): number { return x }\n');
+  fs.writeFileSync(path.join(dir, 'package.json'),
+    JSON.stringify({ scripts: { build: 'tsc' } }));
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { outDir: 'dist', strict: true } }));
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'node');
+  assert.strictEqual(res.buildCommand, 'npm run build');
+  assert.ok(res.handlerCandidates.includes('dist/index.handler'));
+  assert.ok(res.handlerCandidates.includes('dist/index.helper'));
+});
+
+test('typescript without build script or outDir: no buildCommand, plain candidates', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'index.ts'), 'export const handler = async () => 1\n');
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'node');
+  assert.strictEqual(res.buildCommand, null);
+  assert.ok(res.handlerCandidates.includes('index.handler'));
+});
+
+test('js project keeps buildCommand null even with build script', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'index.js'), 'exports.handler = async () => 1;\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'x' } }));
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'node');
+  assert.strictEqual(res.buildCommand, null);
+});
+
+test('typescript sources under src/ map candidates through outDir', () => {
+  const dir = tmpDir();
+  fs.mkdirSync(path.join(dir, 'src'));
+  fs.writeFileSync(path.join(dir, 'src', 'index.ts'),
+    'export const handler = async (event: unknown) => event\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'tsc' } }));
+  fs.writeFileSync(path.join(dir, 'tsconfig.json'),
+    JSON.stringify({ compilerOptions: { outDir: './dist', rootDir: 'src' } }));
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'node');
+  assert.strictEqual(res.buildCommand, 'npm run build');
+  assert.ok(res.handlerCandidates.includes('dist/index.handler'));
+});

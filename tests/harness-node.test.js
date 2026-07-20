@@ -135,6 +135,29 @@ test('apigw fixture: shipped sample events drive the handler', async () => {
   assert.ok(JSON.parse(echo.envelope.response.body).received);
 });
 
+test('ts-apigw fixture: GET /hello via committed dist build', async () => {
+  const { envelope } = await runHarness({
+    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    event: apigwEvent({ method: 'GET', path: '/hello', query: { name: 'TS' } }) });
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(envelope.response.statusCode, 200);
+  assert.deepStrictEqual(JSON.parse(envelope.response.body),
+    { message: 'hello, TS (typescript)' });
+});
+
+test('ts-apigw fixture: POST /sum adds numbers, 400 on bad body', async () => {
+  const ok = await runHarness({
+    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    event: apigwEvent({ method: 'POST', path: '/sum', body: '[1,2,3.5]' }) });
+  assert.strictEqual(ok.envelope.response.statusCode, 200);
+  assert.deepStrictEqual(JSON.parse(ok.envelope.response.body), { sum: 6.5 });
+
+  const bad = await runHarness({
+    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    event: apigwEvent({ method: 'POST', path: '/sum', body: '{"not":"array"}' }) });
+  assert.strictEqual(bad.envelope.response.statusCode, 400);
+});
+
 test('malformed handler string -> phase:init Runtime.MalformedHandlerName', async () => {
   const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'nodots' });
   assert.strictEqual(envelope.ok, false);

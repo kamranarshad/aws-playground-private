@@ -168,6 +168,66 @@ test('detect lists env files', () => {
   assert.deepStrictEqual(r.body.envFiles, ['.env', '.env.production']);
 });
 
+function buildProject() {
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-buildproj-'));
+  // "compiler": writes dist/index.js from src/index.src (hermetic, no npm)
+  fs.mkdirSync(path.join(proj, 'src'));
+  fs.writeFileSync(path.join(proj, 'src', 'index.src'),
+    'exports.handler = async (event) => ({ built: true, echo: event });\n');
+  fs.writeFileSync(path.join(proj, 'build.mjs'),
+    "import fs from 'node:fs';\n" +
+    "fs.mkdirSync('dist', { recursive: true });\n" +
+    "fs.copyFileSync('src/index.src', 'dist/index.js');\n" +
+    "console.log('fake-tsc: compiled 1 file');\n");
+  return proj;
+}
+
+test('buildCommand runs before invoke and handler hits the built output', async () => {
+  const proj = buildProject();
+  const created = api.createFunction({ name: 'built-fn', path: proj, runtime: 'node',
+    handler: 'dist/index.handler', buildCommand: 'node build.mjs' });
+  assert.strictEqual(created.body.buildCommand, 'node build.mjs');
+
+  const r = await api.invokeFunction({ functionId: created.body.id, event: { n: 1 } });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.ok, true);
+  assert.deepStrictEqual(r.body.response, { built: true, echo: { n: 1 } });
+  assert.ok(r.body.logs.includes('=== build ==='));
+  assert.ok(r.body.logs.includes('fake-tsc: compiled 1 file'));
+  assert.ok(r.body.logs.includes('=== invoke ==='));
+  assert.ok(typeof r.body.report.buildMs === 'number' && r.body.report.buildMs >= 0);
+});
+
+test('failing build short-circuits with Build.Failed and records history', async () => {
+  const proj = buildProject();
+  const created = api.createFunction({ name: 'built-fail', path: proj, runtime: 'node',
+    handler: 'dist/index.handler',
+    buildCommand: `node -e "console.error('TS2322: type error'); process.exit(1)"` });
+
+  const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.ok, false);
+  assert.strictEqual(r.body.phase, 'build');
+  assert.strictEqual(r.body.error.type, 'Build.Failed');
+  assert.ok(r.body.logs.includes('TS2322: type error'));
+  assert.ok(typeof r.body.report.buildMs === 'number');
+
+  const h = api.listHistory(created.body.id);
+  assert.strictEqual(h.body.entries.length, 1);
+  assert.strictEqual(h.body.entries[0].ok, false);
+  assert.strictEqual(h.body.entries[0].error.type, 'Build.Failed');
+});
+
+test('no buildCommand leaves invoke untouched (no build markers)', async () => {
+  const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'node-hello'),
+    runtime: 'node', handler: 'index.handler' });
+  assert.strictEqual(created.body.buildCommand, '');
+  const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
+  assert.strictEqual(r.body.ok, true);
+  assert.ok(!r.body.logs.includes('=== build ==='));
+  assert.strictEqual(r.body.report.buildMs, undefined);
+});
+
 test('history write failure does not break invoke', { skip: noPy }, async () => {
   const created = api.createFunction({ name: 'histfail', path: path.join(FIXTURES, 'python-hello'),
     runtime: 'python', handler: 'app.handler' });

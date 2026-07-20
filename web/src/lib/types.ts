@@ -16,6 +16,7 @@ export interface FunctionDef {
   jarPath: string | null
   env: Record<string, string>
   envFile: string
+  buildCommand: string
   savedEvents: SavedEvent[]
 }
 
@@ -35,6 +36,7 @@ export interface Detection {
   venvPython?: string | null
   jarPath?: string | null
   envFiles?: string[]
+  buildCommand?: string | null
 }
 
 export interface LambdaError {
@@ -49,6 +51,7 @@ export interface Report {
   billedMs: number
   memoryMb: number
   timedOut: boolean
+  buildMs?: number
 }
 
 export interface InvokeResult {

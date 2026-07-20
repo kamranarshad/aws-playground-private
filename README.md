@@ -24,10 +24,17 @@ Running the playground itself requires Node >= 22.12.
 |---------|----------------------|----------------|
 | Python  | `python3` (a project `venv/` is used automatically) | `module.function` |
 | Node.js | `node` >= 18 | `file.export` |
+| TypeScript | `node` >= 18 + your build tooling (e.g. `tsc`) | `dist/index.export` via a build command |
 | Java    | `java` 11+, project built to a fat jar (`target/` or `build/libs/`) | `com.example.Class::method` |
 
 Projects are assumed ready to run: dependencies installed, Java compiled by
-your own tooling. The playground never runs installs or builds.
+your own tooling. The playground never runs installs — but a function can
+have a **build command** (e.g. `npm run build`) that runs in the project
+folder before every invoke, so compile-to-JS projects stay fresh. A failing
+build shows up as `Build.Failed` with the compiler output in the Logs tab;
+build time is reported separately from handler duration. TypeScript
+projects are auto-detected (build command and `dist/…` handler suggested).
+See `fixtures/ts-apigw` for a complete example.
 
 ## Calling AWS services
 

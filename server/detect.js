@@ -67,6 +67,53 @@ function nodeHandlerCandidates(dir) {
   return out;
 }
 
+// TypeScript sources at the project root or under src/ (the two layouts
+// tsc's rootDir conventions produce flat output for).
+function tsSourceFiles(dir) {
+  const out = [];
+  for (const sub of ['', 'src']) {
+    let entries;
+    try {
+      entries = fs.readdirSync(path.join(dir, sub));
+    } catch {
+      continue;
+    }
+    for (const f of entries) {
+      if (/\.(m?ts|cts)$/.test(f) && !f.endsWith('.d.ts')) out.push({ sub, name: f });
+    }
+  }
+  return out;
+}
+
+function tsOutDir(dir) {
+  const raw = tryReadFile(path.join(dir, 'tsconfig.json'));
+  if (raw === null) return null;
+  let outDir = null;
+  try {
+    outDir = JSON.parse(raw)?.compilerOptions?.outDir ?? null;
+  } catch {
+    // tsconfig allows comments/trailing commas; fall back to a regex scan
+    const m = raw.match(/"outDir"\s*:\s*"([^"]+)"/);
+    outDir = m ? m[1] : null;
+  }
+  if (!outDir) return null;
+  return outDir.replace(/^\.\//, '').replace(/\/+$/, '') || null;
+}
+
+function tsHandlerCandidates(dir, tsFiles) {
+  const outDir = tsOutDir(dir);
+  const prefix = outDir ? `${outDir}/` : '';
+  const out = [];
+  const re = /(?:exports\.([A-Za-z_]\w*)\s*=|export\s+(?:const|async\s+function|function)\s+([A-Za-z_]\w*))/g;
+  for (const { sub, name } of tsFiles) {
+    const src = tryReadFile(path.join(dir, sub, name));
+    if (src === null) continue;
+    const base = name.replace(/\.(m?ts|cts)$/, '');
+    for (const m of src.matchAll(re)) out.push(`${prefix}${base}.${m[1] || m[2]}`);
+  }
+  return out;
+}
+
 function detectProject(dir) {
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
     return { error: 'not-a-directory' };
@@ -74,15 +121,26 @@ function detectProject(dir) {
   const venvPython = findVenvPython(dir);
   const jarPath = findJar(dir);
   const files = fs.readdirSync(dir);
+  const tsFiles = tsSourceFiles(dir);
   let runtime = null;
   if (files.some(f => f.endsWith('.py'))) runtime = 'python';
-  else if (files.some(f => /\.(m?js|cjs)$/.test(f)) || files.includes('package.json')) runtime = 'node';
+  else if (files.some(f => /\.(m?js|cjs)$/.test(f)) || files.includes('package.json') ||
+    tsFiles.length > 0) runtime = 'node';
   else if (jarPath || files.includes('pom.xml') || files.includes('build.gradle')) runtime = 'java';
   const handlerCandidates =
     runtime === 'python' ? pythonHandlerCandidates(dir) :
-    runtime === 'node' ? nodeHandlerCandidates(dir) : [];
+    runtime === 'node'
+      ? [...new Set([...nodeHandlerCandidates(dir), ...tsHandlerCandidates(dir, tsFiles)])]
+      : [];
+  let buildCommand = null;
+  if (tsFiles.length > 0) {
+    const pkg = tryReadFile(path.join(dir, 'package.json'));
+    try {
+      if (pkg !== null && JSON.parse(pkg)?.scripts?.build) buildCommand = 'npm run build';
+    } catch {}
+  }
   return { runtime, handlerCandidates, venvPython, jarPath,
-    envFiles: envfile.list(dir) };
+    envFiles: envfile.list(dir), buildCommand };
 }
 
 module.exports = { detectProject, findVenvPython, findJar };

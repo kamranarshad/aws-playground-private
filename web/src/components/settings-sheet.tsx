@@ -15,6 +15,7 @@ export function SettingsSheet({ fn }: { fn: FunctionDef }) {
   const [timeoutMs, setTimeoutMs] = useState(String(fn.timeoutMs))
   const [memoryMb, setMemoryMb] = useState(String(fn.memoryMb))
   const [jarPath, setJarPath] = useState(fn.jarPath ?? '')
+  const [buildCommand, setBuildCommand] = useState(fn.buildCommand ?? '')
   const update = useUpdateFunction()
 
   useEffect(() => {
@@ -22,6 +23,7 @@ export function SettingsSheet({ fn }: { fn: FunctionDef }) {
     setTimeoutMs(String(fn.timeoutMs))
     setMemoryMb(String(fn.memoryMb))
     setJarPath(fn.jarPath ?? '')
+    setBuildCommand(fn.buildCommand ?? '')
   }, [fn])
 
   function save() {
@@ -37,6 +39,7 @@ export function SettingsSheet({ fn }: { fn: FunctionDef }) {
           timeoutMs: Math.max(100, Number.isNaN(t) ? fn.timeoutMs : t),
           memoryMb: Math.max(128, Number.isNaN(m) ? fn.memoryMb : m),
           jarPath: fn.runtime === 'java' ? (jarPath.trim() || null) : fn.jarPath,
+          buildCommand: buildCommand.trim(),
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -77,6 +80,15 @@ export function SettingsSheet({ fn }: { fn: FunctionDef }) {
                 spellCheck={false} placeholder="auto-detected if empty" />
             </div>
           )}
+          <div className="grid gap-2">
+            <Label htmlFor="s-build">Build command</Label>
+            <Input id="s-build" value={buildCommand}
+              onChange={(e) => setBuildCommand(e.target.value)}
+              spellCheck={false} placeholder="e.g. npm run build (empty = none)" />
+            <p className="text-xs text-muted-foreground">
+              Runs in the project folder before every invoke.
+            </p>
+          </div>
         </div>
         <SheetFooter>
           <Button onClick={save} disabled={update.isPending}>Save</Button>
