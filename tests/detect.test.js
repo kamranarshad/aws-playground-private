@@ -75,6 +75,7 @@ test('detects typescript project with build script and outDir candidates', () =>
     'export function helper(x: number): number { return x }\n');
   fs.writeFileSync(path.join(dir, 'package.json'),
     JSON.stringify({ scripts: { build: 'tsc' } }));
+  fs.mkdirSync(path.join(dir, 'node_modules'));
   fs.writeFileSync(path.join(dir, 'tsconfig.json'),
     JSON.stringify({ compilerOptions: { outDir: 'dist', strict: true } }));
   const res = detectProject(dir);
@@ -108,10 +109,20 @@ test('typescript sources under src/ map candidates through outDir', () => {
   fs.writeFileSync(path.join(dir, 'src', 'index.ts'),
     'export const handler = async (event: unknown) => event\n');
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'tsc' } }));
+  fs.mkdirSync(path.join(dir, 'node_modules'));
   fs.writeFileSync(path.join(dir, 'tsconfig.json'),
     JSON.stringify({ compilerOptions: { outDir: './dist', rootDir: 'src' } }));
   const res = detectProject(dir);
   assert.strictEqual(res.runtime, 'node');
   assert.strictEqual(res.buildCommand, 'npm run build');
   assert.ok(res.handlerCandidates.includes('dist/index.handler'));
+});
+
+test('no buildCommand suggestion when node_modules is missing (toolchain not installed)', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'index.ts'), 'export const handler = async () => 1\n');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { build: 'tsc' } }));
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'node');
+  assert.strictEqual(res.buildCommand, null);
 });

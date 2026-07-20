@@ -218,6 +218,17 @@ test('failing build short-circuits with Build.Failed and records history', async
   assert.strictEqual(h.body.entries[0].error.type, 'Build.Failed');
 });
 
+test('npm build failure without node_modules hints at npm install', async () => {
+  const proj = buildProject(); // has no node_modules
+  const created = api.createFunction({ name: 'built-nodeps', path: proj, runtime: 'node',
+    handler: 'dist/index.handler', buildCommand: 'npm run build' });
+  const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
+  assert.strictEqual(r.body.ok, false);
+  assert.strictEqual(r.body.error.type, 'Build.Failed');
+  assert.ok(r.body.logs.includes("run 'npm install'"),
+    `expected install hint in logs, got: ${r.body.logs.slice(-300)}`);
+});
+
 test('no buildCommand leaves invoke untouched (no build markers)', async () => {
   const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'node-hello'),
     runtime: 'node', handler: 'index.handler' });

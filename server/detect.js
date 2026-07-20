@@ -132,8 +132,11 @@ function detectProject(dir) {
     runtime === 'node'
       ? [...new Set([...nodeHandlerCandidates(dir), ...tsHandlerCandidates(dir, tsFiles)])]
       : [];
+  // Only suggest a build command the project can actually run: without
+  // node_modules the toolchain (tsc etc.) isn't installed and `npm run
+  // build` is guaranteed to fail — projects are assumed ready to run.
   let buildCommand = null;
-  if (tsFiles.length > 0) {
+  if (tsFiles.length > 0 && fs.existsSync(path.join(dir, 'node_modules'))) {
     const pkg = tryReadFile(path.join(dir, 'package.json'));
     try {
       if (pkg !== null && JSON.parse(pkg)?.scripts?.build) buildCommand = 'npm run build';
