@@ -126,3 +126,24 @@ test('no buildCommand suggestion when node_modules is missing (toolchain not ins
   assert.strictEqual(res.runtime, 'node');
   assert.strictEqual(res.buildCommand, null);
 });
+
+test('bootstrap file detects the provided runtime', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'bootstrap'), '#!/bin/bash\n');
+  fs.chmodSync(path.join(dir, 'bootstrap'), 0o755);
+  fs.writeFileSync(path.join(dir, 'deploy.sh'), '#!/bin/sh\n');
+  fs.chmodSync(path.join(dir, 'deploy.sh'), 0o755);
+  fs.writeFileSync(path.join(dir, 'notes.sh'), 'not executable');
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'provided');
+  assert.deepStrictEqual(res.handlerCandidates, ['bootstrap', 'deploy.sh']);
+});
+
+test('bootstrap wins over other runtime markers', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'bootstrap'), '#!/bin/bash\n');
+  fs.chmodSync(path.join(dir, 'bootstrap'), 0o755);
+  fs.writeFileSync(path.join(dir, 'app.py'), 'def handler(event, context):\n    return 1\n');
+  const res = detectProject(dir);
+  assert.strictEqual(res.runtime, 'provided');
+});

@@ -26,6 +26,13 @@ Running the playground itself requires Node >= 22.12.
 | Node.js | `node` >= 18 | `file.export` |
 | TypeScript | `node` >= 18 + your build tooling (e.g. `tsc`) | `dist/index.export` via a build command |
 | Java    | `java` 11+, project built to a fat jar (`target/` or `build/libs/`) | `com.example.Class::method` |
+| OS-only (`provided`) | any executable (`bash`+`curl`, compiled binaries) | path to the executable, e.g. `bootstrap` |
+
+The OS-only runtime emulates the real Lambda Runtime API
+(`AWS_LAMBDA_RUNTIME_API`), so genuine `provided.al2023` bootstrap files
+run unchanged — see `fixtures/provided-bash` (bash+curl),
+`fixtures/provided-python-exec` (any-executable), and
+`fixtures/provided-go` (compiled via build command `go build -o bootstrap .`).
 
 Projects are assumed ready to run: dependencies installed, Java compiled by
 your own tooling. The playground never runs installs — but a function can

@@ -1,4 +1,4 @@
-export type Runtime = 'python' | 'node' | 'java'
+export type Runtime = 'python' | 'node' | 'java' | 'provided'
 
 export interface SavedEvent {
   name: string

@@ -3,7 +3,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useHealth } from '@/lib/queries'
 import type { Runtime } from '@/lib/types'
 
-const LABELS: Record<Runtime, string> = { python: 'py', node: 'node', java: 'java' }
+const LABELS: Record<Runtime, string> = { python: 'py', node: 'node', java: 'java', provided: 'os' }
 
 export function HealthChips() {
   const { data } = useHealth()

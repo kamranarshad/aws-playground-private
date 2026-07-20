@@ -106,6 +106,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
                 <SelectItem value="python">python</SelectItem>
                 <SelectItem value="node">node</SelectItem>
                 <SelectItem value="java">java</SelectItem>
+                <SelectItem value="provided">provided (os-only)</SelectItem>
               </SelectContent>
             </Select>
           </div>

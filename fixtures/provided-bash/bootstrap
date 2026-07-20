@@ -1,0 +1,19 @@
+#!/bin/bash
+# Sample OS-only (custom runtime) lambda, AWS-tutorial style: poll the
+# Lambda Runtime API with curl, respond with an echo of the event.
+# This exact script also works on real AWS provided.al2023.
+set -euo pipefail
+
+API="http://${AWS_LAMBDA_RUNTIME_API}/2018-06-01/runtime"
+
+while true; do
+  HEADERS="$(mktemp)"
+  EVENT_DATA=$(curl -sS -LD "$HEADERS" "$API/invocation/next")
+  REQUEST_ID=$(grep -i 'Lambda-Runtime-Aws-Request-Id:' "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+  rm -f "$HEADERS"
+
+  echo "processing request $REQUEST_ID" >&2
+
+  RESPONSE="{\"echo\": ${EVENT_DATA}, \"runtime\": \"bash\"}"
+  curl -sS -X POST "$API/invocation/$REQUEST_ID/response" -d "$RESPONSE" > /dev/null
+done

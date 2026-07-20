@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+# Sample OS-only lambda showing that ANY executable works as a custom
+# runtime: this one happens to be Python (stdlib only), but the playground
+# treats it exactly like a compiled binary. Uppercases the event's keys.
+import json
+import os
+import urllib.request
+
+API = f"http://{os.environ['AWS_LAMBDA_RUNTIME_API']}/2018-06-01/runtime"
+
+while True:
+    with urllib.request.urlopen(f"{API}/invocation/next") as r:
+        request_id = r.headers["Lambda-Runtime-Aws-Request-Id"]
+        event = json.load(r)
+
+    result = {k.upper(): v for k, v in event.items()}
+    result["runtime"] = "python-exec"
+
+    req = urllib.request.Request(
+        f"{API}/invocation/{request_id}/response",
+        data=json.dumps(result).encode(),
+        method="POST",
+    )
+    urllib.request.urlopen(req)

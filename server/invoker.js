@@ -16,6 +16,9 @@ function command(opts, harnessArgs) {
   if (opts.runtime === 'node') {
     return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
   }
+  if (opts.runtime === 'provided') {
+    return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'provided', 'harness.mjs'), ...harnessArgs] };
+  }
   if (opts.runtime === 'java') {
     const harnessJar = path.join(HARNESS_DIR, 'java', 'harness.jar');
     const cp = [harnessJar, opts.jarPath].filter(Boolean).join(path.delimiter);

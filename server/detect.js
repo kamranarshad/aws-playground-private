@@ -67,6 +67,24 @@ function nodeHandlerCandidates(dir) {
   return out;
 }
 
+function isExecutableFile(full) {
+  try {
+    fs.accessSync(full, fs.constants.X_OK);
+    return fs.statSync(full).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// OS-only (custom runtime) projects: the bootstrap executable plus any
+// executable shell scripts are plausible entry points.
+function providedHandlerCandidates(dir, files) {
+  return files
+    .filter(f => f === 'bootstrap' || f.endsWith('.sh'))
+    .filter(f => isExecutableFile(path.join(dir, f)))
+    .sort();
+}
+
 // TypeScript sources at the project root or under src/ (the two layouts
 // tsc's rootDir conventions produce flat output for).
 function tsSourceFiles(dir) {
@@ -123,12 +141,14 @@ function detectProject(dir) {
   const files = fs.readdirSync(dir);
   const tsFiles = tsSourceFiles(dir);
   let runtime = null;
-  if (files.some(f => f.endsWith('.py'))) runtime = 'python';
+  if (isExecutableFile(path.join(dir, 'bootstrap'))) runtime = 'provided';
+  else if (files.some(f => f.endsWith('.py'))) runtime = 'python';
   else if (files.some(f => /\.(m?js|cjs)$/.test(f)) || files.includes('package.json') ||
     tsFiles.length > 0) runtime = 'node';
   else if (jarPath || files.includes('pom.xml') || files.includes('build.gradle')) runtime = 'java';
   const handlerCandidates =
     runtime === 'python' ? pythonHandlerCandidates(dir) :
+    runtime === 'provided' ? providedHandlerCandidates(dir, files) :
     runtime === 'node'
       ? [...new Set([...nodeHandlerCandidates(dir), ...tsHandlerCandidates(dir, tsFiles)])]
       : [];

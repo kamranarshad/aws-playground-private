@@ -253,3 +253,33 @@ test('history write failure does not break invoke', { skip: noPy }, async () => 
     fs.rmSync(histDir, { force: true });
   }
 });
+
+test('provided runtime is accepted and invokes the bash fixture', { skip: !hasRuntime('bash', ['--version']) }, async () => {
+  const created = api.createFunction({ name: 'os-bash', path: path.join(FIXTURES, 'provided-bash'),
+    runtime: 'provided', handler: 'bootstrap' });
+  assert.strictEqual(created.status, 201);
+  const r = await api.invokeFunction({ functionId: created.body.id, event: { ping: 1 } });
+  assert.strictEqual(r.body.ok, true);
+  assert.deepStrictEqual(r.body.response.echo, { ping: 1 });
+  assert.ok(r.body.logs.includes('processing request'));
+});
+
+test('health reports the provided runtime', async () => {
+  const { body } = await api.health();
+  assert.ok('provided' in body.runtimes);
+});
+
+test('go bootstrap builds and invokes via the provided runtime', { skip: !hasRuntime('go', ['version']) }, async () => {
+  // copy fixture to a temp dir so the built binary never lands in the repo
+  const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-go-'));
+  for (const f of ['main.go', 'go.mod']) {
+    fs.copyFileSync(path.join(FIXTURES, 'provided-go', f), path.join(proj, f));
+  }
+  const created = api.createFunction({ name: 'os-go', path: proj, runtime: 'provided',
+    handler: 'bootstrap', buildCommand: 'go build -o bootstrap .', timeoutMs: 60000 });
+  const r = await api.invokeFunction({ functionId: created.body.id, event: { name: 'gopher' } });
+  assert.strictEqual(r.body.ok, true, JSON.stringify(r.body.error ?? r.body).slice(0, 300));
+  assert.strictEqual(r.body.response.runtime, 'go');
+  assert.strictEqual(r.body.response.greeting, 'hello, gopher');
+  assert.ok(r.body.logs.includes('=== build ==='));
+});
