@@ -2,12 +2,15 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 
 type Theme = 'light' | 'dark'
 const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
-  theme: 'light',
+  theme: 'dark',
   toggle: () => {},
 })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('light')
+  // Dark is the fallback when no preference is stored; the pre-paint script in
+  // __root applies the same default to the DOM, and the effect below adopts
+  // whatever it resolved so the provider and the document never disagree.
+  const [theme, setTheme] = useState<Theme>('dark')
 
   useEffect(() => {
     // The pre-paint script in __root already resolved and applied the theme

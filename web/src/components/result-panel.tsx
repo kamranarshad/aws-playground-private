@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HttpStatusBadge } from '@/components/http-status-badge'
+import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
 function Pane({ children }: { children: ReactNode }) {
@@ -19,8 +20,8 @@ export function ResultPanel({ result, historyTab }: {
 }) {
   return (
     <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
-      <div className="flex items-center gap-2 border-b px-3 py-1.5">
-        <TabsList className="h-8">
+      <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
+        <TabsList className="h-8 bg-transparent">
           <TabsTrigger value="response" className="text-xs">Response</TabsTrigger>
           <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
           <TabsTrigger value="report" className="text-xs">Report</TabsTrigger>
@@ -29,8 +30,13 @@ export function ResultPanel({ result, historyTab }: {
         {result && (
           <div className="ml-auto flex items-center gap-1.5">
             {result.ok && <HttpStatusBadge response={result.response} />}
-            <Badge variant={result.ok ? 'secondary' : 'destructive'}
-              className="tabular-nums text-[10px]">
+            <Badge
+              variant={result.ok ? 'outline' : 'destructive'}
+              className={cn(
+                'font-mono tabular-nums text-[10px]',
+                result.ok && 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+              )}
+            >
               {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}
               {' · '}{result.report.durationMs}ms
             </Badge>

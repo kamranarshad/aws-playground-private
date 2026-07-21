@@ -15,8 +15,8 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
   return (
     <div className="flex items-center gap-2 border-b px-4 py-2">
       <h2 className="truncate text-sm font-semibold">{fn.name}</h2>
-      <Badge variant="secondary">{fn.runtime}</Badge>
-      <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
+      <Badge variant="secondary" className="font-mono">{fn.runtime}</Badge>
+      <span className="truncate font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>
       <div className="ml-auto flex items-center gap-1">

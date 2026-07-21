@@ -58,7 +58,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1.5 border-b px-3 py-1.5">
+      <div className="m-1.5 flex items-center gap-1.5 rounded-lg bg-surface-strip px-2.5 py-1.5">
         <Select value="" onValueChange={(name) =>
           onEventTextChange(JSON.stringify(EVENT_TEMPLATES[name], null, 2))}>
           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Template…" /></SelectTrigger>
@@ -91,8 +91,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
               invalid JSON
             </span>
           )}
-          <Button size="sm" onClick={onInvoke} disabled={!!jsonError || invoking}
-            className="bg-brand text-brand-foreground hover:bg-brand/90">
+          <Button size="sm" onClick={onInvoke} disabled={!!jsonError || invoking}>
             <Play className="size-3.5" /> {invoking ? 'Invoking…' : 'Invoke'}
             <kbd className="ml-1 font-mono text-[10px] opacity-70">⌘⏎</kbd>
           </Button>

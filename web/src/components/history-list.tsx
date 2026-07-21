@@ -5,7 +5,10 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { useClearHistory, useHistoryQuery } from '@/lib/queries'
+import { cn } from '@/lib/utils'
 import type { HistoryEntry } from '@/lib/types'
+
+const OK_CHIP = 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
 
 function age(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
@@ -35,11 +38,12 @@ export function HistoryList({ fnId, onLoadEvent }: {
           <Button variant="ghost" size="sm" onClick={() => setOpenEntry(null)}>
             <ArrowLeft className="size-3.5" /> Back
           </Button>
-          <Badge variant={openEntry.ok ? 'secondary' : 'destructive'} className="text-[10px]">
+          <Badge variant={openEntry.ok ? 'outline' : 'destructive'}
+            className={cn('font-mono text-[10px]', openEntry.ok && OK_CHIP)}>
             {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
           </Badge>
           {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
-          <span className="text-xs tabular-nums text-muted-foreground">
+          <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
             {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
             {openEntry.truncated ? ' · truncated' : ''}
           </span>
@@ -64,7 +68,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b px-3 py-1">
-        <span className="text-xs tabular-nums text-muted-foreground">{entries.length} runs (max 50 kept)</span>
+        <span className="font-mono text-[11px] uppercase tracking-wide tabular-nums text-muted-foreground">{entries.length} runs (max 50 kept)</span>
         <Button variant="ghost" size="sm" disabled={entries.length === 0}
           onClick={() => clear.mutate(fnId)}>
           <Trash2 className="size-3.5" /> Clear
@@ -78,7 +82,8 @@ export function HistoryList({ fnId, onLoadEvent }: {
                 className="flex w-full items-center gap-2 border-b px-3 py-1.5 text-left text-xs hover:bg-accent"
                 onClick={() => setOpenEntry(e)}
               >
-                <Badge variant={e.ok ? 'secondary' : 'destructive'} className="text-[10px]">
+                <Badge variant={e.ok ? 'outline' : 'destructive'}
+                  className={cn('font-mono text-[10px]', e.ok && OK_CHIP)}>
                   {e.ok ? 'OK' : 'ERR'}
                 </Badge>
                 {e.ok && <HttpStatusBadge response={e.response} prefix={false} />}

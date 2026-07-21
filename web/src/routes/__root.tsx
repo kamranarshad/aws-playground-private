@@ -34,9 +34,10 @@ function RootComponent() {
   )
 }
 
-// Set the theme class before first paint so a stored dark preference never
-// flashes light during hydration. Reads the same key the ThemeProvider writes.
-const themeScript = `(function(){try{var t=localStorage.getItem('awsplay-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.classList.toggle('dark',t==='dark');}catch(e){}})();`
+// Set the theme class before first paint so the stored preference never flashes
+// the wrong way during hydration. Dark is the house default when nothing is
+// stored; a saved preference always wins. Reads the key the ThemeProvider writes.
+const themeScript = `(function(){try{var t=localStorage.getItem('awsplay-theme');if(t!=='light'&&t!=='dark'){t='dark';}document.documentElement.classList.toggle('dark',t==='dark');}catch(e){}})();`
 
 function RootDocument({ children }: { children: ReactNode }) {
   return (

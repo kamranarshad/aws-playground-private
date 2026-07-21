@@ -4,59 +4,63 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Lambda Playground palette.
-  Neutrals carry a faint cool-slate tint (hue ~260) so the whole console reads
-  as a deliberate cool surface rather than default achromatic gray. One warm
-  amber "brand" is reserved for the single live action — invoking a function —
-  and the λ mark, so the eye lands where the work happens.
+  Espresso playground palette.
+  Every neutral carries a warm brown tint (oklch hue ~50–84, low chroma) so the
+  console reads as a deliberate espresso surface, never default achromatic gray.
+  Dark is the house look: near-black roasted-bean background, warm-brown panels,
+  a lighter --surface-strip for section-header bars, cream text and a cream
+  "inverted pill" primary. Amber survives only as a status hue (warnings / 4xx);
+  it is no longer a brand accent. Light is the same product in cream paper.
 */
 :root {
-  --radius: 0.4rem;
-  --background: oklch(0.993 0.003 255);
-  --foreground: oklch(0.20 0.018 262);
-  --card: oklch(0.997 0.002 255);
-  --card-foreground: oklch(0.20 0.018 262);
-  --popover: oklch(0.997 0.002 255);
-  --popover-foreground: oklch(0.20 0.018 262);
-  --primary: oklch(0.24 0.02 262);
-  --primary-foreground: oklch(0.99 0.003 255);
-  --secondary: oklch(0.965 0.005 258);
-  --secondary-foreground: oklch(0.24 0.02 262);
-  --muted: oklch(0.965 0.005 258);
-  --muted-foreground: oklch(0.505 0.02 260);
-  --accent: oklch(0.955 0.007 258);
-  --accent-foreground: oklch(0.24 0.02 262);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.908 0.006 260);
-  --input: oklch(0.908 0.006 260);
-  --ring: oklch(0.64 0.02 260);
-  --brand: oklch(0.705 0.152 58);
-  --brand-foreground: oklch(0.24 0.04 62);
+  --radius: 0.625rem;
+  --background: oklch(0.965 0.012 84);
+  --foreground: oklch(0.245 0.02 52);
+  --card: oklch(0.988 0.008 84);
+  --card-foreground: oklch(0.245 0.02 52);
+  --popover: oklch(0.988 0.008 84);
+  --popover-foreground: oklch(0.245 0.02 52);
+  --surface-strip: oklch(0.928 0.017 78);
+  --primary: oklch(0.27 0.022 52);
+  --primary-foreground: oklch(0.975 0.01 84);
+  --secondary: oklch(0.922 0.014 80);
+  --secondary-foreground: oklch(0.27 0.022 52);
+  --muted: oklch(0.922 0.014 80);
+  --muted-foreground: oklch(0.48 0.022 56);
+  --accent: oklch(0.9 0.018 78);
+  --accent-foreground: oklch(0.27 0.022 52);
+  --destructive: oklch(0.575 0.218 26);
+  --destructive-foreground: oklch(0.985 0.006 84);
+  --border: oklch(0.87 0.02 74);
+  --input: oklch(0.87 0.02 74);
+  --ring: oklch(0.55 0.04 56);
+  --brand: oklch(0.7 0.15 62);
+  --brand-foreground: oklch(0.26 0.05 55);
 }
 
 .dark {
-  --background: oklch(0.172 0.008 262);
-  --foreground: oklch(0.968 0.004 255);
-  --card: oklch(0.212 0.01 262);
-  --card-foreground: oklch(0.968 0.004 255);
-  --popover: oklch(0.212 0.01 262);
-  --popover-foreground: oklch(0.968 0.004 255);
-  --primary: oklch(0.92 0.006 255);
-  --primary-foreground: oklch(0.212 0.01 262);
-  --secondary: oklch(0.272 0.012 262);
-  --secondary-foreground: oklch(0.968 0.004 255);
-  --muted: oklch(0.272 0.012 262);
-  --muted-foreground: oklch(0.702 0.014 260);
-  --accent: oklch(0.285 0.014 262);
-  --accent-foreground: oklch(0.968 0.004 255);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.55 0.02 260);
-  --brand: oklch(0.76 0.148 62);
-  --brand-foreground: oklch(0.205 0.04 60);
+  --background: oklch(0.158 0.012 58);
+  --foreground: oklch(0.945 0.014 83);
+  --card: oklch(0.205 0.013 56);
+  --card-foreground: oklch(0.945 0.014 83);
+  --popover: oklch(0.205 0.013 56);
+  --popover-foreground: oklch(0.945 0.014 83);
+  --surface-strip: oklch(0.262 0.016 58);
+  --primary: oklch(0.93 0.017 83);
+  --primary-foreground: oklch(0.19 0.014 56);
+  --secondary: oklch(0.255 0.014 57);
+  --secondary-foreground: oklch(0.945 0.014 83);
+  --muted: oklch(0.255 0.014 57);
+  --muted-foreground: oklch(0.7 0.017 72);
+  --accent: oklch(0.29 0.017 58);
+  --accent-foreground: oklch(0.96 0.012 83);
+  --destructive: oklch(0.585 0.203 25);
+  --destructive-foreground: oklch(0.97 0.012 83);
+  --border: oklch(0.92 0.03 83 / 11%);
+  --input: oklch(0.92 0.03 83 / 15%);
+  --ring: oklch(0.62 0.03 72);
+  --brand: oklch(0.76 0.15 66);
+  --brand-foreground: oklch(0.2 0.04 60);
 }
 
 @theme inline {
@@ -70,6 +74,7 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-surface-strip: var(--surface-strip);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
@@ -106,8 +111,8 @@
 /*
   CodeMirror 6 surface reconciliation.
   The @uiw light/dark themes ship their own editor chrome (a blue-gray dark
-  background that clashes with our cool card surface). Override the chrome to
-  inherit shadcn tokens while keeping the theme's syntax colors. Rules live
+  background that clashes with our warm espresso card). Override the chrome to
+  inherit the shadcn tokens while keeping the theme's syntax colors. Rules live
   outside @layer base with !important so they win over CM's runtime-injected
   StyleModule sheet regardless of load order.
 */
@@ -129,7 +134,7 @@
 }
 .cm-host .cm-activeLine,
 .cm-host .cm-activeLineGutter {
-  background: color-mix(in oklab, var(--muted) 55%, transparent) !important;
+  background: color-mix(in oklab, var(--surface-strip) 60%, transparent) !important;
 }
 .cm-host .cm-cursor,
 .cm-host .cm-dropCursor {
@@ -138,5 +143,5 @@
 .cm-host .cm-selectionBackground,
 .cm-host .cm-focused .cm-selectionBackground,
 .cm-host .cm-content ::selection {
-  background: color-mix(in oklab, var(--brand) 28%, transparent) !important;
+  background: color-mix(in oklab, var(--primary) 22%, transparent) !important;
 }

@@ -9,7 +9,7 @@ export function HttpStatusBadge({ response, prefix = true }: {
   const status = httpStatusOf(response)
   if (status === null) return null
   return (
-    <Badge variant="outline" className={cn('tabular-nums text-[10px]', httpStatusClass(status))}>
+    <Badge variant="outline" className={cn('font-mono tabular-nums text-[10px]', httpStatusClass(status))}>
       {prefix ? `HTTP ${status}` : status}
     </Badge>
   )

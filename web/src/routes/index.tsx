@@ -66,7 +66,7 @@ function App() {
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
         <h1 className="flex items-baseline gap-1.5 text-sm font-semibold">
-          <span className="font-mono text-base leading-none text-brand">λ</span>
+          <span className="font-mono text-base leading-none text-foreground">λ</span>
           Lambda Playground
         </h1>
         <div className="flex items-center gap-3">
@@ -112,7 +112,7 @@ function App() {
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-              <span className="font-mono text-5xl leading-none text-brand/80">λ</span>
+              <span className="font-mono text-5xl leading-none text-foreground/20">λ</span>
               <div className="space-y-1">
                 <p className="text-sm font-medium">No functions yet</p>
                 <p className="max-w-xs text-xs text-muted-foreground">

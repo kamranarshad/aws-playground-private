@@ -42,8 +42,8 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
 
   return (
     <Collapsible defaultOpen={rows.length > 0} className="border-b px-4 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <CollapsibleTrigger className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
+        <CollapsibleTrigger className="flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
         </CollapsibleTrigger>
         <Select value={envFile}
