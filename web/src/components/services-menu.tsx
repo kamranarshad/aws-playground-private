@@ -16,7 +16,7 @@ const STATE_DOT: Record<string, string> = {
 }
 
 export function ServicesMenu() {
-  const { data, refetch } = useServices()
+  const { data, error, refetch } = useServices()
   const action = useServiceAction()
 
   return (
@@ -31,7 +31,12 @@ export function ServicesMenu() {
           Local services
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {!data ? (
+        {error ? (
+          <p className="px-2 py-3 text-xs text-destructive">
+            Could not query local services: {error.message}. If the playground
+            server was updated, restart it and reload this page.
+          </p>
+        ) : !data ? (
           <p className="px-2 py-3 text-xs text-muted-foreground">Checking docker…</p>
         ) : !data.docker.available ? (
           <p className="px-2 py-3 text-xs text-muted-foreground">

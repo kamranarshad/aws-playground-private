@@ -15,8 +15,51 @@ function serverDir(): string {
 }
 
 const req = createRequire(import.meta.url)
+const SERVER_DIR = serverDir()
+const API_PATH = path.join(SERVER_DIR, 'api.js')
+
+function loadBackend() {
+  return req(API_PATH)
+}
+
+function newestServerMtime(): number {
+  let newest = 0
+  for (const f of fs.readdirSync(SERVER_DIR)) {
+    if (!f.endsWith('.js')) continue
+    const t = fs.statSync(path.join(SERVER_DIR, f)).mtimeMs
+    if (t > newest) newest = t
+  }
+  return newest
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const backend: any = req(path.join(serverDir(), 'api.js'))
+let cached: any = loadBackend()
+let cachedAt = import.meta.env.DEV ? newestServerMtime() : 0
+
+// Vite dev hot-reloads web/src but never these CJS modules, so a long-lived
+// dev server serves stale backend code after a pull/merge (in-flight state
+// like the invoke guard resets on reload — same as a restart would).
+// Production (the built bundle) keeps the plain cached require.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function currentBackend(): any {
+  if (!import.meta.env.DEV) return cached
+  const newest = newestServerMtime()
+  if (newest > cachedAt) {
+    for (const key of Object.keys(req.cache)) {
+      if (key.startsWith(SERVER_DIR + path.sep)) delete req.cache[key]
+    }
+    cached = loadBackend()
+    cachedAt = newest
+  }
+  return cached
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const backend: any = new Proxy({}, {
+  get(_t, prop) {
+    return currentBackend()[prop]
+  },
+})
 
 export function toResponse(result: { status: number; body?: unknown }): Response {
   if (result.status === 204 || result.body === undefined) {
