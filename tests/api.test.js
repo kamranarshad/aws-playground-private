@@ -347,3 +347,30 @@ test('enabled but stopped service short-circuits with Service.NotRunning', async
   const h = api.listHistory(created.body.id);
   assert.strictEqual(h.body.entries[0].error.type, 'Service.NotRunning');
 });
+
+test('two aws services: per-service endpoints, no global', { skip: noPy }, async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  const proj = envEchoProject({});
+  const created = api.createFunction({ name: 'multi-svc', path: proj, runtime: 'python',
+    handler: 'app.handler', localServices: ['minio', 'elasticmq'] });
+  const r = await api.invokeFunction({ functionId: created.body.id,
+    event: { keys: ['AWS_ENDPOINT_URL', 'AWS_ENDPOINT_URL_S3', 'AWS_ENDPOINT_URL_SQS'] } });
+  assert.deepStrictEqual(r.body.response, {
+    AWS_ENDPOINT_URL: null,
+    AWS_ENDPOINT_URL_S3: 'http://127.0.0.1:9400',
+    AWS_ENDPOINT_URL_SQS: 'http://127.0.0.1:9324',
+  });
+});
+
+test('aws + plain service keeps the global endpoint', { skip: noPy }, async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  const proj = envEchoProject({});
+  const created = api.createFunction({ name: 'mixed-svc', path: proj, runtime: 'python',
+    handler: 'app.handler', localServices: ['minio', 'redis'] });
+  const r = await api.invokeFunction({ functionId: created.body.id,
+    event: { keys: ['AWS_ENDPOINT_URL', 'REDIS_URL'] } });
+  assert.deepStrictEqual(r.body.response, {
+    AWS_ENDPOINT_URL: 'http://127.0.0.1:9400',
+    REDIS_URL: 'redis://127.0.0.1:9403',
+  });
+});

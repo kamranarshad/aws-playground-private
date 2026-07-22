@@ -24,9 +24,11 @@ export interface FunctionDef {
 export interface LocalService {
   name: string
   label: string
+  shortLabel: string
+  note: string | null
   state: 'running' | 'stopped' | 'absent' | 'unavailable'
   endpoint: string
-  consoleUrl: string
+  consoleUrl: string | null
 }
 
 export interface ServicesStatus {

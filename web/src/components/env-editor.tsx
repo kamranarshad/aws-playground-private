@@ -10,7 +10,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
-import { useUpdateFunction } from '@/lib/queries'
+import { useServices, useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
 type Row = { key: string; value: string }
@@ -27,6 +27,7 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
   })
   const envFile = fn.envFile ?? 'auto'
   const hasDotEnv = envFiles.includes('.env')
+  const { data: servicesStatus } = useServices()
 
   function save(next: Row[]) {
     setRows(next)
@@ -47,14 +48,22 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
           Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
         </CollapsibleTrigger>
         <div className="flex items-center gap-2">
-          <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-            <input type="checkbox" className="accent-primary"
-              checked={(fn.localServices ?? []).includes('minio')}
-              onChange={(e) => update.mutate({ id: fn.id, patch: {
-                localServices: e.target.checked ? ['minio'] : [],
-              } })} />
-            Local S3
-          </label>
+          {(servicesStatus?.services ?? []).map((svc) => (
+            <label key={svc.name}
+              className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+              <input type="checkbox" className="accent-primary"
+                checked={(fn.localServices ?? []).includes(svc.name)}
+                onChange={(e) => {
+                  const current = fn.localServices ?? []
+                  update.mutate({ id: fn.id, patch: {
+                    localServices: e.target.checked
+                      ? [...current, svc.name]
+                      : current.filter((s) => s !== svc.name),
+                  } })
+                }} />
+              {svc.shortLabel}
+            </label>
+          ))}
         <Select value={envFile}
           onValueChange={(v) => update.mutate({ id: fn.id, patch: { envFile: v } })}>
           <SelectTrigger size="sm" className="h-7 w-44 text-xs" aria-label="Env file">

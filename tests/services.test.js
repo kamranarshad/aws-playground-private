@@ -99,10 +99,84 @@ test('list shapes registry + status for the API', async () => {
   assert.strictEqual(minio.consoleUrl, 'http://127.0.0.1:9401');
 });
 
-test('envFor returns injectable env for a service', () => {
-  const env = services.envFor('minio');
+
+test('elasticmq: run args, no volume, sqs endpoint env', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.start('elasticmq', { waitReady: false });
+  const run = calls().find(c => c.startsWith('run'));
+  assert.ok(run.includes('--name aws-playground-elasticmq'));
+  assert.ok(run.includes('-p 127.0.0.1:9324:9324'));
+  assert.ok(run.includes('-p 127.0.0.1:9325:9325'));
+  assert.ok(!run.includes('-v '), 'elasticmq must not mount a volume');
+  assert.ok(run.includes('softwaremill/elasticmq-native'));
+  assert.deepStrictEqual(services.envFor('elasticmq'),
+    { AWS_ENDPOINT_URL_SQS: 'http://127.0.0.1:9324' });
+});
+
+test('dynamodb: sharedDb + volume + dbPath', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.start('dynamodb', { waitReady: false });
+  const run = calls().find(c => c.startsWith('run'));
+  assert.ok(run.includes('--name aws-playground-dynamodb'));
+  assert.ok(run.includes('-p 127.0.0.1:9402:8000'));
+  assert.ok(run.includes('-v aws-playground-dynamodb-data:/home/dynamodblocal/data'));
+  assert.ok(run.includes('amazon/dynamodb-local'));
+  assert.ok(run.includes('-sharedDb'));
+  assert.ok(run.includes('-dbPath /home/dynamodblocal/data'));
+  assert.deepStrictEqual(services.envFor('dynamodb'),
+    { AWS_ENDPOINT_URL_DYNAMODB: 'http://127.0.0.1:9402' });
+});
+
+test('redis and postgres: volumes, ports, plain-endpoint env', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.start('redis', { waitReady: false });
+  let run = calls().find(c => c.startsWith('run'));
+  assert.ok(run.includes('-p 127.0.0.1:9403:6379'));
+  assert.ok(run.includes('-v aws-playground-redis-data:/data'));
+  assert.ok(run.includes('redis:alpine server') === false); // command is redis-server
+  assert.ok(run.includes('--appendonly yes'));
+  assert.deepStrictEqual(services.envFor('redis'), { REDIS_URL: 'redis://127.0.0.1:9403' });
+
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.start('postgres', { waitReady: false });
+  run = calls().find(c => c.startsWith('run'));
+  assert.ok(run.includes('-p 127.0.0.1:9404:5432'));
+  // postgres 18+ images require the mount at /var/lib/postgresql (not .../data)
+  assert.ok(run.includes('-v aws-playground-postgres-data:/var/lib/postgresql'));
+  assert.ok(!run.includes(':/var/lib/postgresql/data'));
+  assert.ok(run.includes('POSTGRES_PASSWORD=playground123'));
+  const env = services.envFor('postgres');
+  assert.strictEqual(env.DATABASE_URL, 'postgresql://playground:playground123@127.0.0.1:9404/playground');
+  assert.strictEqual(env.PGPORT, '9404');
+});
+
+test('composeEnv: single aws service gets global endpoint + creds', () => {
+  const env = services.composeEnv(['minio']);
   assert.strictEqual(env.AWS_ENDPOINT_URL, 'http://127.0.0.1:9400');
   assert.strictEqual(env.AWS_ENDPOINT_URL_S3, 'http://127.0.0.1:9400');
   assert.strictEqual(env.AWS_ACCESS_KEY_ID, 'playground');
-  assert.strictEqual(env.AWS_SECRET_ACCESS_KEY, 'playground123');
+});
+
+test('composeEnv: two aws services -> per-service vars only, no global', () => {
+  const env = services.composeEnv(['minio', 'elasticmq']);
+  assert.strictEqual(env.AWS_ENDPOINT_URL, undefined);
+  assert.strictEqual(env.AWS_ENDPOINT_URL_S3, 'http://127.0.0.1:9400');
+  assert.strictEqual(env.AWS_ENDPOINT_URL_SQS, 'http://127.0.0.1:9324');
+  assert.strictEqual(env.AWS_ACCESS_KEY_ID, 'playground');
+});
+
+test('composeEnv: aws + plain keeps global; plain only has no AWS vars', () => {
+  const mixed = services.composeEnv(['minio', 'redis']);
+  assert.strictEqual(mixed.AWS_ENDPOINT_URL, 'http://127.0.0.1:9400');
+  assert.strictEqual(mixed.REDIS_URL, 'redis://127.0.0.1:9403');
+  const plain = services.composeEnv(['redis', 'postgres']);
+  assert.strictEqual(plain.AWS_ENDPOINT_URL, undefined);
+  assert.strictEqual(plain.AWS_ACCESS_KEY_ID, undefined);
+  assert.strictEqual(plain.REDIS_URL, 'redis://127.0.0.1:9403');
+  assert.ok(plain.DATABASE_URL);
+});
+
+test('minio envFor no longer carries creds or global endpoint', () => {
+  assert.deepStrictEqual(services.envFor('minio'),
+    { AWS_ENDPOINT_URL_S3: 'http://127.0.0.1:9400' });
 });

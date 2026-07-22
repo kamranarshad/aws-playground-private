@@ -67,14 +67,17 @@ export function ServicesMenu() {
               </div>
               <div className="mt-1 flex items-center gap-2 pl-4">
                 <span className="font-mono text-xs text-muted-foreground">{svc.endpoint}</span>
-                {svc.state === 'running' && (
+                {svc.state === 'running' && svc.consoleUrl && (
                   <a href={svc.consoleUrl} target="_blank" rel="noreferrer"
                     className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline">
                     Open console <ExternalLink className="size-3" />
                   </a>
                 )}
               </div>
-              {svc.state === 'running' && (
+              {svc.note && (
+                <p className="mt-1 pl-4 text-xs text-muted-foreground/70">{svc.note}</p>
+              )}
+              {svc.state === 'running' && svc.name === 'minio' && (
                 <p className="mt-1 pl-4 text-xs text-muted-foreground">
                   Console login: playground / playground123
                 </p>

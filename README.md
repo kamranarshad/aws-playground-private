@@ -50,15 +50,23 @@ real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` to hit real
 AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 (e.g. MinIO for S3). Nothing is inherited from your shell silently.
 
-**Local S3 (MinIO):** if docker is installed, the Local services menu in
-the header can start a playground-managed MinIO container
-(`aws-playground-minio`, data persisted in a named docker volume).
-Enable "Local S3" on a function and every invoke gets
-`AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` (`http://127.0.0.1:9400`) and
-dummy credentials injected — overridable by your own env vars. Seed
-buckets and files through MinIO's console at `http://127.0.0.1:9401`
-(login `playground` / `playground123`). Docker is never touched unless
-you click Start.
+**Local services (docker):** if docker is installed, the Local services
+menu in the header can start playground-managed containers. Enable a
+service on a function and every invoke gets its endpoint env vars
+injected — always overridable by your own env vars. Docker is never
+touched unless you click Start.
+
+| Service | Image | Endpoint | Persists | Console |
+|---------|-------|----------|----------|---------|
+| S3 (MinIO) | `minio/minio` | `:9400` (`AWS_ENDPOINT_URL_S3`) | volume | `:9401` (`playground`/`playground123`) |
+| SQS (ElasticMQ) | `softwaremill/elasticmq-native` | `:9324` (`AWS_ENDPOINT_URL_SQS`) | no (in-memory) | `:9325` |
+| DynamoDB (Local) | `amazon/dynamodb-local` | `:9402` (`AWS_ENDPOINT_URL_DYNAMODB`) | volume | — |
+| ElastiCache (Redis) | `redis:alpine` | `:9403` (`REDIS_URL`) | volume | — |
+| RDS (PostgreSQL) | `postgres:alpine` | `:9404` (`DATABASE_URL`, `PG*`) | volume | — |
+
+Dummy AWS credentials are injected when any AWS-API service is enabled;
+the global `AWS_ENDPOINT_URL` is injected only when exactly one AWS-API
+service is enabled (with several, per-service vars avoid misrouting).
 
 A project's `.env` file is loaded automatically when present, re-read on
 every invoke. The env-vars section has a picker to choose a different

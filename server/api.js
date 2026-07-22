@@ -78,7 +78,6 @@ async function invokeFunction(input) {
   try {
     // Local services (e.g. MinIO): enabled services must be running; their
     // env sits below the .env file and UI vars so user overrides win.
-    const serviceEnv = {};
     for (const name of fn.localServices ?? []) {
       const state = await localServices.status(name).catch(() => 'unavailable');
       if (state !== 'running') {
@@ -104,8 +103,8 @@ async function invokeFunction(input) {
         } catch {}
         return { status: 200, body: result };
       }
-      Object.assign(serviceEnv, localServices.envFor(name));
     }
+    const serviceEnv = localServices.composeEnv(fn.localServices ?? []);
 
     let result;
     let buildInfo = null;
