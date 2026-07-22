@@ -5,7 +5,7 @@ Lambda project folders, set the handler (same syntax as the AWS console),
 pick or write a JSON event, and invoke — response, logs, and a
 CloudWatch-style REPORT line, right in your browser.
 
-No Docker. No RIE. No SAM. No LocalStack. No moto. Handlers run directly on
+No Docker required. No RIE. No SAM. No LocalStack. No moto. Handlers run directly on
 your machine via tiny per-language harnesses (fresh process per invoke =
 cold-start semantics, and your latest code edits are always picked up).
 
@@ -49,6 +49,16 @@ There is no mocking layer. Set environment variables per function in the UI:
 real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` to hit real
 AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 (e.g. MinIO for S3). Nothing is inherited from your shell silently.
+
+**Local S3 (MinIO):** if docker is installed, the Local services menu in
+the header can start a playground-managed MinIO container
+(`aws-playground-minio`, data persisted in a named docker volume).
+Enable "Local S3" on a function and every invoke gets
+`AWS_ENDPOINT_URL`/`AWS_ENDPOINT_URL_S3` (`http://127.0.0.1:9400`) and
+dummy credentials injected — overridable by your own env vars. Seed
+buckets and files through MinIO's console at `http://127.0.0.1:9401`
+(login `playground` / `playground123`). Docker is never touched unless
+you click Start.
 
 A project's `.env` file is loaded automatically when present, re-read on
 every invoke. The env-vars section has a picker to choose a different

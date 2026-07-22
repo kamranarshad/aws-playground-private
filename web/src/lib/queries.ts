@@ -70,6 +70,20 @@ export function useInvoke() {
   })
 }
 
+export function useServices() {
+  return useQuery({ queryKey: ['services'], queryFn: api.listServices })
+}
+
+export function useServiceAction() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ name, action }: { name: string; action: 'start' | 'stop' }) =>
+      action === 'start' ? api.startService(name) : api.stopService(name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['services'] }),
+    onError: onApiError,
+  })
+}
+
 export function useClearHistory() {
   const qc = useQueryClient()
   return useMutation({

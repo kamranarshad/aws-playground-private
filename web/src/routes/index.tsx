@@ -8,6 +8,7 @@ import { EnvEditor } from '@/components/env-editor'
 import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
+import { ServicesMenu } from '@/components/services-menu'
 import { HistoryList } from '@/components/history-list'
 import { ResultPanel } from '@/components/result-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -71,6 +72,7 @@ function App() {
         </h1>
         <div className="flex items-center gap-3">
           <HealthChips />
+          <ServicesMenu />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
           <ThemeToggle />
         </div>

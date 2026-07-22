@@ -4,6 +4,7 @@ const store = require('./store');
 const { detectProject } = require('./detect');
 const { findJar } = require('./detect');
 const envfile = require('./envfile');
+const localServices = require('./services');
 const { runBuild } = require('./build');
 const { invoke } = require('./invoker');
 const history = require('./history');
@@ -75,6 +76,37 @@ async function invokeFunction(input) {
   }
   inFlight.add(fn.id);
   try {
+    // Local services (e.g. MinIO): enabled services must be running; their
+    // env sits below the .env file and UI vars so user overrides win.
+    const serviceEnv = {};
+    for (const name of fn.localServices ?? []) {
+      const state = await localServices.status(name).catch(() => 'unavailable');
+      if (state !== 'running') {
+        const svc = (await localServices.list()).services.find(s => s.name === name);
+        const result = {
+          ok: false,
+          phase: 'service',
+          error: {
+            type: 'Service.NotRunning',
+            message: `${svc?.label ?? name} is not running — start it from the Local services menu or disable it for this function`,
+            stackTrace: [],
+          },
+          logs: '',
+          report: { requestId: '', durationMs: 0, billedMs: 0,
+            memoryMb: input.memoryMb ?? fn.memoryMb, timedOut: false },
+        };
+        try {
+          history.append(fn.id, {
+            handler: input.handler ?? fn.handler, event: input.event ?? {},
+            response: undefined, error: result.error, logs: '',
+            report: result.report, durationMs: 0, ok: false,
+          });
+        } catch {}
+        return { status: 200, body: result };
+      }
+      Object.assign(serviceEnv, localServices.envFor(name));
+    }
+
     let result;
     let buildInfo = null;
     if (fn.buildCommand) {
@@ -102,6 +134,7 @@ async function invokeFunction(input) {
         handler: input.handler ?? fn.handler,
         event: input.event ?? {},
         env: {
+          ...serviceEnv,
           ...envfile.resolve(fn.path, input.envFile ?? fn.envFile ?? 'auto'),
           ...fn.env,
           ...(input.envVars || {}),
@@ -137,6 +170,28 @@ async function invokeFunction(input) {
   }
 }
 
+async function listServices() {
+  return { status: 200, body: await localServices.list() };
+}
+
+async function startService(name, opts) {
+  if (!localServices.names().includes(name)) {
+    return { status: 404, body: { error: `unknown service '${name}'` } };
+  }
+  const r = await localServices.start(name, opts);
+  if (!r.ok) return { status: 409, body: { error: r.output, state: r.state } };
+  return { status: 200, body: { state: r.state } };
+}
+
+async function stopService(name) {
+  if (!localServices.names().includes(name)) {
+    return { status: 404, body: { error: `unknown service '${name}'` } };
+  }
+  const r = await localServices.stop(name);
+  if (!r.ok) return { status: 409, body: { error: r.output, state: r.state } };
+  return { status: 200, body: { state: r.state } };
+}
+
 function listHistory(functionId) {
   if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
   return { status: 200, body: { entries: history.list(functionId) } };
@@ -149,4 +204,5 @@ function clearHistory(functionId) {
 }
 
 module.exports = { health, listFunctions, createFunction, updateFunction,
-  deleteFunction, detect, invokeFunction, listHistory, clearHistory, RUNTIMES };
+  deleteFunction, detect, invokeFunction, listHistory, clearHistory,
+  listServices, startService, stopService, RUNTIMES };

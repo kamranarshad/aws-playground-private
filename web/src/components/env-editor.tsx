@@ -46,6 +46,15 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
         <CollapsibleTrigger className="flex items-center gap-1.5 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
           Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
         </CollapsibleTrigger>
+        <div className="flex items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+            <input type="checkbox" className="accent-primary"
+              checked={(fn.localServices ?? []).includes('minio')}
+              onChange={(e) => update.mutate({ id: fn.id, patch: {
+                localServices: e.target.checked ? ['minio'] : [],
+              } })} />
+            Local S3
+          </label>
         <Select value={envFile}
           onValueChange={(v) => update.mutate({ id: fn.id, patch: { envFile: v } })}>
           <SelectTrigger size="sm" className="h-7 w-44 text-xs" aria-label="Env file">
@@ -64,6 +73,7 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
             ))}
           </SelectContent>
         </Select>
+        </div>
       </div>
       <CollapsibleContent className="pt-2">
         <div className="grid gap-1.5">

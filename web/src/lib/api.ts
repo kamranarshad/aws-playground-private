@@ -1,4 +1,4 @@
-import type { Detection, FunctionDef, Health, HistoryEntry, InvokeResult } from './types'
+import type { Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus } from './types'
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -43,4 +43,9 @@ export const api = {
     request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history`),
   clearHistory: (id: string) =>
     request<void>(`/api/functions/${id}/history`, { method: 'DELETE' }),
+  listServices: () => request<ServicesStatus>('/api/services'),
+  startService: (name: string) =>
+    request<{ state: string }>(`/api/services/${name}/start`, { method: 'POST' }),
+  stopService: (name: string) =>
+    request<{ state: string }>(`/api/services/${name}/stop`, { method: 'POST' }),
 }

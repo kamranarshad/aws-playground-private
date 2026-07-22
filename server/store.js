@@ -4,7 +4,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const ALLOWED_KEYS = ['name', 'path', 'runtime', 'handler', 'timeoutMs',
-  'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'savedEvents'];
+  'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'localServices',
+  'savedEvents'];
 
 function dataDir() {
   return process.env.AWS_PLAYGROUND_DATA_DIR || path.join(os.homedir(), '.aws-playground');
@@ -62,6 +63,7 @@ function create(input) {
     env: input.env ?? {},
     envFile: input.envFile ?? 'auto',
     buildCommand: input.buildCommand ?? '',
+    localServices: input.localServices ?? [],
     savedEvents: input.savedEvents ?? [],
   };
   db.functions.push(fn);

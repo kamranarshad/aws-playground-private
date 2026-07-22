@@ -17,7 +17,21 @@ export interface FunctionDef {
   env: Record<string, string>
   envFile: string
   buildCommand: string
+  localServices: string[]
   savedEvents: SavedEvent[]
+}
+
+export interface LocalService {
+  name: string
+  label: string
+  state: 'running' | 'stopped' | 'absent' | 'unavailable'
+  endpoint: string
+  consoleUrl: string
+}
+
+export interface ServicesStatus {
+  docker: { available: boolean }
+  services: LocalService[]
 }
 
 export interface RuntimeHealth {

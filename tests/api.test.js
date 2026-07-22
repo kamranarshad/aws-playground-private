@@ -283,3 +283,67 @@ test('go bootstrap builds and invokes via the provided runtime', { skip: !hasRun
   assert.strictEqual(r.body.response.greeting, 'hello, gopher');
   assert.ok(r.body.logs.includes('=== build ==='));
 });
+
+// Local services (docker shim from services.test.js pattern, scoped here)
+const SVC_SHIM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-apisvc-'));
+const SVC_SCENARIO = path.join(SVC_SHIM_DIR, 'scenario.json');
+fs.writeFileSync(path.join(SVC_SHIM_DIR, 'docker'), `#!/bin/bash
+# Subcommand travels via env, not argv: a bare "inspect" argv would trigger
+# node's own debugger CLI.
+out=$(DOCKER_SUBCMD="$1" node -pe 'const s=JSON.parse(require("fs").readFileSync("${SVC_SCENARIO}")); JSON.stringify(s[process.env.DOCKER_SUBCMD] ?? {code:1,stdout:""})')
+code=$(SHIM_OUT="$out" node -pe 'JSON.parse(process.env.SHIM_OUT).code')
+SHIM_OUT="$out" node -pe 'JSON.parse(process.env.SHIM_OUT).stdout'
+exit "$code"
+`);
+fs.chmodSync(path.join(SVC_SHIM_DIR, 'docker'), 0o755);
+process.env.AWS_PLAYGROUND_DOCKER = path.join(SVC_SHIM_DIR, 'docker');
+
+test('services list endpoint reports docker and per-service state', async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    info: { code: 0, stdout: 'ok' }, inspect: { code: 0, stdout: 'true' } }));
+  const r = await api.listServices();
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.docker.available, true);
+  assert.strictEqual(r.body.services[0].state, 'running');
+});
+
+test('service start/stop endpoints; unknown service 404', async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    inspect: { code: 0, stdout: 'false' }, start: { code: 0, stdout: 'x' },
+    stop: { code: 0, stdout: 'x' } }));
+  const started = await api.startService('minio', { waitReady: false });
+  assert.strictEqual(started.status, 200);
+  assert.strictEqual(started.body.state, 'running');
+  const stopped = await api.stopService('minio');
+  assert.strictEqual(stopped.status, 200);
+  assert.strictEqual(stopped.body.state, 'stopped');
+  assert.strictEqual((await api.startService('nope')).status, 404);
+});
+
+test('enabled running service injects env below UI vars', { skip: noPy }, async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  const proj = envEchoProject({});
+  const created = api.createFunction({ name: 'svc-env', path: proj, runtime: 'python',
+    handler: 'app.handler', localServices: ['minio'],
+    env: { AWS_ACCESS_KEY_ID: 'user-override' } });
+  assert.deepStrictEqual(created.body.localServices, ['minio']);
+  const r = await api.invokeFunction({ functionId: created.body.id,
+    event: { keys: ['AWS_ENDPOINT_URL', 'AWS_ACCESS_KEY_ID'] } });
+  assert.deepStrictEqual(r.body.response, {
+    AWS_ENDPOINT_URL: 'http://127.0.0.1:9400',
+    AWS_ACCESS_KEY_ID: 'user-override', // UI var beats service injection
+  });
+});
+
+test('enabled but stopped service short-circuits with Service.NotRunning', async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'false' } }));
+  const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'node-hello'),
+    runtime: 'node', handler: 'index.handler', localServices: ['minio'] });
+  const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
+  assert.strictEqual(r.body.ok, false);
+  assert.strictEqual(r.body.phase, 'service');
+  assert.strictEqual(r.body.error.type, 'Service.NotRunning');
+  assert.ok(r.body.error.message.includes('S3 (MinIO)'));
+  const h = api.listHistory(created.body.id);
+  assert.strictEqual(h.body.entries[0].error.type, 'Service.NotRunning');
+});
