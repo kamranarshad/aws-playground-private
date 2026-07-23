@@ -68,6 +68,11 @@ Dummy AWS credentials are injected when any AWS-API service is enabled;
 the global `AWS_ENDPOINT_URL` is injected only when exactly one AWS-API
 service is enabled (with several, per-service vars avoid misrouting).
 
+See `fixtures/ts-node-s3` for a worked example: a TypeScript lambda that
+reads/writes S3 via the AWS SDK, with a `playground.json` that
+auto-starts MinIO when you select it (`{"action":"put","key":"x",
+"body":"..."}` / `{"action":"get","key":"x"}` / `{"action":"list"}`).
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you
