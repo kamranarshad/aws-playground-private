@@ -168,8 +168,14 @@ async function waitReady(ready, timeoutMs = 30000) {
   return false;
 }
 
-async function start(name, { waitReady: wait = true } = {}) {
+async function start(name, { waitReady: wait = true, auto = false } = {}) {
   const svc = entry(name);
+  // Any explicit (non-auto) start promotes the service to user-managed:
+  // it will never be auto-stopped by selection changes.
+  if (!auto) {
+    autoStarted.delete(name);
+    cancelStop(name);
+  }
   const state = await status(name);
   if (state !== 'running') {
     const r = state === 'stopped'
@@ -186,9 +192,63 @@ async function start(name, { waitReady: wait = true } = {}) {
 
 async function stop(name) {
   const svc = entry(name);
+  autoStarted.delete(name);
+  cancelStop(name);
   const r = await docker(['stop', svc.container], 30000);
   if (r.code !== 0) return { ok: false, state: await status(name), output: r.output };
   return { ok: true, state: 'stopped', output: '' };
+}
+
+// --- selection-driven lifecycle -------------------------------------------
+// Services started because a selected function's playground.json declared
+// them ("auto") stop GRACE_MS after no selection needs them. User-started
+// services are never touched.
+function graceMs() {
+  return parseInt(process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS || '15000', 10);
+}
+
+const autoStarted = new Set();
+const stopTimers = new Map();
+
+function cancelStop(name) {
+  const t = stopTimers.get(name);
+  if (t) {
+    clearTimeout(t);
+    stopTimers.delete(name);
+  }
+}
+
+async function setSelection(needed, { waitReady: wait = true } = {}) {
+  const need = new Set(needed);
+  const started = [];
+  const scheduledStop = [];
+
+  for (const name of need) {
+    entry(name); // validate
+    cancelStop(name);
+    if ((await status(name)) !== 'running') {
+      const r = await start(name, { waitReady: wait, auto: true });
+      if (r.ok) {
+        autoStarted.add(name);
+        started.push(name);
+      }
+    }
+  }
+
+  for (const name of [...autoStarted]) {
+    if (need.has(name) || stopTimers.has(name)) continue;
+    scheduledStop.push(name);
+    stopTimers.set(name, setTimeout(() => {
+      stopTimers.delete(name);
+      // Re-check membership: a manual start/stop may have promoted or
+      // cleared it while the timer was pending.
+      if (!autoStarted.has(name)) return;
+      autoStarted.delete(name);
+      stop(name).catch(() => {});
+    }, graceMs()));
+  }
+
+  return { started, scheduledStop };
 }
 
 async function list() {
@@ -231,4 +291,4 @@ function names() {
 }
 
 module.exports = { dockerAvailable, status, start, stop, list, envFor,
-  composeEnv, names };
+  composeEnv, names, setSelection };

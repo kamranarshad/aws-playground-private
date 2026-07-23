@@ -28,6 +28,11 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
   const envFile = fn.envFile ?? 'auto'
   const hasDotEnv = envFiles.includes('.env')
   const { data: servicesStatus } = useServices()
+  const { data: projectServices } = useQuery({
+    queryKey: ['projectservices', fn.path],
+    queryFn: () => api.detect(fn.path),
+    select: (d) => d.projectServices ?? null,
+  })
 
   function save(next: Row[]) {
     setRows(next)
@@ -48,7 +53,21 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
           Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
         </CollapsibleTrigger>
         <div className="flex items-center gap-2">
-          {(servicesStatus?.services ?? []).map((svc) => (
+          {projectServices !== null && projectServices !== undefined ? (
+            <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+              title="Declared in playground.json — edit the file to change">
+              {(servicesStatus?.services ?? [])
+                .filter((svc) => projectServices.includes(svc.name))
+                .map((svc) => (
+                  <span key={svc.name} className="rounded bg-surface-strip px-1.5 py-0.5">
+                    {svc.shortLabel}
+                  </span>
+                ))}
+              <span className="normal-case tracking-normal text-muted-foreground/70">
+                from playground.json
+              </span>
+            </span>
+          ) : (servicesStatus?.services ?? []).map((svc) => (
             <label key={svc.name}
               className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
               <input type="checkbox" className="accent-primary"

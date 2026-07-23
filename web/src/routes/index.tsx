@@ -15,7 +15,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
-import { useFunctions, useInvoke } from '@/lib/queries'
+import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
 import type { InvokeResult } from '@/lib/types'
 
 export const Route = createFileRoute('/')({
@@ -29,11 +29,19 @@ function App() {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
   const invoke = useInvoke()
+  const selectionSync = useSelectionSync()
+  const syncSelection = selectionSync.mutate
 
   useEffect(() => {
     if (selectedId && !functions.some((f) => f.id === selectedId)) setSelectedId(null)
     if (!selectedId && functions.length > 0) setSelectedId(functions[0].id)
   }, [functions, selectedId])
+
+  // Tell the server which function is active so playground.json services
+  // auto-start on selection and auto-stop after the grace period.
+  useEffect(() => {
+    syncSelection(selectedId)
+  }, [selectedId, syncSelection])
 
   const selected = functions.find((f) => f.id === selectedId) ?? null
 

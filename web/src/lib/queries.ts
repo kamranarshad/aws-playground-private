@@ -84,6 +84,15 @@ export function useServiceAction() {
   })
 }
 
+export function useSelectionSync() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (functionId: string | null) => api.setSelection(functionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['services'] }),
+    // Selection sync is best-effort; a failure just means services stay put.
+  })
+}
+
 export function useClearHistory() {
   const qc = useQueryClient()
   return useMutation({

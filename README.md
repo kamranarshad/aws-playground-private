@@ -68,6 +68,14 @@ Dummy AWS credentials are injected when any AWS-API service is enabled;
 the global `AWS_ENDPOINT_URL` is injected only when exactly one AWS-API
 service is enabled (with several, per-service vars avoid misrouting).
 
+A project can declare its services in a `playground.json`:
+`{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
+overrides the manual toggles. Declared services auto-start when you
+select the function and auto-stop ~15 s after no selected function
+needs them; services you start manually in the menu are never
+auto-stopped. Caveat: closing the browser leaves the last selection's
+services running.
+
 A project's `.env` file is loaded automatically when present, re-read on
 every invoke. The env-vars section has a picker to choose a different
 `.env.*` file or `None` per function. Precedence, lowest to highest:

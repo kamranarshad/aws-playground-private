@@ -5,6 +5,7 @@ const { detectProject } = require('./detect');
 const { findJar } = require('./detect');
 const envfile = require('./envfile');
 const localServices = require('./services');
+const projectconfig = require('./projectconfig');
 const { runBuild } = require('./build');
 const { invoke } = require('./invoker');
 const history = require('./history');
@@ -78,7 +79,9 @@ async function invokeFunction(input) {
   try {
     // Local services (e.g. MinIO): enabled services must be running; their
     // env sits below the .env file and UI vars so user overrides win.
-    for (const name of fn.localServices ?? []) {
+    // playground.json (re-read fresh) is authoritative over manual toggles.
+    const enabledServices = effectiveServices(fn);
+    for (const name of enabledServices) {
       const state = await localServices.status(name).catch(() => 'unavailable');
       if (state !== 'running') {
         const svc = (await localServices.list()).services.find(s => s.name === name);
@@ -104,7 +107,7 @@ async function invokeFunction(input) {
         return { status: 200, body: result };
       }
     }
-    const serviceEnv = localServices.composeEnv(fn.localServices ?? []);
+    const serviceEnv = localServices.composeEnv(enabledServices);
 
     let result;
     let buildInfo = null;
@@ -169,6 +172,27 @@ async function invokeFunction(input) {
   }
 }
 
+function effectiveServices(fn) {
+  return projectconfig.read(fn.path).services ?? fn.localServices ?? [];
+}
+
+async function setSelection(input) {
+  const { functionId } = input || {};
+  if (functionId === null || functionId === undefined) {
+    return { status: 200,
+      body: await localServices.setSelection([], selectionOpts(input)) };
+  }
+  const fn = store.get(functionId);
+  if (!fn) return { status: 404, body: { error: 'function not found' } };
+  return { status: 200,
+    body: await localServices.setSelection(effectiveServices(fn), selectionOpts(input)) };
+}
+
+function selectionOpts(input) {
+  // waitReady:false is a test affordance; the UI never sends it.
+  return input?.waitReady === false ? { waitReady: false } : {};
+}
+
 async function listServices() {
   return { status: 200, body: await localServices.list() };
 }
@@ -204,4 +228,4 @@ function clearHistory(functionId) {
 
 module.exports = { health, listFunctions, createFunction, updateFunction,
   deleteFunction, detect, invokeFunction, listHistory, clearHistory,
-  listServices, startService, stopService, RUNTIMES };
+  listServices, startService, stopService, setSelection, RUNTIMES };

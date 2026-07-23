@@ -374,3 +374,44 @@ test('aws + plain service keeps the global endpoint', { skip: noPy }, async () =
     REDIS_URL: 'redis://127.0.0.1:9403',
   });
 });
+
+test('playground.json services override manual toggles at invoke', { skip: noPy }, async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  const proj = envEchoProject({
+    'playground.json': JSON.stringify({ services: ['elasticmq'] }),
+  });
+  const created = api.createFunction({ name: 'file-svc', path: proj, runtime: 'python',
+    handler: 'app.handler', localServices: ['minio'] }); // stale manual toggle
+  const r = await api.invokeFunction({ functionId: created.body.id,
+    event: { keys: ['AWS_ENDPOINT_URL_SQS', 'AWS_ENDPOINT_URL_S3'] } });
+  assert.deepStrictEqual(r.body.response, {
+    AWS_ENDPOINT_URL_SQS: 'http://127.0.0.1:9324', // from file
+    AWS_ENDPOINT_URL_S3: null,                      // manual toggle ignored
+  });
+});
+
+test('selection endpoint starts declared services; 404 unknown fn', async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } }));
+  const proj = envEchoProject({
+    'playground.json': JSON.stringify({ services: ['redis'] }),
+  });
+  const created = api.createFunction({ name: 'sel-svc', path: proj, runtime: 'python',
+    handler: 'app.handler' });
+  const r = await api.setSelection({ functionId: created.body.id, waitReady: false });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(r.body.started, ['redis']);
+  assert.strictEqual((await api.setSelection({ functionId: 'missing' })).status, 404);
+  const none = await api.setSelection({ functionId: null });
+  assert.strictEqual(none.status, 200);
+});
+
+test('detect reports projectServices', () => {
+  const proj = envEchoProject({
+    'playground.json': JSON.stringify({ services: ['minio', 'nope'] }),
+  });
+  const r = api.detect({ path: proj });
+  assert.deepStrictEqual(r.body.projectServices, ['minio']);
+  const plain = api.detect({ path: path.join(FIXTURES, 'node-hello') });
+  assert.strictEqual(plain.body.projectServices, null);
+});

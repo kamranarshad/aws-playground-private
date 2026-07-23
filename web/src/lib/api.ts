@@ -44,6 +44,10 @@ export const api = {
   clearHistory: (id: string) =>
     request<void>(`/api/functions/${id}/history`, { method: 'DELETE' }),
   listServices: () => request<ServicesStatus>('/api/services'),
+  setSelection: (functionId: string | null) =>
+    request<{ started: string[]; scheduledStop: string[] }>('/api/selection', {
+      method: 'POST', body: JSON.stringify({ functionId }),
+    }),
   startService: (name: string) =>
     request<{ state: string }>(`/api/services/${name}/start`, { method: 'POST' }),
   stopService: (name: string) =>

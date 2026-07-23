@@ -180,3 +180,62 @@ test('minio envFor no longer carries creds or global endpoint', () => {
   assert.deepStrictEqual(services.envFor('minio'),
     { AWS_ENDPOINT_URL_S3: 'http://127.0.0.1:9400' });
 });
+
+// --- selection lifecycle (auto-start / grace auto-stop) ---
+process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = '120';
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+test('setSelection starts missing services and auto-stops after grace', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' },
+    stop: { code: 0, stdout: 'x' } });
+  const r = await services.setSelection(['minio'], { waitReady: false });
+  assert.deepStrictEqual(r.started, ['minio']);
+  assert.ok(calls().some(c => c.startsWith('run')));
+
+  // shim now reports running so status checks agree
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  const r2 = await services.setSelection([], { waitReady: false });
+  assert.deepStrictEqual(r2.scheduledStop, ['minio']);
+  await sleep(250);
+  assert.ok(calls().some(c => c.startsWith('stop aws-playground-minio')),
+    'auto-started service should stop after grace');
+});
+
+test('reselection within grace cancels the pending stop', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.setSelection(['elasticmq'], { waitReady: false });
+  scenario({ inspect: { code: 0, stdout: 'true' } });
+  await services.setSelection([], { waitReady: false });
+  await services.setSelection(['elasticmq'], { waitReady: false }); // back within grace
+  scenario({ inspect: { code: 0, stdout: 'true' } }); // fresh call log
+  await sleep(250);
+  assert.ok(!calls().some(c => c.startsWith('stop aws-playground-elasticmq')),
+    'stop must be cancelled by reselection');
+  // cleanup state for later tests
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await services.setSelection([], { waitReady: false });
+  await sleep(250);
+});
+
+test('already-running services are not adopted for auto-stop', async () => {
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  const r = await services.setSelection(['redis'], { waitReady: false });
+  assert.deepStrictEqual(r.started, []); // was already running (user-started)
+  await services.setSelection([], { waitReady: false });
+  await sleep(250);
+  assert.ok(!calls().some(c => c.startsWith('stop aws-playground-redis')),
+    'user-started service must never auto-stop');
+});
+
+test('manual start promotes an auto-started service (no auto-stop)', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.setSelection(['dynamodb'], { waitReady: false });
+  scenario({ inspect: { code: 0, stdout: 'true' } });
+  await services.start('dynamodb', { waitReady: false }); // manual promotion
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await services.setSelection([], { waitReady: false });
+  await sleep(250);
+  assert.ok(!calls().some(c => c.startsWith('stop aws-playground-dynamodb')),
+    'manually promoted service must not auto-stop');
+});

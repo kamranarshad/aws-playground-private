@@ -53,6 +53,7 @@ export interface Detection {
   jarPath?: string | null
   envFiles?: string[]
   buildCommand?: string | null
+  projectServices?: string[] | null
 }
 
 export interface LambdaError {
