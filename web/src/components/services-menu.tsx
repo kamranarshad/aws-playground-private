@@ -15,9 +15,22 @@ const STATE_DOT: Record<string, string> = {
   unavailable: 'bg-muted-foreground/40',
 }
 
+// Each row owns its mutation instance so a pending start/stop only marks
+// that row's button as loading (a shared instance flagged all five).
+function ServiceActionButton({ name, running }: { name: string; running: boolean }) {
+  const action = useServiceAction()
+  const Icon = action.isPending ? Loader2 : running ? Square : Play
+  return (
+    <Button size="sm" variant="ghost" disabled={action.isPending}
+      onClick={() => action.mutate({ name, action: running ? 'stop' : 'start' })}>
+      <Icon className={cn('size-3.5', action.isPending && 'animate-spin')} />
+      {running ? 'Stop' : 'Start'}
+    </Button>
+  )
+}
+
 export function ServicesMenu() {
   const { data, error, refetch } = useServices()
-  const action = useServiceAction()
 
   return (
     <DropdownMenu onOpenChange={(open) => open && refetch()}>
@@ -51,19 +64,7 @@ export function ServicesMenu() {
                 <span className="text-sm font-medium">{svc.label}</span>
                 <Badge variant="outline" className="text-[10px]">{svc.state}</Badge>
                 <span className="ml-auto" />
-                {svc.state === 'running' ? (
-                  <Button size="sm" variant="ghost" disabled={action.isPending}
-                    onClick={() => action.mutate({ name: svc.name, action: 'stop' })}>
-                    {action.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Square className="size-3.5" />}
-                    Stop
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" disabled={action.isPending}
-                    onClick={() => action.mutate({ name: svc.name, action: 'start' })}>
-                    {action.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
-                    Start
-                  </Button>
-                )}
+                <ServiceActionButton name={svc.name} running={svc.state === 'running'} />
               </div>
               <div className="mt-1 flex items-center gap-2 pl-4">
                 <span className="font-mono text-xs text-muted-foreground">{svc.endpoint}</span>
