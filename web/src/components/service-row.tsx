@@ -1,10 +1,37 @@
-import { ExternalLink, Loader2, Play, Square } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Copy, ExternalLink, Loader2, Play, Square } from 'lucide-react'
+import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useServiceAction } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { LocalService } from '@/lib/types'
+
+// One credential value with its own copy state, so copying one doesn't
+// flip the checkmark on the others.
+function CopyableValue({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false)
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1200)
+    } catch {
+      toast.error('Could not copy to clipboard')
+    }
+  }
+  return (
+    <button type="button" onClick={copy}
+      className="group inline-flex items-center gap-1 font-mono text-xs text-foreground/90 hover:text-foreground"
+      aria-label={`Copy ${value}`}>
+      {value}
+      {copied
+        ? <Check className="size-3 text-emerald-500" />
+        : <Copy className="size-3 opacity-40 group-hover:opacity-100" />}
+    </button>
+  )
+}
 
 const STATE_DOT: Record<string, string> = {
   running: 'bg-emerald-500',
@@ -53,10 +80,19 @@ export function ServiceRow({ svc, selected, selectable, onSelectedChange }: {
           {svc.note && (
             <span className="text-xs text-muted-foreground/70">{svc.note}</span>
           )}
-          {running && svc.name === 'minio' && (
-            <span className="text-xs text-muted-foreground">
-              Console login: playground / playground123
-            </span>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+          {svc.credentials.length > 0 ? (
+            svc.credentials.map((c) => (
+              <span key={c.label} className="inline-flex items-center gap-1.5">
+                <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground/70">
+                  {c.label}
+                </span>
+                <CopyableValue value={c.value} />
+              </span>
+            ))
+          ) : (
+            <span className="text-xs text-muted-foreground/60">no authentication</span>
           )}
         </div>
       </div>

@@ -239,3 +239,29 @@ test('manual start promotes an auto-started service (no auto-stop)', async () =>
   assert.ok(!calls().some(c => c.startsWith('stop aws-playground-dynamodb')),
     'manually promoted service must not auto-stop');
 });
+
+test('list includes per-service credentials', async () => {
+  scenario({ info: { code: 0, stdout: 'ok' }, inspect: { code: 1, stdout: '' } });
+  const listed = (await services.list()).services;
+  function creds(name) {
+    return listed.find(s => s.name === name).credentials;
+  }
+  assert.deepStrictEqual(creds('minio'), [
+    { label: 'Access key', value: 'playground' },
+    { label: 'Secret key', value: 'playground123' },
+  ]);
+  assert.deepStrictEqual(creds('elasticmq'), [
+    { label: 'Access key', value: 'playground' },
+    { label: 'Secret key', value: 'playground123' },
+  ]);
+  assert.deepStrictEqual(creds('dynamodb'), [
+    { label: 'Access key', value: 'playground' },
+    { label: 'Secret key', value: 'playground123' },
+  ]);
+  assert.deepStrictEqual(creds('postgres'), [
+    { label: 'User', value: 'playground' },
+    { label: 'Password', value: 'playground123' },
+    { label: 'Database', value: 'playground' },
+  ]);
+  assert.deepStrictEqual(creds('redis'), []);
+});

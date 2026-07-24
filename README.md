@@ -55,7 +55,9 @@ AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 containers — start/stop individually or select several and start them
 together. Enable a service on a function and every invoke gets its
 endpoint env vars injected — always overridable by your own env vars.
-Docker is never touched unless you click Start.
+Docker is never touched unless you click Start. Each service's
+credentials (where it has any) are shown on the Services page,
+click-to-copy.
 
 | Service | Image | Endpoint | Persists | Console |
 |---------|-------|----------|----------|---------|

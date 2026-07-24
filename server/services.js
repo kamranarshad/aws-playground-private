@@ -6,6 +6,13 @@ const net = require('net');
 // AWS_PLAYGROUND_DOCKER overrides the docker binary (used by tests).
 // kind 'aws' = speaks an AWS API (participates in AWS_ENDPOINT_URL*
 // composition); 'plain' = ordinary endpoint (redis, postgres).
+// The AWS-API services share the dummy access/secret the playground
+// injects — the same values you type into a console or client.
+const AWS_CREDENTIALS = [
+  { label: 'Access key', value: 'playground' },
+  { label: 'Secret key', value: 'playground123' },
+];
+
 const REGISTRY = {
   minio: {
     label: 'S3 (MinIO)',
@@ -25,6 +32,7 @@ const REGISTRY = {
     endpoint: 'http://127.0.0.1:9400',
     consoleUrl: 'http://127.0.0.1:9401',
     env: { AWS_ENDPOINT_URL_S3: 'http://127.0.0.1:9400' },
+    credentials: AWS_CREDENTIALS,
   },
   elasticmq: {
     label: 'SQS (ElasticMQ)',
@@ -42,6 +50,7 @@ const REGISTRY = {
     endpoint: 'http://127.0.0.1:9324',
     consoleUrl: 'http://127.0.0.1:9325',
     env: { AWS_ENDPOINT_URL_SQS: 'http://127.0.0.1:9324' },
+    credentials: AWS_CREDENTIALS,
   },
   dynamodb: {
     label: 'DynamoDB (Local)',
@@ -59,6 +68,7 @@ const REGISTRY = {
     endpoint: 'http://127.0.0.1:9402',
     consoleUrl: null,
     env: { AWS_ENDPOINT_URL_DYNAMODB: 'http://127.0.0.1:9402' },
+    credentials: AWS_CREDENTIALS,
   },
   redis: {
     label: 'ElastiCache (Redis)',
@@ -75,6 +85,7 @@ const REGISTRY = {
     endpoint: 'redis://127.0.0.1:9403',
     consoleUrl: null,
     env: { REDIS_URL: 'redis://127.0.0.1:9403' },
+    credentials: [],
   },
   postgres: {
     label: 'RDS (PostgreSQL)',
@@ -101,6 +112,11 @@ const REGISTRY = {
       PGPASSWORD: 'playground123',
       PGDATABASE: 'playground',
     },
+    credentials: [
+      { label: 'User', value: 'playground' },
+      { label: 'Password', value: 'playground123' },
+      { label: 'Database', value: 'playground' },
+    ],
   },
 };
 
@@ -261,6 +277,7 @@ async function list() {
     state: available ? await status(name) : 'unavailable',
     endpoint: svc.endpoint,
     consoleUrl: svc.consoleUrl,
+    credentials: svc.credentials ?? [],
   })));
   return { docker: { available }, services };
 }

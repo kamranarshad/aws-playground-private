@@ -21,6 +21,11 @@ export interface FunctionDef {
   savedEvents: SavedEvent[]
 }
 
+export interface ServiceCredential {
+  label: string
+  value: string
+}
+
 export interface LocalService {
   name: string
   label: string
@@ -29,6 +34,7 @@ export interface LocalService {
   state: 'running' | 'stopped' | 'absent' | 'unavailable'
   endpoint: string
   consoleUrl: string | null
+  credentials: ServiceCredential[]
 }
 
 export interface ServicesStatus {
