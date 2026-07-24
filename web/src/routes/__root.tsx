@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AppNav } from '@/components/app-nav'
 import { Toaster } from '@/components/ui/sonner'
 import { ThemeProvider } from '@/lib/theme'
 import appCss from '../styles.css?url'
@@ -26,7 +27,12 @@ function RootComponent() {
     <RootDocument>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
-          <Outlet />
+          <div className="flex h-screen">
+            <AppNav />
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <Outlet />
+            </div>
+          </div>
           <Toaster richColors />
         </ThemeProvider>
       </QueryClientProvider>

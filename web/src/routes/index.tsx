@@ -8,7 +8,6 @@ import { EnvEditor } from '@/components/env-editor'
 import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
-import { ServicesMenu } from '@/components/services-menu'
 import { HistoryList } from '@/components/history-list'
 import { ResultPanel } from '@/components/result-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
@@ -72,15 +71,11 @@ function App() {
   useEffect(() => setResult(null), [selectedId])
 
   return (
-    <div className="flex h-screen flex-col">
+    <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
-        <h1 className="flex items-baseline gap-1.5 text-sm font-semibold">
-          <span className="font-mono text-base leading-none text-foreground">λ</span>
-          Lambda Playground
-        </h1>
+        <h1 className="text-sm font-semibold">Lambda Playground</h1>
         <div className="flex items-center gap-3">
           <HealthChips />
-          <ServicesMenu />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
           <ThemeToggle />
         </div>
