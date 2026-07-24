@@ -36,13 +36,24 @@ lifecycle changes.
 
 - Header row: "Local services" title + a search input (filters by
   label/shortLabel/name, case-insensitive; empty = all).
-- Docker-unavailable: one explanatory panel (as today), no cards.
-- Otherwise a responsive grid of service cards, one per registry
-  entry: state dot + label + state badge; endpoint (mono); note
-  (e.g. ElasticMQ ephemeral) when present; Start/Stop button
-  (per-card pending via the existing per-button mutation pattern —
-  the recent fix); "Open console" link when running and a console
-  exists; the MinIO console-login hint for minio only.
+- Docker-unavailable: one explanatory panel (as today), no list.
+- Otherwise a **list** (rows, not a card grid) — one row per registry
+  entry, each with:
+  - a **selection checkbox** (left),
+  - state dot + label + state badge,
+  - endpoint (mono) and note (e.g. ElasticMQ ephemeral) when present,
+  - a per-row Start/Stop button (per-row pending via the existing
+    per-button mutation pattern — the recent fix),
+  - "Open console" link when running and a console exists; the MinIO
+    console-login hint for minio only.
+- **Bulk start bar**: a checkbox in the header row toggles select-all
+  (of the currently-filtered, not-yet-running rows). When any row is
+  selected, a bar shows "Start selected (N)" plus "Clear". Clicking
+  it starts every selected service that isn't already running by
+  firing the existing per-service start mutation for each (client-side,
+  in parallel; no batch endpoint). Each started row shows its own
+  pending state; selection clears on completion. Already-running
+  selected services are skipped.
 - Empty search result: a muted "no services match" line.
 - Data via the existing `useServices` query; refetch on mount and
   after each mutation (unchanged hooks).
@@ -51,7 +62,7 @@ lifecycle changes.
 
 - New: `web/src/components/app-nav.tsx`, `web/src/routes/services.tsx`.
 - `web/src/components/services-menu.tsx` → renamed/reshaped into a
-  reusable `ServiceCard` + `ServiceActionButton` (keep the button
+  reusable `ServiceRow` + `ServiceActionButton` (keep the button
   component as-is) used by the page; delete the dropdown wrapper.
 - `index.tsx`: drop the `ServicesMenu` import/usage; wrap logic
   unchanged otherwise.
@@ -64,10 +75,11 @@ lifecycle changes.
   `GET /services` returns 200 with the app shell (route renders
   server-side).
 - Browser (real docker): nav rail switches `/` ↔ `/services`; the
-  page lists all five services; search filters; Start/Stop on one
-  card shows pending only on that card and flips its state; console
-  link works; per-function toggle still present on `/`. Screens in
-  dark; console clean.
+  page lists all five services as rows; search filters; select two
+  rows and "Start selected" starts both (each shows its own pending);
+  Start/Stop on one row shows pending only on that row and flips its
+  state; console link works; per-function toggle still present on `/`.
+  Screens in dark; console clean.
 
 ## README
 
