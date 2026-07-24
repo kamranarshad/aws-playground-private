@@ -50,11 +50,12 @@ real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` to hit real
 AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
 (e.g. MinIO for S3). Nothing is inherited from your shell silently.
 
-**Local services (docker):** if docker is installed, the Local services
-menu in the header can start playground-managed containers. Enable a
-service on a function and every invoke gets its endpoint env vars
-injected — always overridable by your own env vars. Docker is never
-touched unless you click Start.
+**Local services (docker):** if docker is installed, the Services page
+(the database icon in the left rail) can start playground-managed
+containers — start/stop individually or select several and start them
+together. Enable a service on a function and every invoke gets its
+endpoint env vars injected — always overridable by your own env vars.
+Docker is never touched unless you click Start.
 
 | Service | Image | Endpoint | Persists | Console |
 |---------|-------|----------|----------|---------|
