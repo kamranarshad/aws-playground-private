@@ -72,6 +72,65 @@ test('server binds to loopback only, not reachable via a LAN interface', async (
   }
 });
 
+// Closing the browser used to leave auto-started containers running: the
+// grace timer lives in the server process, which then gets killed. The
+// server now sweeps them on the way out.
+test('cli stops auto-started services on SIGTERM', async () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-cli-sweep-'));
+  const projectDir = path.join(tmp, 'project');
+  const dataDir = path.join(tmp, 'data');
+  fs.mkdirSync(projectDir);
+  fs.mkdirSync(dataDir);
+  fs.writeFileSync(path.join(projectDir, 'playground.json'),
+    JSON.stringify({ services: ['minio'] }));
+  fs.writeFileSync(path.join(projectDir, 'index.js'), 'exports.handler = async () => ({});');
+  fs.writeFileSync(path.join(dataDir, 'functions.json'), JSON.stringify({
+    functions: [{
+      id: 'fn-sweep', name: 'sweep', path: projectDir, runtime: 'node',
+      handler: 'index.handler', timeoutMs: 30000, memoryMb: 128, jarPath: null,
+      env: {}, envFile: 'auto', buildCommand: '', localServices: [], savedEvents: [],
+    }],
+  }));
+
+  // docker shim: every container looks absent, every other command succeeds.
+  const calls = path.join(tmp, 'calls.log');
+  const shim = path.join(tmp, 'docker');
+  fs.writeFileSync(shim, `#!/usr/bin/env node
+require('fs').appendFileSync(${JSON.stringify(calls)}, process.argv.slice(2).join(' ') + '\\n');
+process.exit(process.argv[2] === 'inspect' ? 1 : 0);
+`);
+  fs.chmodSync(shim, 0o755);
+
+  const child = spawn(process.execPath, [CLI, '--port', '0', '--no-open'], {
+    env: { ...process.env, AWS_PLAYGROUND_DATA_DIR: dataDir, AWS_PLAYGROUND_DOCKER: shim },
+  });
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let out = '';
+      const timer = setTimeout(() => reject(new Error('no URL printed. output: ' + out)), 5000);
+      child.stdout.on('data', (d) => {
+        out += d;
+        const m = out.match(/listening at (http:\/\/localhost:\d+)/);
+        if (m) { clearTimeout(timer); resolve(m[1]); }
+      });
+    });
+    const res = await fetch(url + '/api/selection', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ functionId: 'fn-sweep', waitReady: false }),
+    });
+    assert.deepStrictEqual((await res.json()).started, ['minio']);
+
+    child.kill('SIGTERM');
+    const code = await new Promise((resolve) => child.on('close', resolve));
+    assert.strictEqual(code, 0, 'server should shut down cleanly');
+  } finally {
+    if (child.exitCode === null) child.kill('SIGKILL');
+  }
+  assert.ok(fs.readFileSync(calls, 'utf8').includes('stop aws-playground-minio'),
+    'the auto-started container should be stopped on shutdown');
+});
+
 test('cli --help prints usage and exits 0', async () => {
   const child = spawn(process.execPath, [CLI, '--help']);
   let out = '';

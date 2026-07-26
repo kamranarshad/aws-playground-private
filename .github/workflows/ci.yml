@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install web dependencies
+        run: npm --prefix web ci
+
+      # Language runtimes the harness tests exercise. python3 and java are
+      # preinstalled on ubuntu-latest; the tests skip whatever is missing.
+      - name: Server tests
+        run: npm run test:server
+
+      - name: Web tests
+        run: npm run test:web
+
+      - name: Typecheck web
+        run: npm --prefix web run typecheck
+
+      - name: Build web
+        run: npm --prefix web run build

@@ -66,6 +66,32 @@ test('process exit without envelope -> Runtime.ExitError with logs', { skip: noP
   assert.ok(r.logs.includes('about to exit hard'));
 });
 
+test('proxy and TLS trust vars pass through, unrelated host vars still do not', async () => {
+  const passthrough = {
+    HTTPS_PROXY: 'http://proxy.corp:8080',
+    http_proxy: 'http://proxy.corp:8080',
+    NO_PROXY: 'localhost,127.0.0.1',
+    NODE_EXTRA_CA_CERTS: '/etc/ssl/corp.pem',
+    AWS_CA_BUNDLE: '/etc/ssl/corp-bundle.pem',
+    REQUESTS_CA_BUNDLE: '/etc/ssl/corp-bundle.pem',
+    SSL_CERT_FILE: '/etc/ssl/cert.pem',
+  };
+  Object.assign(process.env, passthrough, { SHOULD_NOT_LEAK: 'secret' });
+  try {
+    const r = await invoke(base('node-env-echo', {
+      runtime: 'node',
+      handler: 'index.handler',
+      event: { keys: [...Object.keys(passthrough), 'SHOULD_NOT_LEAK'] },
+    }));
+    for (const [key, value] of Object.entries(passthrough)) {
+      assert.strictEqual(r.response[key], value, `${key} should reach the handler`);
+    }
+    assert.strictEqual(r.response.SHOULD_NOT_LEAK, null);
+  } finally {
+    for (const key of [...Object.keys(passthrough), 'SHOULD_NOT_LEAK']) delete process.env[key];
+  }
+});
+
 test('node runtime works through the invoker', async () => {
   const r = await invoke(base('node-hello', { runtime: 'node', handler: 'index.handler' }));
   assert.strictEqual(r.ok, true);

@@ -3,6 +3,7 @@ import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-r
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppNav } from '@/components/app-nav'
 import { Toaster } from '@/components/ui/sonner'
+import { useReleaseSelectionOnUnload } from '@/lib/queries'
 import { ThemeProvider } from '@/lib/theme'
 import appCss from '../styles.css?url'
 
@@ -23,6 +24,9 @@ export const Route = createRootRoute({
 })
 
 function RootComponent() {
+  // At the root, not on the function page: closing the tab from /services
+  // must release the selection too.
+  useReleaseSelectionOnUnload()
   return (
     <RootDocument>
       <QueryClientProvider client={queryClient}>

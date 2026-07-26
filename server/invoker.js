@@ -6,7 +6,21 @@ const path = require('path');
 const { findVenvPython } = require('./detect');
 
 const HARNESS_DIR = path.join(__dirname, '..', 'harnesses');
-const BASE_ENV_KEYS = ['PATH', 'HOME', 'TMPDIR', 'LANG', 'JAVA_HOME'];
+
+// The host environment is NOT inherited — only this allowlist crosses over,
+// so a handler can't accidentally pick up your shell's AWS credentials.
+// Network plumbing is the exception: on a proxied or TLS-inspecting network
+// every outbound SDK call fails with an opaque timeout unless the proxy and
+// CA-bundle vars follow the handler in. Deliberately absent: AWS_PROFILE and
+// friends — silently handing a local handler real AWS credentials is exactly
+// what this allowlist exists to prevent.
+const BASE_ENV_KEYS = [
+  'PATH', 'HOME', 'TMPDIR', 'LANG', 'JAVA_HOME',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+  'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+  'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+  'AWS_CA_BUNDLE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
+];
 
 function command(opts, harnessArgs) {
   if (opts.runtime === 'python') {

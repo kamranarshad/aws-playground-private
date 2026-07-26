@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronsUpDown, Plus, X } from 'lucide-react'
+import { ChevronsUpDown, Eye, EyeOff, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
@@ -11,9 +11,12 @@ import {
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { useServices, useUpdateFunction } from '@/lib/queries'
+import { isSecretKey } from '@/lib/secrets'
 import type { FunctionDef } from '@/lib/types'
 
-type Row = { key: string; value: string }
+// `revealed` is view state that rides along with the row so it follows the
+// value when rows above it are removed. It is never persisted.
+type Row = { key: string; value: string; revealed?: boolean }
 
 export function EnvEditor({ fn }: { fn: FunctionDef }) {
   const [rows, setRows] = useState<Row[]>(() =>
@@ -105,21 +108,34 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
       </div>
       <CollapsibleContent className="pt-2">
         <div className="grid gap-1.5">
-          {rows.map((row, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <Input className="h-8 font-mono text-xs" placeholder="KEY" value={row.key}
-                spellCheck={false} onChange={(e) => setRow(i, { key: e.target.value })}
-                onBlur={() => save(rows)} />
-              <Input className="h-8 font-mono text-xs" placeholder="value" value={row.value}
-                spellCheck={false} onChange={(e) => setRow(i, { value: e.target.value })}
-                onBlur={() => save(rows)} />
-              <Button variant="ghost" size="icon" className="size-8 shrink-0"
-                aria-label="Remove variable"
-                onClick={() => save(rows.filter((_, j) => j !== i))}>
-                <X className="size-3.5" />
-              </Button>
-            </div>
-          ))}
+          {rows.map((row, i) => {
+            const secret = isSecretKey(row.key)
+            return (
+              <div key={i} className="flex items-center gap-1.5">
+                <Input className="h-8 font-mono text-xs" placeholder="KEY" value={row.key}
+                  aria-label="Variable name"
+                  spellCheck={false} onChange={(e) => setRow(i, { key: e.target.value })}
+                  onBlur={() => save(rows)} />
+                <Input className="h-8 font-mono text-xs" placeholder="value" value={row.value}
+                  type={secret && !row.revealed ? 'password' : 'text'}
+                  aria-label={row.key ? `Value for ${row.key}` : 'Variable value'}
+                  spellCheck={false} onChange={(e) => setRow(i, { value: e.target.value })}
+                  onBlur={() => save(rows)} />
+                {secret && (
+                  <Button variant="ghost" size="icon" className="size-8 shrink-0"
+                    aria-label={`${row.revealed ? 'Hide' : 'Show'} value for ${row.key}`}
+                    onClick={() => setRow(i, { revealed: !row.revealed })}>
+                    {row.revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" className="size-8 shrink-0"
+                  aria-label="Remove variable"
+                  onClick={() => save(rows.filter((_, j) => j !== i))}>
+                  <X className="size-3.5" />
+                </Button>
+              </div>
+            )
+          })}
         </div>
         <Button variant="ghost" size="sm" className="mt-1.5"
           onClick={() => setRows([...rows, { key: '', value: '' }])}>
