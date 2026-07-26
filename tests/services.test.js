@@ -240,6 +240,34 @@ test('manual start promotes an auto-started service (no auto-stop)', async () =>
     'manually promoted service must not auto-stop');
 });
 
+test('stopAutoStarted stops auto-started services and leaves user-started ones', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.setSelection(['minio', 'redis'], { waitReady: false });
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await services.start('redis', { waitReady: false }); // promote redis to user-managed
+
+  const stopped = await services.stopAutoStarted();
+
+  assert.deepStrictEqual(stopped, ['minio']);
+  assert.ok(calls().some(c => c.startsWith('stop aws-playground-minio')));
+  assert.ok(!calls().some(c => c.startsWith('stop aws-playground-redis')),
+    'a user-started service must survive shutdown sweep');
+});
+
+test('stopAutoStarted clears pending grace timers so nothing stops twice', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.setSelection(['elasticmq'], { waitReady: false });
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await services.setSelection([], { waitReady: false }); // schedules a grace stop
+
+  await services.stopAutoStarted();
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await sleep(250); // past the grace window
+
+  assert.ok(!calls().some(c => c.startsWith('stop aws-playground-elasticmq')),
+    'the pending timer should have been cancelled by the sweep');
+});
+
 test('list includes per-service credentials', async () => {
   scenario({ info: { code: 0, stdout: 'ok' }, inspect: { code: 1, stdout: '' } });
   const listed = (await services.list()).services;

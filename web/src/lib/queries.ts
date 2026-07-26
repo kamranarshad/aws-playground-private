@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api, type InvokePayload } from './api'
@@ -70,8 +71,18 @@ export function useInvoke() {
   })
 }
 
+// Container state changes behind the app's back — `docker stop` in a
+// terminal, a crash, an OOM kill. Poll so the page stops claiming
+// "running". refetchIntervalInBackground defaults to false, so an
+// unfocused tab isn't spawning `docker inspect` every few seconds.
+export const SERVICES_POLL_MS = 5_000
+
 export function useServices() {
-  return useQuery({ queryKey: ['services'], queryFn: api.listServices })
+  return useQuery({
+    queryKey: ['services'],
+    queryFn: api.listServices,
+    refetchInterval: SERVICES_POLL_MS,
+  })
 }
 
 export function useServiceAction() {
@@ -91,6 +102,24 @@ export function useSelectionSync() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['services'] }),
     // Selection sync is best-effort; a failure just means services stay put.
   })
+}
+
+// Closing the tab ends the selection, but nothing tells the server that —
+// so the last selection's services stayed up indefinitely. sendBeacon is
+// the only request that reliably survives page teardown. Releasing the
+// selection starts the normal grace timer, so a reload that comes back
+// within the window cancels its own stop.
+export function useReleaseSelectionOnUnload() {
+  useEffect(() => {
+    function release() {
+      navigator.sendBeacon?.(
+        '/api/selection',
+        new Blob([JSON.stringify({ functionId: null })], { type: 'application/json' }),
+      )
+    }
+    window.addEventListener('beforeunload', release)
+    return () => window.removeEventListener('beforeunload', release)
+  }, [])
 }
 
 export function useClearHistory() {

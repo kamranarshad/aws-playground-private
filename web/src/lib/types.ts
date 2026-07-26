@@ -79,7 +79,9 @@ export interface Report {
 
 export interface InvokeResult {
   ok: boolean
-  phase: 'init' | 'invoke'
+  // 'service' and 'build' are failures before the handler ever runs:
+  // a required local service isn't up, or the build command failed.
+  phase: 'init' | 'invoke' | 'build' | 'service'
   response?: unknown
   error?: LambdaError
   logs: string

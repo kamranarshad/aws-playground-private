@@ -267,6 +267,21 @@ async function setSelection(needed, { waitReady: wait = true } = {}) {
   return { started, scheduledStop };
 }
 
+// Shutdown sweep: leave the machine as we found it. Only services the
+// playground auto-started are stopped — anything started by hand in the
+// UI (or already running before we looked) keeps running.
+async function stopAutoStarted() {
+  const pending = [...autoStarted];
+  for (const name of pending) cancelStop(name);
+  autoStarted.clear();
+  const stopped = [];
+  for (const name of pending) {
+    const r = await stop(name).catch(() => ({ ok: false }));
+    if (r.ok) stopped.push(name);
+  }
+  return stopped;
+}
+
 async function list() {
   const available = await dockerAvailable();
   const services = await Promise.all(Object.entries(REGISTRY).map(async ([name, svc]) => ({
@@ -308,4 +323,4 @@ function names() {
 }
 
 module.exports = { dockerAvailable, status, start, stop, list, envFor,
-  composeEnv, names, setSelection };
+  composeEnv, names, setSelection, stopAutoStarted };

@@ -3,6 +3,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { startWebServer } = require('../server/serve-web');
+const localServices = require('../server/services');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -33,8 +34,32 @@ if (Number.isNaN(port) || port < 0 || port > 65535) {
   console.error('aws-playground: invalid --port value');
   process.exit(1);
 }
+// Containers the playground auto-started belong to this process's lifetime.
+// The grace timer that would normally stop them lives in here too, so
+// quitting without a sweep leaves docker running with nothing to reap it.
+function installShutdownSweep(server) {
+  let shuttingDown = false;
+  const bye = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    server.close();
+    try {
+      const stopped = await localServices.stopAutoStarted();
+      if (stopped.length) {
+        console.log(`aws-playground: stopped auto-started ${stopped.join(', ')}`);
+      }
+    } catch (err) {
+      console.warn(`aws-playground: could not stop auto-started services: ${err.message}`);
+    }
+    process.exit(0);
+  };
+  process.on('SIGINT', bye);
+  process.on('SIGTERM', bye);
+}
+
 startWebServer({ distDir: DIST, port, host: '127.0.0.1' })
   .then((server) => {
+    installShutdownSweep(server);
     const url = `http://localhost:${server.address().port}`;
     console.log(`aws-playground listening at ${url}`);
     if (!flag('--no-open')) {

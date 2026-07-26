@@ -48,7 +48,12 @@ See `fixtures/ts-apigw` for a complete example.
 There is no mocking layer. Set environment variables per function in the UI:
 real `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` to hit real
 AWS, or `AWS_ENDPOINT_URL` to point the SDK at a self-hosted alternative
-(e.g. MinIO for S3). Nothing is inherited from your shell silently.
+(e.g. MinIO for S3). Nothing is inherited from your shell silently — the
+one exception is network plumbing (`HTTP(S)_PROXY`, `NO_PROXY`,
+`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `AWS_CA_BUNDLE`,
+`REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`), which follows the handler in so
+outbound calls work on a proxied or TLS-inspecting network. Credential
+variables are never inherited.
 
 **Local services (docker):** if docker is installed, the Services page
 (the database icon in the left rail) can start playground-managed
@@ -81,14 +86,22 @@ A project can declare its services in a `playground.json`:
 overrides the manual toggles. Declared services auto-start when you
 select the function and auto-stop ~15 s after no selected function
 needs them; services you start manually in the menu are never
-auto-stopped. Caveat: closing the browser leaves the last selection's
-services running.
+auto-stopped. Closing the tab releases the selection, and quitting the
+playground stops everything it auto-started — containers you started by
+hand are left alone. Service state is polled, so stopping a container
+from a terminal is reflected in the UI within a few seconds.
 
 A project's `.env` file is loaded automatically when present, re-read on
 every invoke. The env-vars section has a picker to choose a different
 `.env.*` file or `None` per function. Precedence, lowest to highest:
 .env file → UI env vars → per-invoke overrides. Plain `KEY=VALUE` lines
 only (comments and quoted values supported; no interpolation).
+
+Values whose name looks like a secret (`*_SECRET`, `*_PASSWORD`,
+`*_TOKEN`, `*_KEY`, …) are masked in the editor with a reveal toggle, so
+screen-sharing the playground doesn't broadcast them. They are still
+stored in plain text in `functions.json` — the masking is shoulder-surfing
+protection, not encryption.
 
 ## Data
 
@@ -103,7 +116,12 @@ function).
     npm run build      # builds the web UI (web/dist) — required once before npm start
     npm start          # server without auto-opening the browser
     npm run dev        # web UI dev server with hot reload (also serves the API)
-    npm test           # node --test; language tests auto-skip missing runtimes
+    npm test           # server (node --test) + web (vitest)
+    npm run test:server # server only; language tests auto-skip missing runtimes
+    npm run test:web   # web only (needs npm --prefix web install first)
+
+CI runs both suites, the web typecheck, and the web build on every push
+and pull request (`.github/workflows/ci.yml`).
 
 Architecture and design: `docs/superpowers/specs/2026-07-18-lambda-playground-design.md` and
 `docs/superpowers/specs/2026-07-18-tanstack-start-shadcn-ui-design.md`.
