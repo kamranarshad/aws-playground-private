@@ -6,25 +6,15 @@ const path = require('node:path');
 
 // Hermetic: point services.js at a shim "docker" that scripts responses
 // and records argv, so no real docker is needed.
+const { writeDockerShim, writeScenario } = require('./helpers');
 const SHIM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-svc-'));
-const SHIM = path.join(SHIM_DIR, 'docker');
-const CALLS = path.join(SHIM_DIR, 'calls.log');
-const SCENARIO = path.join(SHIM_DIR, 'scenario.json');
-fs.writeFileSync(SHIM, `#!/bin/bash
-echo "$@" >> "${CALLS}"
-key="$1 $2"
-out=$(node -pe 'const s=JSON.parse(require("fs").readFileSync("${SCENARIO}")); const k=process.argv[1]; JSON.stringify(s[k] ?? s[process.argv[2]] ?? {code:1,stdout:""})' "$key" "$1")
-code=$(node -pe 'JSON.parse(process.argv[1]).code' "$out")
-node -pe 'JSON.parse(process.argv[1]).stdout' "$out"
-exit "$code"
-`);
-fs.chmodSync(SHIM, 0o755);
+const { shim: SHIM, scenario: SCENARIO, calls: CALLS } = writeDockerShim(SHIM_DIR);
 process.env.AWS_PLAYGROUND_DOCKER = SHIM;
 
 const services = require('../server/services');
 
 function scenario(map) {
-  fs.writeFileSync(SCENARIO, JSON.stringify(map));
+  writeScenario(SCENARIO, map);
   fs.writeFileSync(CALLS, '');
 }
 
