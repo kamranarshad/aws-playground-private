@@ -78,7 +78,7 @@ test('proxy and TLS trust vars pass through, unrelated host vars still do not', 
   };
   Object.assign(process.env, passthrough, { SHOULD_NOT_LEAK: 'secret' });
   try {
-    const r = await invoke(base('node/env-echo', {
+    const r = await invoke(base('javascript/env-echo', {
       runtime: 'node',
       handler: 'index.handler',
       event: { keys: [...Object.keys(passthrough), 'SHOULD_NOT_LEAK'] },
@@ -93,7 +93,7 @@ test('proxy and TLS trust vars pass through, unrelated host vars still do not', 
 });
 
 test('node runtime works through the invoker', async () => {
-  const r = await invoke(base('node/hello', { runtime: 'node', handler: 'index.handler' }));
+  const r = await invoke(base('javascript/hello', { runtime: 'node', handler: 'index.handler' }));
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.response.message, 'hello from node');
 });
@@ -118,7 +118,7 @@ test('missing project folder blames the folder, not the runtime', async () => {
 });
 
 test('project path pointing at a file is reported as not a folder', async () => {
-  const r = await invoke(base(path.join('node/hello', 'index.js'), {
+  const r = await invoke(base(path.join('javascript/hello', 'index.js'), {
     runtime: 'node', handler: 'index.handler' }));
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.error.type, 'Project.NotFound');

@@ -230,7 +230,7 @@ test('npm build failure without node_modules hints at npm install', async () => 
 });
 
 test('no buildCommand leaves invoke untouched (no build markers)', async () => {
-  const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'node/hello'),
+  const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'javascript/hello'),
     runtime: 'node', handler: 'index.handler' });
   assert.strictEqual(created.body.buildCommand, '');
   const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
@@ -347,7 +347,7 @@ test('enabled running service injects env below UI vars', { skip: noPy }, async 
 test('enabled but stopped service short-circuits with Service.NotRunning', async () => {
   writeScenario(SVC_SCENARIO, {
     ps: { code: 0, stdout: 'aws-playground-minio exited' } });
-  const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'node/hello'),
+  const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'javascript/hello'),
     runtime: 'node', handler: 'index.handler', localServices: ['minio'] });
   const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
   assert.strictEqual(r.body.ok, false);
@@ -425,6 +425,6 @@ test('detect reports projectServices', () => {
   });
   const r = api.detect({ path: proj });
   assert.deepStrictEqual(r.body.projectServices, ['minio']);
-  const plain = api.detect({ path: path.join(FIXTURES, 'node/hello') });
+  const plain = api.detect({ path: path.join(FIXTURES, 'javascript/hello') });
   assert.strictEqual(plain.body.projectServices, null);
 });
