@@ -102,3 +102,26 @@ test('unknown runtime throws', async () => {
   await assert.rejects(() => invoke(base('python-hello', { runtime: 'ruby' })),
     /Unknown runtime/);
 });
+
+// spawn() reports a missing cwd as ENOENT against the *command*, so a project
+// folder that moved used to surface as "is the node runtime installed?" —
+// sending you off to reinstall a runtime that was never the problem.
+test('missing project folder blames the folder, not the runtime', async () => {
+  const r = await invoke(base('does-not-exist', { runtime: 'node', handler: 'index.handler' }));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.phase, 'init');
+  assert.strictEqual(r.error.type, 'Project.NotFound');
+  assert.ok(r.error.message.includes(path.join(FIXTURES, 'does-not-exist')),
+    `message should name the missing folder, got: ${r.error.message}`);
+  assert.ok(!/runtime installed/.test(r.error.message),
+    `message should not blame the runtime, got: ${r.error.message}`);
+});
+
+test('project path pointing at a file is reported as not a folder', async () => {
+  const r = await invoke(base(path.join('node-hello', 'index.js'), {
+    runtime: 'node', handler: 'index.handler' }));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.error.type, 'Project.NotFound');
+  assert.ok(/not a folder/.test(r.error.message),
+    `message should say it is not a folder, got: ${r.error.message}`);
+});

@@ -41,6 +41,26 @@ function command(opts, harnessArgs) {
   throw new Error(`Unknown runtime: ${opts.runtime}`);
 }
 
+// spawn() resolves the command relative to the child's cwd, so a missing cwd
+// comes back as ENOENT naming the *command* — "could not start node" when node
+// is fine and it's the project folder that moved. Check the folder ourselves so
+// the error points at the thing that's actually wrong.
+function projectDirProblem(dir) {
+  if (!dir) return 'This function has no project folder set.';
+  let stat;
+  try {
+    stat = fs.statSync(dir);
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      return `Project folder not found: '${dir}'. It may have been moved, `
+        + 'renamed, or deleted — re-point the function at its current location.';
+    }
+    return `Project folder '${dir}' could not be read: ${err.message}`;
+  }
+  if (!stat.isDirectory()) return `Project path '${dir}' is not a folder.`;
+  return null;
+}
+
 function buildEnv(opts, memoryMb) {
   const env = {};
   for (const k of BASE_ENV_KEYS) if (process.env[k]) env[k] = process.env[k];
@@ -64,11 +84,20 @@ async function invoke(opts) {
   const env = buildEnv(opts, memoryMb);
 
   const startedAt = Date.now();
-  const run = await new Promise((resolve) => {
+  const dirProblem = projectDirProblem(opts.dir);
+  const run = dirProblem ? { exit: null, logs: '', timedOut: false, dirProblem } : await new Promise((resolve) => {
     let logs = '';
     let timedOut = false;
-    const child = spawn(cmd, args, {
-      cwd: opts.dir, env, detached: process.platform !== 'win32' });
+    let child;
+    try {
+      child = spawn(cmd, args, {
+        cwd: opts.dir, env, detached: process.platform !== 'win32' });
+    } catch (err) {
+      // spawn throws synchronously for some cwd failures (e.g. ENOTDIR) instead
+      // of emitting 'error', which would escape as an unhandled rejection.
+      resolve({ exit: null, logs, timedOut, spawnError: err });
+      return;
+    }
     child.on('error', (err) => resolve({ exit: null, logs, timedOut, spawnError: err }));
     child.stdout.on('data', (d) => { logs += d; });
     child.stderr.on('data', (d) => { logs += d; });
@@ -94,6 +123,11 @@ async function invoke(opts) {
     out = { ok: false, phase: 'invoke', error: {
       type: 'Sandbox.Timedout',
       message: `Task timed out after ${(timeoutMs / 1000).toFixed(2)} seconds`,
+      stackTrace: [] } };
+  } else if (run.dirProblem) {
+    out = { ok: false, phase: 'init', error: {
+      type: 'Project.NotFound',
+      message: run.dirProblem,
       stackTrace: [] } };
   } else if (run.spawnError) {
     out = { ok: false, phase: 'init', error: {
