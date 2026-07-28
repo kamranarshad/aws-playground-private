@@ -227,6 +227,36 @@ test('reselection within grace cancels the pending stop', async () => {
   await sleep(PAST_GRACE_MS);
 });
 
+// Regression: the pending stop must be cancelled in setSelection's synchronous
+// prologue, not after it awaits docker. Grace is set below the shim's probe
+// time and the call is deliberately not awaited, so if the cancel sits behind
+// the probe the timer is guaranteed to fire first and stop a selected service.
+test('reselection cancels the pending stop before awaiting docker', async () => {
+  scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  await services.setSelection(['elasticmq'], { waitReady: false });
+  scenario({ ps: { code: 0, stdout: 'aws-playground-elasticmq running' },
+    inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+
+  const prevGrace = process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS;
+  process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = '5';
+  try {
+    await services.setSelection([], { waitReady: false }); // arms a 5ms stop
+    scenario({ ps: { code: 0, stdout: 'aws-playground-elasticmq running' } });
+    // Not awaited: the synchronous prologue must already have cancelled it.
+    const reselect = services.setSelection(['elasticmq'], { waitReady: false });
+    await sleep(200);
+    await reselect;
+    assert.ok(!calls().some(c => c.startsWith('stop aws-playground-elasticmq')),
+      'stop must be cancelled before the docker probe, not after');
+  } finally {
+    process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = prevGrace;
+  }
+
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await services.setSelection([], { waitReady: false });
+  await sleep(PAST_GRACE_MS);
+});
+
 test('already-running services are not adopted for auto-stop', async () => {
   scenario({ ps: { code: 0, stdout: 'aws-playground-redis running' },
     stop: { code: 0, stdout: 'x' } });

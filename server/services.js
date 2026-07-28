@@ -261,11 +261,14 @@ async function setSelection(needed, { waitReady: wait = true } = {}) {
   const scheduledStop = [];
 
   for (const name of need) entry(name); // validate before touching docker
+  // Cancel pending stops before the first await. Docker can be slow (or hung),
+  // and a grace timer coming due mid-probe would otherwise stop a service that
+  // has just been selected again.
+  for (const name of need) cancelStop(name);
   // One probe for the whole selection instead of one per declared service.
   const states = need.size > 0 ? await statusAll() : null;
 
   for (const name of need) {
-    cancelStop(name);
     const state = states?.get(name);
     if (state !== 'running') {
       const r = await start(name, { waitReady: wait, auto: true, knownState: state });
