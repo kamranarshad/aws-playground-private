@@ -21,6 +21,12 @@ jobs:
       - name: Install web dependencies
         run: npm --prefix web ci
 
+      # Must precede the server tests: web/dist is gitignored, and the CLI
+      # refuses to boot without it, so tests/cli.test.js would skip (or, before
+      # it was guarded, fail with an opaque "no URL printed" timeout).
+      - name: Build web
+        run: npm --prefix web run build
+
       # Language runtimes the harness tests exercise. python3 and java are
       # preinstalled on ubuntu-latest; the tests skip whatever is missing.
       - name: Server tests
@@ -31,6 +37,3 @@ jobs:
 
       - name: Typecheck web
         run: npm --prefix web run typecheck
-
-      - name: Build web
-        run: npm --prefix web run build

@@ -7,7 +7,16 @@ const path = require('node:path');
 
 const CLI = path.join(__dirname, '..', 'bin', 'cli.js');
 
-test('cli starts server, prints URL, serves health, and shuts down', async () => {
+// The CLI refuses to boot without a built web app, so on a fresh checkout
+// these would fail with an opaque "no URL printed" timeout rather than saying
+// what is actually missing. Skip with a reason instead, the same way
+// web.test.js does. --help needs no build, so it always runs.
+const DIST = path.join(__dirname, '..', 'web', 'dist');
+const needsBuild = fs.existsSync(path.join(DIST, 'server', 'server.js'))
+  ? false : 'web/dist missing - run npm run build first';
+
+test('cli starts server, prints URL, serves health, and shuts down',
+  { skip: needsBuild }, async () => {
   const child = spawn(process.execPath, [CLI, '--port', '0', '--no-open'], {
     env: { ...process.env,
       AWS_PLAYGROUND_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-cli-')) },
@@ -27,7 +36,8 @@ test('cli starts server, prints URL, serves health, and shuts down', async () =>
   await new Promise((resolve) => child.on('close', resolve));
 });
 
-test('server binds to loopback only, not reachable via a LAN interface', async () => {
+test('server binds to loopback only, not reachable via a LAN interface',
+  { skip: needsBuild }, async () => {
   const ifaces = os.networkInterfaces();
   let lanIp = null;
   for (const name of Object.keys(ifaces)) {
@@ -75,7 +85,7 @@ test('server binds to loopback only, not reachable via a LAN interface', async (
 // Closing the browser used to leave auto-started containers running: the
 // grace timer lives in the server process, which then gets killed. The
 // server now sweeps them on the way out.
-test('cli stops auto-started services on SIGTERM', async () => {
+test('cli stops auto-started services on SIGTERM', { skip: needsBuild }, async () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-cli-sweep-'));
   const projectDir = path.join(tmp, 'project');
   const dataDir = path.join(tmp, 'data');
