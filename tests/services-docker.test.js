@@ -49,7 +49,7 @@ for (const [name, image] of [
 
 // End-to-end: the ts-node-s3 fixture reads/writes real MinIO through the API.
 const s3Ready = daemonUp && imagePresent('minio/minio')
-  && fs.existsSync(path.join(__dirname, '..', 'fixtures', 'ts-node-s3', 'dist', 'index.js'));
+  && fs.existsSync(path.join(__dirname, '..', 'fixtures', 'typescript/node-s3', 'dist', 'index.js'));
 
 test('ts-node-s3 fixture round-trips an object through real MinIO',
   { skip: s3Ready ? false : 'docker/minio image/fixture build not available' }, async () => {
@@ -62,7 +62,7 @@ test('ts-node-s3 fixture round-trips an object through real MinIO',
   assert.strictEqual(started.ok, true, started.output);
   try {
     const created = api.createFunction({ name: 's3fn',
-      path: path.join(__dirname, '..', 'fixtures', 'ts-node-s3'),
+      path: path.join(__dirname, '..', 'fixtures', 'typescript/node-s3'),
       runtime: 'node', handler: 'dist/index.handler' });
     const key = `e2e-${Date.now()}.txt`;
     const put = await api.invokeFunction({ functionId: created.body.id,

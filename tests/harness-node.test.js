@@ -30,7 +30,7 @@ function runHarness({ fixture, handler, event = {} }) {
 
 test('async handler happy path with context and logs', async () => {
   const { envelope, stdout } = await runHarness({
-    fixture: 'node-hello', handler: 'index.handler', event: { b: 2 } });
+    fixture: 'node/hello', handler: 'index.handler', event: { b: 2 } });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.phase, 'invoke');
   assert.strictEqual(envelope.response.message, 'hello from node');
@@ -41,13 +41,13 @@ test('async handler happy path with context and logs', async () => {
 });
 
 test('callback-style handler resolves via callback', async () => {
-  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'index.callbackHandler' });
+  const { envelope } = await runHarness({ fixture: 'node/hello', handler: 'index.callbackHandler' });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.response.message, 'hello from callback');
 });
 
 test('thrown error -> ok:false phase:invoke', async () => {
-  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'index.errorHandler' });
+  const { envelope } = await runHarness({ fixture: 'node/hello', handler: 'index.errorHandler' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'invoke');
   assert.strictEqual(envelope.error.type, 'TypeError');
@@ -55,14 +55,14 @@ test('thrown error -> ok:false phase:invoke', async () => {
 });
 
 test('missing file -> phase:init Runtime.ImportModuleError', async () => {
-  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'missing.handler' });
+  const { envelope } = await runHarness({ fixture: 'node/hello', handler: 'missing.handler' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.ImportModuleError');
 });
 
 test('missing export -> phase:init Runtime.HandlerNotFound', async () => {
-  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'index.nope' });
+  const { envelope } = await runHarness({ fixture: 'node/hello', handler: 'index.nope' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.HandlerNotFound');
@@ -84,7 +84,7 @@ function apigwEvent({ method = 'GET', path = '/', query, body, isBase64Encoded =
 
 test('apigw fixture: GET /hello greets by query param', async () => {
   const { envelope } = await runHarness({
-    fixture: 'node-apigw', handler: 'index.handler',
+    fixture: 'node/apigw', handler: 'index.handler',
     event: apigwEvent({ method: 'GET', path: '/hello', query: { name: 'Kamran' } }) });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.response.statusCode, 200);
@@ -95,7 +95,7 @@ test('apigw fixture: GET /hello greets by query param', async () => {
 test('apigw fixture: POST /echo returns base64-decoded JSON body', async () => {
   const payload = { order: 42, items: ['a', 'b'] };
   const { envelope } = await runHarness({
-    fixture: 'node-apigw', handler: 'index.handler',
+    fixture: 'node/apigw', handler: 'index.handler',
     event: apigwEvent({ method: 'POST', path: '/echo',
       body: Buffer.from(JSON.stringify(payload)).toString('base64'), isBase64Encoded: true }) });
   assert.strictEqual(envelope.ok, true);
@@ -105,7 +105,7 @@ test('apigw fixture: POST /echo returns base64-decoded JSON body', async () => {
 
 test('apigw fixture: POST /echo with invalid JSON -> 400', async () => {
   const { envelope } = await runHarness({
-    fixture: 'node-apigw', handler: 'index.handler',
+    fixture: 'node/apigw', handler: 'index.handler',
     event: apigwEvent({ method: 'POST', path: '/echo', body: 'not json{' }) });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.response.statusCode, 400);
@@ -114,7 +114,7 @@ test('apigw fixture: POST /echo with invalid JSON -> 400', async () => {
 
 test('apigw fixture: unknown route -> 404', async () => {
   const { envelope } = await runHarness({
-    fixture: 'node-apigw', handler: 'index.handler',
+    fixture: 'node/apigw', handler: 'index.handler',
     event: apigwEvent({ method: 'DELETE', path: '/nope' }) });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.response.statusCode, 404);
@@ -122,22 +122,22 @@ test('apigw fixture: unknown route -> 404', async () => {
 });
 
 test('apigw fixture: shipped sample events drive the handler', async () => {
-  const eventsDir = path.join(FIXTURES, 'node-apigw', 'events');
+  const eventsDir = path.join(FIXTURES, 'node/apigw', 'events');
   const getHello = JSON.parse(fs.readFileSync(path.join(eventsDir, 'get-hello.json'), 'utf8'));
   const postEcho = JSON.parse(fs.readFileSync(path.join(eventsDir, 'post-echo.json'), 'utf8'));
 
-  const hello = await runHarness({ fixture: 'node-apigw', handler: 'index.handler', event: getHello });
+  const hello = await runHarness({ fixture: 'node/apigw', handler: 'index.handler', event: getHello });
   assert.strictEqual(hello.envelope.response.statusCode, 200);
   assert.match(JSON.parse(hello.envelope.response.body).message, /^hello, /);
 
-  const echo = await runHarness({ fixture: 'node-apigw', handler: 'index.handler', event: postEcho });
+  const echo = await runHarness({ fixture: 'node/apigw', handler: 'index.handler', event: postEcho });
   assert.strictEqual(echo.envelope.response.statusCode, 200);
   assert.ok(JSON.parse(echo.envelope.response.body).received);
 });
 
 test('ts-apigw fixture: GET /hello via committed dist build', async () => {
   const { envelope } = await runHarness({
-    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    fixture: 'typescript/apigw', handler: 'dist/index.handler',
     event: apigwEvent({ method: 'GET', path: '/hello', query: { name: 'TS' } }) });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.response.statusCode, 200);
@@ -147,19 +147,19 @@ test('ts-apigw fixture: GET /hello via committed dist build', async () => {
 
 test('ts-apigw fixture: POST /sum adds numbers, 400 on bad body', async () => {
   const ok = await runHarness({
-    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    fixture: 'typescript/apigw', handler: 'dist/index.handler',
     event: apigwEvent({ method: 'POST', path: '/sum', body: '[1,2,3.5]' }) });
   assert.strictEqual(ok.envelope.response.statusCode, 200);
   assert.deepStrictEqual(JSON.parse(ok.envelope.response.body), { sum: 6.5 });
 
   const bad = await runHarness({
-    fixture: 'ts-apigw', handler: 'dist/index.handler',
+    fixture: 'typescript/apigw', handler: 'dist/index.handler',
     event: apigwEvent({ method: 'POST', path: '/sum', body: '{"not":"array"}' }) });
   assert.strictEqual(bad.envelope.response.statusCode, 400);
 });
 
 test('malformed handler string -> phase:init Runtime.MalformedHandlerName', async () => {
-  const { envelope } = await runHarness({ fixture: 'node-hello', handler: 'nodots' });
+  const { envelope } = await runHarness({ fixture: 'node/hello', handler: 'nodots' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.MalformedHandlerName');

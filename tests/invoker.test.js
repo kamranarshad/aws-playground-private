@@ -19,7 +19,7 @@ function base(fixture, extra = {}) {
 }
 
 test('python happy path: response, logs, report', { skip: noPy }, async () => {
-  const r = await invoke(base('python-hello', { event: { x: 1 } }));
+  const r = await invoke(base('python/hello', { event: { x: 1 } }));
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.response.message, 'hello from python');
   assert.deepStrictEqual(r.response.echo, { x: 1 });
@@ -32,7 +32,7 @@ test('python happy path: response, logs, report', { skip: noPy }, async () => {
 });
 
 test('handler exception surfaces lambda-style error', { skip: noPy }, async () => {
-  const r = await invoke(base('python-error'));
+  const r = await invoke(base('python/error'));
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.phase, 'invoke');
   assert.strictEqual(r.error.type, 'ValueError');
@@ -40,7 +40,7 @@ test('handler exception surfaces lambda-style error', { skip: noPy }, async () =
 });
 
 test('timeout kills the process and reports Task timed out', { skip: noPy }, async () => {
-  const r = await invoke(base('python-timeout', { timeoutMs: 1000 }));
+  const r = await invoke(base('python/timeout', { timeoutMs: 1000 }));
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.error.type, 'Sandbox.Timedout');
   assert.strictEqual(r.error.message, 'Task timed out after 1.00 seconds');
@@ -49,7 +49,7 @@ test('timeout kills the process and reports Task timed out', { skip: noPy }, asy
 
 test('env: AWS defaults set, user vars override, host env does not leak', { skip: noPy }, async () => {
   process.env.SHOULD_NOT_LEAK = 'secret';
-  const r = await invoke(base('python-env-echo', {
+  const r = await invoke(base('python/env-echo', {
     env: { CUSTOM_VAR: '42', AWS_REGION: 'eu-west-1' } }));
   delete process.env.SHOULD_NOT_LEAK;
   assert.strictEqual(r.response.region, 'eu-west-1');
@@ -59,7 +59,7 @@ test('env: AWS defaults set, user vars override, host env does not leak', { skip
 });
 
 test('process exit without envelope -> Runtime.ExitError with logs', { skip: noPy }, async () => {
-  const r = await invoke(base('python-crash'));
+  const r = await invoke(base('python/crash'));
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.error.type, 'Runtime.ExitError');
   assert.ok(r.error.message.includes('exit code 3'));
@@ -78,7 +78,7 @@ test('proxy and TLS trust vars pass through, unrelated host vars still do not', 
   };
   Object.assign(process.env, passthrough, { SHOULD_NOT_LEAK: 'secret' });
   try {
-    const r = await invoke(base('node-env-echo', {
+    const r = await invoke(base('node/env-echo', {
       runtime: 'node',
       handler: 'index.handler',
       event: { keys: [...Object.keys(passthrough), 'SHOULD_NOT_LEAK'] },
@@ -93,13 +93,13 @@ test('proxy and TLS trust vars pass through, unrelated host vars still do not', 
 });
 
 test('node runtime works through the invoker', async () => {
-  const r = await invoke(base('node-hello', { runtime: 'node', handler: 'index.handler' }));
+  const r = await invoke(base('node/hello', { runtime: 'node', handler: 'index.handler' }));
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.response.message, 'hello from node');
 });
 
 test('unknown runtime throws', async () => {
-  await assert.rejects(() => invoke(base('python-hello', { runtime: 'ruby' })),
+  await assert.rejects(() => invoke(base('python/hello', { runtime: 'ruby' })),
     /Unknown runtime/);
 });
 
@@ -118,7 +118,7 @@ test('missing project folder blames the folder, not the runtime', async () => {
 });
 
 test('project path pointing at a file is reported as not a folder', async () => {
-  const r = await invoke(base(path.join('node-hello', 'index.js'), {
+  const r = await invoke(base(path.join('node/hello', 'index.js'), {
     runtime: 'node', handler: 'index.handler' }));
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.error.type, 'Project.NotFound');

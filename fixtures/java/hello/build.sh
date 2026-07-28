@@ -12,4 +12,4 @@ javac --release 11 -cp lambda-core.jar -d build/classes src/example/Hello.java
 (cd build/classes && jar xf ../../lambda-core.jar com)
 jar cf target/java-hello.jar -C build/classes .
 rm -rf build
-echo "Built fixtures/java-hello/target/java-hello.jar"
+echo "Built fixtures/java/hello/target/java-hello.jar"

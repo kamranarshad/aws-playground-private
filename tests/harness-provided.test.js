@@ -40,7 +40,7 @@ function scriptProject(script) {
 
 test('bash fixture round-trips the event via the runtime API', { skip: noBash }, async () => {
   const { envelope } = await runHarness({
-    dir: path.join(FIXTURES, 'provided-bash'), handler: 'bootstrap',
+    dir: path.join(FIXTURES, 'provided/bash'), handler: 'bootstrap',
     event: { hello: 'os' } });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.phase, 'invoke');
@@ -94,7 +94,7 @@ test('non-executable file yields Runtime.InvalidEntrypoint', async () => {
 test('python-exec fixture uppercases keys via the runtime API', async () => {
   if (!hasRuntime('python3')) return; // same gate style as helpers use elsewhere
   const { envelope } = await runHarness({
-    dir: path.join(FIXTURES, 'provided-python-exec'), handler: 'bootstrap',
+    dir: path.join(FIXTURES, 'provided/python-exec'), handler: 'bootstrap',
     event: { name: 'os-runtime' } });
   assert.strictEqual(envelope.ok, true);
   assert.deepStrictEqual(envelope.response, { NAME: 'os-runtime', runtime: 'python-exec' });

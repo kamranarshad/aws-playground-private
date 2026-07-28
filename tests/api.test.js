@@ -28,7 +28,7 @@ test('function CRUD with validation', async () => {
   r = api.createFunction({ name: 'x', path: '/no/such/dir', runtime: 'python' });
   assert.strictEqual(r.status, 400);
 
-  r = api.createFunction({ name: 'hello', path: path.join(FIXTURES, 'python-hello'),
+  r = api.createFunction({ name: 'hello', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
   assert.strictEqual(r.status, 201);
   const id = r.body.id;
@@ -50,13 +50,13 @@ test('function CRUD with validation', async () => {
 test('detect endpoint logic', () => {
   let r = api.detect({});
   assert.strictEqual(r.status, 400);
-  r = api.detect({ path: path.join(FIXTURES, 'python-hello') });
+  r = api.detect({ path: path.join(FIXTURES, 'python/hello') });
   assert.strictEqual(r.body.runtime, 'python');
   assert.deepStrictEqual(r.body.handlerCandidates, ['app.handler']);
 });
 
 test('invoke returns result; unknown id 404', { skip: noPy }, async () => {
-  const created = api.createFunction({ name: 'hello2', path: path.join(FIXTURES, 'python-hello'),
+  const created = api.createFunction({ name: 'hello2', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
   const r = await api.invokeFunction({ functionId: created.body.id, event: { q: 7 } });
   assert.strictEqual(r.status, 200);
@@ -68,7 +68,7 @@ test('invoke returns result; unknown id 404', { skip: noPy }, async () => {
 });
 
 test('second concurrent invoke of same function -> 409', { skip: noPy }, async () => {
-  const created = api.createFunction({ name: 'slow', path: path.join(FIXTURES, 'python-timeout'),
+  const created = api.createFunction({ name: 'slow', path: path.join(FIXTURES, 'python/timeout'),
     runtime: 'python', handler: 'app.handler', timeoutMs: 3000 });
   const first = api.invokeFunction({ functionId: created.body.id, event: {} });
   await new Promise(r => setTimeout(r, 300));
@@ -79,7 +79,7 @@ test('second concurrent invoke of same function -> 409', { skip: noPy }, async (
 });
 
 test('invoke records history; delete clears it', { skip: noPy }, async () => {
-  const created = api.createFunction({ name: 'hist', path: path.join(FIXTURES, 'python-hello'),
+  const created = api.createFunction({ name: 'hist', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
   const id = created.body.id;
 
@@ -230,7 +230,7 @@ test('npm build failure without node_modules hints at npm install', async () => 
 });
 
 test('no buildCommand leaves invoke untouched (no build markers)', async () => {
-  const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'node-hello'),
+  const created = api.createFunction({ name: 'nobuild', path: path.join(FIXTURES, 'node/hello'),
     runtime: 'node', handler: 'index.handler' });
   assert.strictEqual(created.body.buildCommand, '');
   const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
@@ -240,7 +240,7 @@ test('no buildCommand leaves invoke untouched (no build markers)', async () => {
 });
 
 test('history write failure does not break invoke', { skip: noPy }, async () => {
-  const created = api.createFunction({ name: 'histfail', path: path.join(FIXTURES, 'python-hello'),
+  const created = api.createFunction({ name: 'histfail', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
   const histDir = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history');
   fs.rmSync(histDir, { recursive: true, force: true });
@@ -255,7 +255,7 @@ test('history write failure does not break invoke', { skip: noPy }, async () => 
 });
 
 test('provided runtime is accepted and invokes the bash fixture', { skip: !hasRuntime('bash', ['--version']) }, async () => {
-  const created = api.createFunction({ name: 'os-bash', path: path.join(FIXTURES, 'provided-bash'),
+  const created = api.createFunction({ name: 'os-bash', path: path.join(FIXTURES, 'provided/bash'),
     runtime: 'provided', handler: 'bootstrap' });
   assert.strictEqual(created.status, 201);
   const r = await api.invokeFunction({ functionId: created.body.id, event: { ping: 1 } });
@@ -273,7 +273,7 @@ test('go bootstrap builds and invokes via the provided runtime', { skip: !hasRun
   // copy fixture to a temp dir so the built binary never lands in the repo
   const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-go-'));
   for (const f of ['main.go', 'go.mod']) {
-    fs.copyFileSync(path.join(FIXTURES, 'provided-go', f), path.join(proj, f));
+    fs.copyFileSync(path.join(FIXTURES, 'provided/go', f), path.join(proj, f));
   }
   const created = api.createFunction({ name: 'os-go', path: proj, runtime: 'provided',
     handler: 'bootstrap', buildCommand: 'go build -o bootstrap .', timeoutMs: 60000 });
@@ -358,7 +358,7 @@ test('enabled running service injects env below UI vars', { skip: noPy }, async 
 test('enabled but stopped service short-circuits with Service.NotRunning', async () => {
   fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
     ps: { code: 0, stdout: 'aws-playground-minio exited' } }));
-  const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'node-hello'),
+  const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'node/hello'),
     runtime: 'node', handler: 'index.handler', localServices: ['minio'] });
   const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
   assert.strictEqual(r.body.ok, false);
@@ -436,6 +436,6 @@ test('detect reports projectServices', () => {
   });
   const r = api.detect({ path: proj });
   assert.deepStrictEqual(r.body.projectServices, ['minio']);
-  const plain = api.detect({ path: path.join(FIXTURES, 'node-hello') });
+  const plain = api.detect({ path: path.join(FIXTURES, 'node/hello') });
   assert.strictEqual(plain.body.projectServices, null);
 });

@@ -5,7 +5,7 @@ const path = require('node:path');
 const { invoke } = require('../server/invoker');
 const { hasRuntime } = require('./helpers');
 
-const FIXTURE = path.join(__dirname, '..', 'fixtures', 'java-hello');
+const FIXTURE = path.join(__dirname, '..', 'fixtures', 'java/hello');
 const JAR = path.join(FIXTURE, 'target', 'java-hello.jar');
 const skip = !hasRuntime('java', ['-version']) || !fs.existsSync(JAR);
 

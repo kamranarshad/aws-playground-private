@@ -30,7 +30,7 @@ test('built web app serves the shell and the API',
     const missing = await fetch(`http://127.0.0.1:${port}/api/functions/nope/history`);
     assert.strictEqual(missing.status, 404);
 
-    const fixtureDir = path.join(__dirname, '..', 'fixtures', 'node-apigw');
+    const fixtureDir = path.join(__dirname, '..', 'fixtures', 'node/apigw');
     const created = await fetch(`http://127.0.0.1:${port}/api/functions`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

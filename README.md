@@ -30,9 +30,9 @@ Running the playground itself requires Node >= 22.12.
 
 The OS-only runtime emulates the real Lambda Runtime API
 (`AWS_LAMBDA_RUNTIME_API`), so genuine `provided.al2023` bootstrap files
-run unchanged — see `fixtures/provided-bash` (bash+curl),
-`fixtures/provided-python-exec` (any-executable), and
-`fixtures/provided-go` (compiled via build command `go build -o bootstrap .`).
+run unchanged — see `fixtures/provided/bash` (bash+curl),
+`fixtures/provided/python-exec` (any-executable), and
+`fixtures/provided/go` (compiled via build command `go build -o bootstrap .`).
 
 Projects are assumed ready to run: dependencies installed, Java compiled by
 your own tooling. The playground never runs installs — but a function can
@@ -41,7 +41,7 @@ folder before every invoke, so compile-to-JS projects stay fresh. A failing
 build shows up as `Build.Failed` with the compiler output in the Logs tab;
 build time is reported separately from handler duration. TypeScript
 projects are auto-detected (build command and `dist/…` handler suggested).
-See `fixtures/ts-apigw` for a complete example.
+See `fixtures/typescript/apigw` for a complete example.
 
 The bundled TypeScript fixtures declare their own dependencies, and the
 playground never installs them for you — a fresh checkout will fail their
@@ -81,7 +81,7 @@ Dummy AWS credentials are injected when any AWS-API service is enabled;
 the global `AWS_ENDPOINT_URL` is injected only when exactly one AWS-API
 service is enabled (with several, per-service vars avoid misrouting).
 
-See `fixtures/ts-node-s3` for a worked example: a TypeScript lambda that
+See `fixtures/typescript/node-s3` for a worked example: a TypeScript lambda that
 reads/writes S3 via the AWS SDK, with a `playground.json` that
 auto-starts MinIO when you select it (`{"action":"put","key":"x",
 "body":"..."}` / `{"action":"get","key":"x"}` / `{"action":"list"}`).

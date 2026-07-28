@@ -7,7 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const HARNESS = path.join(__dirname, '..', 'harnesses', 'node', 'harness.mjs');
-const FIXTURE = path.join(__dirname, '..', 'fixtures', 'ts-node-s3');
+const FIXTURE = path.join(__dirname, '..', 'fixtures', 'typescript/node-s3');
 const built = fs.existsSync(path.join(FIXTURE, 'dist', 'index.js'));
 
 // Minimal in-memory S3 stub (path-style): CreateBucket, PutObject,

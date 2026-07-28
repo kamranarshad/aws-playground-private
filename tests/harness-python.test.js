@@ -32,7 +32,7 @@ function runHarness({ fixture, handler, event = {}, env = {} }) {
 
 test('happy path returns envelope, context, and captures print logs', { skip }, async () => {
   const { envelope, stdout } = await runHarness({
-    fixture: 'python-hello', handler: 'app.handler', event: { a: 1 } });
+    fixture: 'python/hello', handler: 'app.handler', event: { a: 1 } });
   assert.strictEqual(envelope.ok, true);
   assert.strictEqual(envelope.phase, 'invoke');
   assert.strictEqual(envelope.response.message, 'hello from python');
@@ -44,7 +44,7 @@ test('happy path returns envelope, context, and captures print logs', { skip }, 
 });
 
 test('handler exception -> ok:false phase:invoke with stack trace', { skip }, async () => {
-  const { envelope } = await runHarness({ fixture: 'python-error', handler: 'app.handler' });
+  const { envelope } = await runHarness({ fixture: 'python/error', handler: 'app.handler' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'invoke');
   assert.strictEqual(envelope.error.type, 'ValueError');
@@ -53,13 +53,13 @@ test('handler exception -> ok:false phase:invoke with stack trace', { skip }, as
 });
 
 test('missing module -> phase:init', { skip }, async () => {
-  const { envelope } = await runHarness({ fixture: 'python-hello', handler: 'nope.handler' });
+  const { envelope } = await runHarness({ fixture: 'python/hello', handler: 'nope.handler' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'init');
 });
 
 test('malformed handler string -> phase:init', { skip }, async () => {
-  const { envelope } = await runHarness({ fixture: 'python-hello', handler: 'nodots' });
+  const { envelope } = await runHarness({ fixture: 'python/hello', handler: 'nodots' });
   assert.strictEqual(envelope.ok, false);
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.MalformedHandlerName');
