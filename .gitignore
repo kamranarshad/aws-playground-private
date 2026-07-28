@@ -12,3 +12,6 @@ web/.nitro/
 web/.tanstack/
 web/dist/
 web/src/routeTree.gen.ts
+
+# Local gstack tooling state (daemon pid/port, auth token, browse logs)
+.gstack/
