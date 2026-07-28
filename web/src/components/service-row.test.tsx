@@ -31,9 +31,13 @@ const redis: LocalService = {
   credentials: [],
 }
 
-function wrapper({ children }: { children: ReactNode }) {
+// Built per render call, not per React render: a client constructed inside
+// the wrapper component would be discarded on every re-render.
+function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  )
 }
 
 function renderRow(svc: LocalService) {
@@ -41,7 +45,7 @@ function renderRow(svc: LocalService) {
     <ul>
       <ServiceRow svc={svc} selected={false} selectable onSelectedChange={() => {}} />
     </ul>,
-    { wrapper },
+    { wrapper: makeWrapper() },
   )
 }
 

@@ -287,7 +287,9 @@ test('go bootstrap builds and invokes via the provided runtime', { skip: !hasRun
 // Local services (docker shim from services.test.js pattern, scoped here)
 const SVC_SHIM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-apisvc-'));
 const SVC_SCENARIO = path.join(SVC_SHIM_DIR, 'scenario.json');
+const SVC_CALLS = path.join(SVC_SHIM_DIR, 'calls.log');
 fs.writeFileSync(path.join(SVC_SHIM_DIR, 'docker'), `#!/bin/bash
+echo "$@" >> "${SVC_CALLS}"
 # Subcommand travels via env, not argv: a bare "inspect" argv would trigger
 # node's own debugger CLI.
 out=$(DOCKER_SUBCMD="$1" node -pe 'const s=JSON.parse(require("fs").readFileSync("${SVC_SCENARIO}")); JSON.stringify(s[process.env.DOCKER_SUBCMD] ?? {code:1,stdout:""})')
@@ -300,11 +302,28 @@ process.env.AWS_PLAYGROUND_DOCKER = path.join(SVC_SHIM_DIR, 'docker');
 
 test('services list endpoint reports docker and per-service state', async () => {
   fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
-    info: { code: 0, stdout: 'ok' }, inspect: { code: 0, stdout: 'true' } }));
+    ps: { code: 0, stdout: 'aws-playground-minio running' } }));
   const r = await api.listServices();
   assert.strictEqual(r.status, 200);
   assert.strictEqual(r.body.docker.available, true);
   assert.strictEqual(r.body.services[0].state, 'running');
+});
+
+// Every invoke re-checks that the function's services are up. Probing them
+// one at a time put a docker round trip per service in front of the handler.
+test('invoke probes docker once however many services are enabled', async () => {
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ ps: { code: 0, stdout: '' } }));
+  const proj = envEchoProject({});
+  const created = api.createFunction({ name: 'svc-probe', path: proj, runtime: 'python',
+    handler: 'app.handler', localServices: ['minio', 'elasticmq'] });
+  fs.writeFileSync(SVC_CALLS, '');
+
+  const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
+
+  assert.strictEqual(r.body.error.type, 'Service.NotRunning');
+  assert.ok(r.body.error.message.includes('S3 (MinIO)'), r.body.error.message);
+  const calls = fs.readFileSync(SVC_CALLS, 'utf8').trim().split('\n').filter(Boolean);
+  assert.strictEqual(calls.length, 1, `one probe per invoke, got ${JSON.stringify(calls)}`);
 });
 
 test('service start/stop endpoints; unknown service 404', async () => {
@@ -321,7 +340,8 @@ test('service start/stop endpoints; unknown service 404', async () => {
 });
 
 test('enabled running service injects env below UI vars', { skip: noPy }, async () => {
-  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    ps: { code: 0, stdout: 'aws-playground-minio running\naws-playground-elasticmq running\naws-playground-dynamodb running\naws-playground-redis running\naws-playground-postgres running' } }));
   const proj = envEchoProject({});
   const created = api.createFunction({ name: 'svc-env', path: proj, runtime: 'python',
     handler: 'app.handler', localServices: ['minio'],
@@ -336,7 +356,8 @@ test('enabled running service injects env below UI vars', { skip: noPy }, async 
 });
 
 test('enabled but stopped service short-circuits with Service.NotRunning', async () => {
-  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'false' } }));
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    ps: { code: 0, stdout: 'aws-playground-minio exited' } }));
   const created = api.createFunction({ name: 'svc-down', path: path.join(FIXTURES, 'node-hello'),
     runtime: 'node', handler: 'index.handler', localServices: ['minio'] });
   const r = await api.invokeFunction({ functionId: created.body.id, event: {} });
@@ -349,7 +370,8 @@ test('enabled but stopped service short-circuits with Service.NotRunning', async
 });
 
 test('two aws services: per-service endpoints, no global', { skip: noPy }, async () => {
-  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    ps: { code: 0, stdout: 'aws-playground-minio running\naws-playground-elasticmq running\naws-playground-dynamodb running\naws-playground-redis running\naws-playground-postgres running' } }));
   const proj = envEchoProject({});
   const created = api.createFunction({ name: 'multi-svc', path: proj, runtime: 'python',
     handler: 'app.handler', localServices: ['minio', 'elasticmq'] });
@@ -363,7 +385,8 @@ test('two aws services: per-service endpoints, no global', { skip: noPy }, async
 });
 
 test('aws + plain service keeps the global endpoint', { skip: noPy }, async () => {
-  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    ps: { code: 0, stdout: 'aws-playground-minio running\naws-playground-elasticmq running\naws-playground-dynamodb running\naws-playground-redis running\naws-playground-postgres running' } }));
   const proj = envEchoProject({});
   const created = api.createFunction({ name: 'mixed-svc', path: proj, runtime: 'python',
     handler: 'app.handler', localServices: ['minio', 'redis'] });
@@ -376,7 +399,8 @@ test('aws + plain service keeps the global endpoint', { skip: noPy }, async () =
 });
 
 test('playground.json services override manual toggles at invoke', { skip: noPy }, async () => {
-  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({ inspect: { code: 0, stdout: 'true' } }));
+  fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
+    ps: { code: 0, stdout: 'aws-playground-minio running\naws-playground-elasticmq running\naws-playground-dynamodb running\naws-playground-redis running\naws-playground-postgres running' } }));
   const proj = envEchoProject({
     'playground.json': JSON.stringify({ services: ['elasticmq'] }),
   });
@@ -392,7 +416,7 @@ test('playground.json services override manual toggles at invoke', { skip: noPy 
 
 test('selection endpoint starts declared services; 404 unknown fn', async () => {
   fs.writeFileSync(SVC_SCENARIO, JSON.stringify({
-    inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } }));
+    ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } }));
   const proj = envEchoProject({
     'playground.json': JSON.stringify({ services: ['redis'] }),
   });

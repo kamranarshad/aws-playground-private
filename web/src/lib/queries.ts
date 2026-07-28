@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api, type InvokePayload } from './api'
-import type { FunctionDef } from './types'
+import type { Detection, FunctionDef } from './types'
 
 export function useFunctions() {
   return useQuery({
@@ -14,6 +14,17 @@ export function useFunctions() {
 
 export function useHealth() {
   return useQuery({ queryKey: ['health'], queryFn: api.health, refetchInterval: 30_000 })
+}
+
+// Project detection is one server-side scan (readdir + source regexes) that
+// answers several questions at once. Consumers share the query key and
+// narrow with `select`, so N consumers still cost one request.
+export function useDetect<T>(path: string, select: (d: Detection) => T) {
+  return useQuery({
+    queryKey: ['detect', path],
+    queryFn: () => api.detect(path),
+    select,
+  })
 }
 
 export function useHistoryQuery(id: string | null) {

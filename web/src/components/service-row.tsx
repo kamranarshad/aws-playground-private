@@ -1,37 +1,11 @@
-import { useState } from 'react'
-import { Check, Copy, ExternalLink, Loader2, Play, Square } from 'lucide-react'
-import { toast } from 'sonner'
+import { ExternalLink, Loader2, Play, Square } from 'lucide-react'
+import { CopyableValue } from '@/components/copyable-value'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useServiceAction } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { LocalService } from '@/lib/types'
-
-// One credential value with its own copy state, so copying one doesn't
-// flip the checkmark on the others.
-function CopyableValue({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false)
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1200)
-    } catch {
-      toast.error('Could not copy to clipboard')
-    }
-  }
-  return (
-    <button type="button" onClick={copy}
-      className="group inline-flex items-center gap-1 font-mono text-xs text-foreground/90 hover:text-foreground"
-      aria-label={`Copy ${value}`}>
-      {value}
-      {copied
-        ? <Check className="size-3 text-emerald-500" />
-        : <Copy className="size-3 opacity-40 group-hover:opacity-100" />}
-    </button>
-  )
-}
 
 const STATE_DOT: Record<string, string> = {
   running: 'bg-emerald-500',

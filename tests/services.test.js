@@ -32,13 +32,6 @@ function calls() {
   return fs.readFileSync(CALLS, 'utf8').trim().split('\n').filter(Boolean);
 }
 
-test('dockerAvailable reflects docker info', async () => {
-  scenario({ info: { code: 0, stdout: 'ok' } });
-  assert.strictEqual(await services.dockerAvailable(), true);
-  scenario({ info: { code: 1, stdout: '' } });
-  assert.strictEqual(await services.dockerAvailable(), false);
-});
-
 test('status: absent, stopped, running', async () => {
   scenario({ inspect: { code: 1, stdout: '' } });
   assert.strictEqual(await services.status('minio'), 'absent');
@@ -89,7 +82,7 @@ test('unknown service is rejected', async () => {
 });
 
 test('list shapes registry + status for the API', async () => {
-  scenario({ info: { code: 0, stdout: 'ok' }, inspect: { code: 0, stdout: 'true' } });
+  scenario({ ps: { code: 0, stdout: 'aws-playground-minio running' } });
   const r = await services.list();
   assert.strictEqual(r.docker.available, true);
   const minio = r.services.find(s => s.name === 'minio');
@@ -186,8 +179,25 @@ process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = '120';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+// Poll for an expected call rather than sleeping a fixed amount: the shim
+// spawns node subprocesses, and under a parallel test run those can take far
+// longer than the grace window, which used to make these tests flaky.
+async function waitForCall(prefix, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (calls().some(c => c.startsWith(prefix))) return true;
+    await sleep(20);
+  }
+  return false;
+}
+
+// For "this must NOT happen", there is nothing to poll for — wait well past
+// the grace window so a pass means the timer really was cancelled, not that
+// it simply hadn't fired yet.
+const PAST_GRACE_MS = 8 * parseInt(process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS, 10);
+
 test('setSelection starts missing services and auto-stops after grace', async () => {
-  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' },
+  scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' },
     stop: { code: 0, stdout: 'x' } });
   const r = await services.setSelection(['minio'], { waitReady: false });
   assert.deepStrictEqual(r.started, ['minio']);
@@ -197,47 +207,59 @@ test('setSelection starts missing services and auto-stops after grace', async ()
   scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
   const r2 = await services.setSelection([], { waitReady: false });
   assert.deepStrictEqual(r2.scheduledStop, ['minio']);
-  await sleep(250);
-  assert.ok(calls().some(c => c.startsWith('stop aws-playground-minio')),
+  assert.ok(await waitForCall('stop aws-playground-minio'),
     'auto-started service should stop after grace');
 });
 
 test('reselection within grace cancels the pending stop', async () => {
-  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } });
   await services.setSelection(['elasticmq'], { waitReady: false });
-  scenario({ inspect: { code: 0, stdout: 'true' } });
+  scenario({ ps: { code: 0, stdout: 'aws-playground-elasticmq running' } });
   await services.setSelection([], { waitReady: false });
   await services.setSelection(['elasticmq'], { waitReady: false }); // back within grace
-  scenario({ inspect: { code: 0, stdout: 'true' } }); // fresh call log
-  await sleep(250);
+  scenario({ ps: { code: 0, stdout: 'aws-playground-elasticmq running' } }); // fresh call log
+  await sleep(PAST_GRACE_MS);
   assert.ok(!calls().some(c => c.startsWith('stop aws-playground-elasticmq')),
     'stop must be cancelled by reselection');
   // cleanup state for later tests
   scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
   await services.setSelection([], { waitReady: false });
-  await sleep(250);
+  await sleep(PAST_GRACE_MS);
 });
 
 test('already-running services are not adopted for auto-stop', async () => {
-  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  scenario({ ps: { code: 0, stdout: 'aws-playground-redis running' },
+    stop: { code: 0, stdout: 'x' } });
   const r = await services.setSelection(['redis'], { waitReady: false });
   assert.deepStrictEqual(r.started, []); // was already running (user-started)
   await services.setSelection([], { waitReady: false });
-  await sleep(250);
+  await sleep(PAST_GRACE_MS);
   assert.ok(!calls().some(c => c.startsWith('stop aws-playground-redis')),
     'user-started service must never auto-stop');
 });
 
 test('manual start promotes an auto-started service (no auto-stop)', async () => {
-  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } });
   await services.setSelection(['dynamodb'], { waitReady: false });
   scenario({ inspect: { code: 0, stdout: 'true' } });
   await services.start('dynamodb', { waitReady: false }); // manual promotion
   scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
   await services.setSelection([], { waitReady: false });
-  await sleep(250);
+  await sleep(PAST_GRACE_MS);
   assert.ok(!calls().some(c => c.startsWith('stop aws-playground-dynamodb')),
     'manually promoted service must not auto-stop');
+});
+
+// Selection changes on every click through the function list, so probing
+// each declared service separately made the cost scale with the project.
+test('setSelection probes docker once for the whole selection', async () => {
+  scenario({ ps: { code: 0, stdout:
+    'aws-playground-minio running\naws-playground-redis running' } });
+
+  await services.setSelection(['minio', 'redis'], { waitReady: false });
+
+  assert.strictEqual(calls().length, 1,
+    `one probe for the whole selection, got: ${JSON.stringify(calls())}`);
 });
 
 test('stopAutoStarted stops auto-started services and leaves user-started ones', async () => {
@@ -262,14 +284,40 @@ test('stopAutoStarted clears pending grace timers so nothing stops twice', async
 
   await services.stopAutoStarted();
   scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
-  await sleep(250); // past the grace window
+  await sleep(PAST_GRACE_MS); // past the grace window
 
   assert.ok(!calls().some(c => c.startsWith('stop aws-playground-elasticmq')),
     'the pending timer should have been cancelled by the sweep');
 });
 
+// The UI polls /api/services every few seconds. One `docker ps -a` answers
+// both "is docker up?" and "what is every container doing?", so the poll
+// costs one process spawn instead of `docker info` plus one `docker
+// inspect` per registered service.
+test('list reads every service state from a single docker call', async () => {
+  scenario({ ps: { code: 0, stdout:
+    'aws-playground-minio running\naws-playground-redis exited' } });
+
+  const listed = (await services.list()).services;
+
+  const state = (n) => listed.find(s => s.name === n).state;
+  assert.strictEqual(state('minio'), 'running');
+  assert.strictEqual(state('redis'), 'stopped');
+  assert.strictEqual(state('postgres'), 'absent');
+  assert.strictEqual(calls().length, 1, 'the whole list should cost one docker call');
+});
+
+test('list reports docker unavailable when the daemon is down', async () => {
+  scenario({ ps: { code: 1, stdout: 'Cannot connect to the Docker daemon' } });
+
+  const { docker, services: listed } = await services.list();
+
+  assert.strictEqual(docker.available, false);
+  assert.ok(listed.every(s => s.state === 'unavailable'));
+});
+
 test('list includes per-service credentials', async () => {
-  scenario({ info: { code: 0, stdout: 'ok' }, inspect: { code: 1, stdout: '' } });
+  scenario({ ps: { code: 0, stdout: '' } });
   const listed = (await services.list()).services;
   function creds(name) {
     return listed.find(s => s.name === name).credentials;

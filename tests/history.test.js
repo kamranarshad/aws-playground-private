@@ -40,6 +40,50 @@ test('cap at MAX_ENTRIES, oldest trimmed', () => {
   assert.strictEqual(entries[entries.length - 1].logs, 'run-7');
 });
 
+function historyFile(functionId) {
+  return path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history', `${functionId}.jsonl`);
+}
+
+function lineCount(functionId) {
+  return fs.readFileSync(historyFile(functionId), 'utf8').trim().split('\n').length;
+}
+
+// Invoking is the hot path: it should cost one appended line, not a full
+// read-parse-rewrite of every retained run. Trimming moves to the read side,
+// where the entries are already parsed.
+test('append only appends; list trims to the cap and compacts', () => {
+  for (let i = 0; i < history.MAX_ENTRIES + 5; i++) {
+    history.append('fn8', entry({ logs: `run-${i}` }));
+  }
+  assert.strictEqual(lineCount('fn8'), history.MAX_ENTRIES + 5,
+    'append should not rewrite the file to trim');
+
+  const entries = history.list('fn8');
+
+  assert.strictEqual(entries.length, history.MAX_ENTRIES);
+  assert.strictEqual(entries[0].logs, `run-${history.MAX_ENTRIES + 4}`);
+  assert.strictEqual(lineCount('fn8'), history.MAX_ENTRIES,
+    'list should compact the file it just trimmed');
+});
+
+// The read-side trim alone would let a long run that never opens the
+// History tab grow the file without bound, so append keeps a cheap
+// size guard (one stat, no parse).
+test('append compacts on its own once the file passes the size guard', () => {
+  process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = '2000';
+  try {
+    for (let i = 0; i < history.MAX_ENTRIES + 10; i++) {
+      history.append('fn9', entry({ logs: `run-${i}` }));
+    }
+    assert.ok(lineCount('fn9') <= history.MAX_ENTRIES,
+      `file should self-compact, has ${lineCount('fn9')} lines`);
+    assert.strictEqual(history.list('fn9')[0].logs, `run-${history.MAX_ENTRIES + 9}`,
+      'compaction must keep the newest runs');
+  } finally {
+    delete process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
+  }
+});
+
 test('oversized fields are truncated and flagged', () => {
   const big = 'x'.repeat(history.MAX_FIELD_BYTES + 1000);
   const stored = history.append('fn3', entry({ logs: big, event: { blob: big } }));

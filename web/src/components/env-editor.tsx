@@ -1,52 +1,32 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { ChevronsUpDown, Eye, EyeOff, Plus, X } from 'lucide-react'
+import { ChevronsUpDown, Plus } from 'lucide-react'
+import { EnvFilePicker } from '@/components/env-file-picker'
+import { EnvVarRow, type EnvRow } from '@/components/env-var-row'
+import { LocalServiceToggles } from '@/components/local-service-toggles'
 import { Button } from '@/components/ui/button'
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { Input } from '@/components/ui/input'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import { api } from '@/lib/api'
-import { useServices, useUpdateFunction } from '@/lib/queries'
-import { isSecretKey } from '@/lib/secrets'
+import { useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
-// `revealed` is view state that rides along with the row so it follows the
-// value when rows above it are removed. It is never persisted.
-type Row = { key: string; value: string; revealed?: boolean }
-
 export function EnvEditor({ fn }: { fn: FunctionDef }) {
-  const [rows, setRows] = useState<Row[]>(() =>
+  const [rows, setRows] = useState<EnvRow[]>(() =>
     Object.entries(fn.env).map(([key, value]) => ({ key, value }))
   )
   const update = useUpdateFunction()
-  const { data: envFiles = [] } = useQuery({
-    queryKey: ['envfiles', fn.path],
-    queryFn: () => api.detect(fn.path),
-    select: (d) => d.envFiles ?? [],
-  })
-  const envFile = fn.envFile ?? 'auto'
-  const hasDotEnv = envFiles.includes('.env')
-  const { data: servicesStatus } = useServices()
-  const { data: projectServices } = useQuery({
-    queryKey: ['projectservices', fn.path],
-    queryFn: () => api.detect(fn.path),
-    select: (d) => d.projectServices ?? null,
-  })
 
-  function save(next: Row[]) {
+  // Rows are edited freely and persisted on blur: a key is allowed to be
+  // empty or half-typed while you work, and only usable ones get saved.
+  function save(next: EnvRow[]) {
     setRows(next)
     const env: Record<string, string> = {}
     for (const r of next) if (r.key.trim()) env[r.key.trim()] = r.value
     update.mutate({ id: fn.id, patch: { env } })
   }
 
-  function setRow(i: number, patch: Partial<Row>) {
-    const next = rows.map((r, j) => (j === i ? { ...r, ...patch } : r))
-    setRows(next)
+  function setRow(i: number, patch: Partial<EnvRow>) {
+    setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   }
 
   return (
@@ -56,86 +36,21 @@ export function EnvEditor({ fn }: { fn: FunctionDef }) {
           Environment variables ({rows.length}) <ChevronsUpDown className="size-3" />
         </CollapsibleTrigger>
         <div className="flex items-center gap-2">
-          {projectServices !== null && projectServices !== undefined ? (
-            <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
-              title="Declared in playground.json — edit the file to change">
-              {(servicesStatus?.services ?? [])
-                .filter((svc) => projectServices.includes(svc.name))
-                .map((svc) => (
-                  <span key={svc.name} className="rounded bg-surface-strip px-1.5 py-0.5">
-                    {svc.shortLabel}
-                  </span>
-                ))}
-              <span className="normal-case tracking-normal text-muted-foreground/70">
-                from playground.json
-              </span>
-            </span>
-          ) : (servicesStatus?.services ?? []).map((svc) => (
-            <label key={svc.name}
-              className="flex cursor-pointer items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
-              <input type="checkbox" className="accent-primary"
-                checked={(fn.localServices ?? []).includes(svc.name)}
-                onChange={(e) => {
-                  const current = fn.localServices ?? []
-                  update.mutate({ id: fn.id, patch: {
-                    localServices: e.target.checked
-                      ? [...current, svc.name]
-                      : current.filter((s) => s !== svc.name),
-                  } })
-                }} />
-              {svc.shortLabel}
-            </label>
-          ))}
-        <Select value={envFile}
-          onValueChange={(v) => update.mutate({ id: fn.id, patch: { envFile: v } })}>
-          <SelectTrigger size="sm" className="h-7 w-44 text-xs" aria-label="Env file">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="auto">
-              {hasDotEnv ? 'Auto (.env)' : 'Auto (no .env)'}
-            </SelectItem>
-            <SelectItem value="none">None</SelectItem>
-            {(envFiles.includes(envFile) || envFile === 'auto' || envFile === 'none'
-              ? envFiles
-              : [...envFiles, envFile]
-            ).map((f) => (
-              <SelectItem key={f} value={f}>{f}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <LocalServiceToggles fn={fn} />
+          <EnvFilePicker fn={fn} />
         </div>
       </div>
       <CollapsibleContent className="pt-2">
         <div className="grid gap-1.5">
-          {rows.map((row, i) => {
-            const secret = isSecretKey(row.key)
-            return (
-              <div key={i} className="flex items-center gap-1.5">
-                <Input className="h-8 font-mono text-xs" placeholder="KEY" value={row.key}
-                  aria-label="Variable name"
-                  spellCheck={false} onChange={(e) => setRow(i, { key: e.target.value })}
-                  onBlur={() => save(rows)} />
-                <Input className="h-8 font-mono text-xs" placeholder="value" value={row.value}
-                  type={secret && !row.revealed ? 'password' : 'text'}
-                  aria-label={row.key ? `Value for ${row.key}` : 'Variable value'}
-                  spellCheck={false} onChange={(e) => setRow(i, { value: e.target.value })}
-                  onBlur={() => save(rows)} />
-                {secret && (
-                  <Button variant="ghost" size="icon" className="size-8 shrink-0"
-                    aria-label={`${row.revealed ? 'Hide' : 'Show'} value for ${row.key}`}
-                    onClick={() => setRow(i, { revealed: !row.revealed })}>
-                    {row.revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                  </Button>
-                )}
-                <Button variant="ghost" size="icon" className="size-8 shrink-0"
-                  aria-label="Remove variable"
-                  onClick={() => save(rows.filter((_, j) => j !== i))}>
-                  <X className="size-3.5" />
-                </Button>
-              </div>
-            )
-          })}
+          {rows.map((row, i) => (
+            <EnvVarRow
+              key={i}
+              row={row}
+              onChange={(patch) => setRow(i, patch)}
+              onCommit={() => save(rows)}
+              onRemove={() => save(rows.filter((_, j) => j !== i))}
+            />
+          ))}
         </div>
         <Button variant="ghost" size="sm" className="mt-1.5"
           onClick={() => setRows([...rows, { key: '', value: '' }])}>

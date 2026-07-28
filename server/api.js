@@ -81,16 +81,18 @@ async function invokeFunction(input) {
     // env sits below the .env file and UI vars so user overrides win.
     // playground.json (re-read fresh) is authoritative over manual toggles.
     const enabledServices = effectiveServices(fn);
-    for (const name of enabledServices) {
-      const state = await localServices.status(name).catch(() => 'unavailable');
-      if (state !== 'running') {
-        const svc = (await localServices.list()).services.find(s => s.name === name);
+    if (enabledServices.length > 0) {
+      // One probe for every enabled service — this runs before each invoke,
+      // so a per-service docker round trip here is latency on every run.
+      const states = await localServices.statusAll().catch(() => null);
+      const notRunning = enabledServices.find(name => states?.get(name) !== 'running');
+      if (notRunning) {
         const result = {
           ok: false,
           phase: 'service',
           error: {
             type: 'Service.NotRunning',
-            message: `${svc?.label ?? name} is not running — start it from the Local services menu or disable it for this function`,
+            message: `${localServices.labelFor(notRunning)} is not running — start it from the Local services menu or disable it for this function`,
             stackTrace: [],
           },
           logs: '',

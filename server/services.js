@@ -146,15 +146,34 @@ function entry(name) {
   return svc;
 }
 
-async function dockerAvailable() {
-  return (await docker(['info'])).code === 0;
-}
-
 async function status(name) {
   const svc = entry(name);
   const r = await docker(['inspect', '--format', '{{.State.Running}}', svc.container]);
   if (r.code !== 0) return 'absent';
   return r.output.includes('true') ? 'running' : 'stopped';
+}
+
+// Every service's state from one `docker ps -a`, which also doubles as the
+// daemon liveness check (it fails exactly when `docker info` would).
+// Returns null when docker is unavailable. Callers that poll — the services
+// list, selection sync — use this instead of `docker info` plus one
+// `docker inspect` per service, which was six process spawns per poll.
+async function statusAll() {
+  const r = await docker(['ps', '-a', '--format', '{{.Names}} {{.State}}']);
+  if (r.code !== 0) return null;
+  const byContainer = new Map();
+  for (const line of r.output.split('\n')) {
+    const [container, state] = line.trim().split(/\s+/);
+    // docker's State is running/exited/created/paused/restarting/dead;
+    // everything that isn't running is 'stopped', as `docker inspect
+    // {{.State.Running}}` reported it before.
+    if (container) byContainer.set(container, state === 'running' ? 'running' : 'stopped');
+  }
+  const states = new Map();
+  for (const [name, svc] of Object.entries(REGISTRY)) {
+    states.set(name, byContainer.get(svc.container) ?? 'absent');
+  }
+  return states;
 }
 
 function tcpReachable(target) {
@@ -184,7 +203,9 @@ async function waitReady(ready, timeoutMs = 30000) {
   return false;
 }
 
-async function start(name, { waitReady: wait = true, auto = false } = {}) {
+// knownState lets a caller that just probed docker (setSelection) skip a
+// second probe for the same container. Omit it and start() checks itself.
+async function start(name, { waitReady: wait = true, auto = false, knownState } = {}) {
   const svc = entry(name);
   // Any explicit (non-auto) start promotes the service to user-managed:
   // it will never be auto-stopped by selection changes.
@@ -192,7 +213,7 @@ async function start(name, { waitReady: wait = true, auto = false } = {}) {
     autoStarted.delete(name);
     cancelStop(name);
   }
-  const state = await status(name);
+  const state = knownState ?? await status(name);
   if (state !== 'running') {
     const r = state === 'stopped'
       ? await docker(['start', svc.container])
@@ -239,11 +260,15 @@ async function setSelection(needed, { waitReady: wait = true } = {}) {
   const started = [];
   const scheduledStop = [];
 
+  for (const name of need) entry(name); // validate before touching docker
+  // One probe for the whole selection instead of one per declared service.
+  const states = need.size > 0 ? await statusAll() : null;
+
   for (const name of need) {
-    entry(name); // validate
     cancelStop(name);
-    if ((await status(name)) !== 'running') {
-      const r = await start(name, { waitReady: wait, auto: true });
+    const state = states?.get(name);
+    if (state !== 'running') {
+      const r = await start(name, { waitReady: wait, auto: true, knownState: state });
       if (r.ok) {
         autoStarted.add(name);
         started.push(name);
@@ -283,18 +308,18 @@ async function stopAutoStarted() {
 }
 
 async function list() {
-  const available = await dockerAvailable();
-  const services = await Promise.all(Object.entries(REGISTRY).map(async ([name, svc]) => ({
+  const states = await statusAll();
+  const services = Object.entries(REGISTRY).map(([name, svc]) => ({
     name,
     label: svc.label,
     shortLabel: svc.shortLabel,
     note: svc.note ?? null,
-    state: available ? await status(name) : 'unavailable',
+    state: states ? states.get(name) : 'unavailable',
     endpoint: svc.endpoint,
     consoleUrl: svc.consoleUrl,
     credentials: svc.credentials ?? [],
-  })));
-  return { docker: { available }, services };
+  }));
+  return { docker: { available: states !== null }, services };
 }
 
 function envFor(name) {
@@ -322,5 +347,11 @@ function names() {
   return Object.keys(REGISTRY);
 }
 
-module.exports = { dockerAvailable, status, start, stop, list, envFor,
-  composeEnv, names, setSelection, stopAutoStarted };
+// Display name without touching docker — for error messages that already
+// know the service is unreachable.
+function labelFor(name) {
+  return entry(name).label;
+}
+
+module.exports = { status, statusAll, start, stop, list, envFor,
+  composeEnv, names, labelFor, setSelection, stopAutoStarted };
