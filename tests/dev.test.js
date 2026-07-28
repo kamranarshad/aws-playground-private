@@ -12,8 +12,10 @@ test('vite dev server serves the app shell and the API',
   { skip: hasDeps ? false : 'web/node_modules missing - run npm --prefix web install first' },
   async () => {
     const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-dev-'));
+    // NO_COLOR: on CI, color libs emit ANSI even without a TTY (the runner
+    // renders it), which used to break the banner regex below.
     const child = spawn('npm', ['--prefix', WEB, 'run', 'dev', '--', '--port', '4780'], {
-      env: { ...process.env, AWS_PLAYGROUND_DATA_DIR: dataDir },
+      env: { ...process.env, AWS_PLAYGROUND_DATA_DIR: dataDir, NO_COLOR: '1' },
       detached: true,
     });
     let out = '';
@@ -23,7 +25,10 @@ test('vite dev server serves the app shell and the API',
           reject(new Error(`vite did not report a port; output:\n${out}`)), 30000);
         const onData = (d) => {
           out += d;
-          const m = out.match(/Local:\s+http:\/\/localhost:(\d+)\//);
+          // Strip ANSI escapes before matching, in case color sneaks through
+          // NO_COLOR (e.g. a lib that only honors FORCE_COLOR).
+          const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
+          const m = plain.match(/Local:\s+http:\/\/localhost:(\d+)\//);
           if (m) { clearTimeout(timer); resolve(Number(m[1])); }
         };
         child.stdout.on('data', onData);
