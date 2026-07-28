@@ -43,6 +43,11 @@ build time is reported separately from handler duration. TypeScript
 projects are auto-detected (build command and `dist/…` handler suggested).
 See `fixtures/ts-apigw` for a complete example.
 
+The bundled TypeScript fixtures declare their own dependencies, and the
+playground never installs them for you — a fresh checkout will fail their
+build command with `tsc: command not found` or `esbuild: command not found`
+until you run `npm run install:fixtures` once.
+
 ## Calling AWS services
 
 There is no mocking layer. Set environment variables per function in the UI:
@@ -113,12 +118,18 @@ function).
 ## Development
 
     npm install
-    npm run build      # builds the web UI (web/dist) — required once before npm start
+    npm run build      # installs + builds the web UI (web/dist) — required once before npm start
     npm start          # server without auto-opening the browser
     npm run dev        # web UI dev server with hot reload (also serves the API)
     npm test           # server (node --test) + web (vitest)
     npm run test:server # server only; language tests auto-skip missing runtimes
     npm run test:web   # web only (needs npm --prefix web install first)
+
+`npm run build` covers the `web/` folder only — it runs `npm install` there
+and builds `web/dist`. The `fixtures/` folder is never part of the build or
+the published package; it is sample Lambda projects, each installed on its
+own. If you want to invoke the two TypeScript fixtures, install their deps
+once with `npm run install:fixtures`.
 
 CI runs both suites, the web typecheck, and the web build on every push
 and pull request (`.github/workflows/ci.yml`).
