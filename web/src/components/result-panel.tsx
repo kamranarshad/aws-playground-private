@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
+import { JsonTree } from '@/components/json-tree'
 import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
@@ -18,6 +20,17 @@ export function ResultPanel({ result, historyTab }: {
   result: InvokeResult | null
   historyTab?: ReactNode
 }) {
+  // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
+  // the tree already covers reading it here. Memoised because a response can be
+  // large and only the copy button needs the flat text.
+  const responseJson = useMemo(() => {
+    if (!result?.ok) return null
+    // A handler that returned nothing has no JSON to copy: stringify(undefined)
+    // hands back undefined, not a string.
+    const json: string | undefined = JSON.stringify(result.response)
+    return json ?? null
+  }, [result])
+
   return (
     <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
       <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
@@ -43,14 +56,31 @@ export function ResultPanel({ result, historyTab }: {
           </div>
         )}
       </div>
-      <TabsContent value="response" className="min-h-0 flex-1">
-        <Pane>
-          {!result
-            ? 'Invoke to see the response.'
-            : result.ok
-              ? JSON.stringify(result.response, null, 2)
-              : `${result.error?.type}: ${result.error?.message}\n\n${(result.error?.stackTrace ?? []).join('\n')}`}
-        </Pane>
+      <TabsContent value="response" className="relative min-h-0 flex-1">
+        {result?.ok
+          ? (
+            <>
+              {responseJson != null && (
+                <CopyButton
+                  value={responseJson} label="Copy response JSON"
+                  // Opaque, so rows scrolling under it stay legible.
+                  className="absolute top-1.5 right-3 z-10 bg-background"
+                />
+              )}
+              <ScrollArea className="h-full">
+                {/* Re-keyed per invoke so the next response opens at its default
+                    depth instead of inheriting the last one's expanded rows. */}
+                <JsonTree key={result.report.requestId} value={result.response} className="pr-10" />
+              </ScrollArea>
+            </>
+          )
+          : (
+            <Pane>
+              {!result
+                ? 'Invoke to see the response.'
+                : `${result.error?.type}: ${result.error?.message}\n\n${(result.error?.stackTrace ?? []).join('\n')}`}
+            </Pane>
+          )}
       </TabsContent>
       <TabsContent value="logs" className="min-h-0 flex-1">
         <Pane>{result?.logs || 'No logs.'}</Pane>
