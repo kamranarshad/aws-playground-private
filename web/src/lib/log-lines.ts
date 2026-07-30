@@ -39,6 +39,22 @@ function isContinuation(line: string): boolean {
   return /^\s/.test(line) || TRACEBACK_HEADER.test(line)
 }
 
+// A python traceback ends with its exception line back at column 0 —
+// `ValueError: boom`. Java's `Caused by: ...` does the same. Without this the
+// terminator breaks out of the fold and lands as an orphan row, which is the
+// exact mess folding exists to clean up.
+const EXCEPTION_LINE = /^(?:Caused by: )?[A-Za-z_][\w.]*(?:Error|Exception)\b/
+// Only a row already mid-trace is a valid fold target — its message having a
+// newline means it already absorbed a continuation — so a standalone
+// exception line printed on its own is left as its own row.
+function isExceptionTerminator(line: string, previous: LogRow | undefined): boolean {
+  return (
+    EXCEPTION_LINE.test(line) &&
+    previous?.kind === 'line' &&
+    previous.message.includes('\n')
+  )
+}
+
 // The column is fixed width, so pad a short fraction and drop anything past
 // milliseconds rather than rounding.
 function milliseconds(fraction: string | undefined): string {
@@ -92,7 +108,10 @@ export function parseLogs(raw: string): LogRow[] {
     }
 
     const previous = rows[rows.length - 1]
-    if (isContinuation(line) && previous?.kind === 'line') {
+    if (
+      (isContinuation(line) || isExceptionTerminator(line, previous)) &&
+      previous?.kind === 'line'
+    ) {
       previous.message += `\n${line}`
       continue
     }

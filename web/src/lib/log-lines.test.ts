@@ -146,3 +146,61 @@ it('keeps a whitespace-only line inside a folded trace', () => {
   expect(rows).toHaveLength(1)
   expect(rows[0].message).toBe('boom\n  File "h.py", line 3\n   ')
 })
+
+// Captured verbatim from a real python handler invocation: the exception
+// line that ends the traceback sits back at column 0, so without a
+// terminator rule it breaks out of the fold and lands as its own orphan row
+// between the trace and the CRITICAL line that follows.
+it('folds the terminating exception line of a real python traceback', () => {
+  const rows = lines(
+    [
+      'DEBUG:root:payload parsed',
+      'INFO:root:listening on the local endpoint',
+      'WARNING:root:slow query took 812ms',
+      'a bare print with no level at all',
+      'ERROR:root:handler blew up',
+      'Traceback (most recent call last):',
+      '  File "/private/tmp/logviewer-check/handler.py", line 12, in handler',
+      '    raise ValueError("boom from python")',
+      'ValueError: boom from python',
+      'CRITICAL:root:out of memory',
+      '',
+    ].join('\n'),
+  )
+
+  expect(rows).toHaveLength(6)
+  expect(rows.map((r) => r.level)).toEqual(['debug', 'info', 'warn', null, 'error', 'error'])
+  expect(rows[4].message).toBe(
+    'handler blew up\n' +
+      'Traceback (most recent call last):\n' +
+      '  File "/private/tmp/logviewer-check/handler.py", line 12, in handler\n' +
+      '    raise ValueError("boom from python")\n' +
+      'ValueError: boom from python',
+  )
+  expect(rows[5]).toMatchObject({ level: 'error', message: 'out of memory' })
+})
+
+// The terminator rule must not swallow an exception line that merely
+// follows an unrelated log line — only a row already mid-trace (its message
+// already holds a folded continuation) is a valid fold target.
+it('does not fold a standalone exception line into an unrelated line above it', () => {
+  const rows = lines('hello from the handler\nValueError: bad input\n')
+
+  expect(rows).toHaveLength(2)
+  expect(rows[1]).toEqual({
+    kind: 'line', time: null, level: null, message: 'ValueError: bad input',
+  })
+})
+
+// Java reports a chained exception with `Caused by: ...`, back at column
+// 0, the same way python's terminator line is.
+it('folds a java "Caused by" line into the trace above it', () => {
+  const rows = lines(
+    'ERROR boom\n\tat Handler.run(Handler.java:12)\nCaused by: java.lang.RuntimeException: inner\n',
+  )
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0].message).toBe(
+    'boom\n\tat Handler.run(Handler.java:12)\nCaused by: java.lang.RuntimeException: inner',
+  )
+})
