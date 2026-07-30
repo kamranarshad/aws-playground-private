@@ -210,6 +210,34 @@ it('does not fold an exception line into a multi-line row that is not a trace', 
   })
 })
 
+// "at least", "at approximately", "at position X" all open a wrapped line
+// of ordinary prose. Indented, such a line folds like any continuation, and
+// unless a frame is required to carry a source location that folded prose
+// makes its row look mid-trace and lets an unrelated exception in behind it.
+it('does not treat indented prose beginning "at " as a stack frame', () => {
+  const rows = lines(
+    'INFO handler retrying:\n    at least three retries remain\nTypeError: not related\n',
+  )
+
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatchObject({
+    level: 'info', message: 'handler retrying:\n    at least three retries remain',
+  })
+  expect(rows[1]).toEqual({
+    kind: 'line', time: null, level: null, message: 'TypeError: not related',
+  })
+})
+
+// Node prints a frame with no parentheses when there is no function to name.
+// The `:line:col` suffix is all that marks it as a frame, so this is what
+// stops a later tightening of the rule from quietly dropping the bare form.
+it('folds an exception line into a node frame with no parentheses', () => {
+  const rows = lines('ERROR boom\n    at /app/handler.js:10:5\nTypeError: inner\n')
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0].message).toBe('boom\n    at /app/handler.js:10:5\nTypeError: inner')
+})
+
 // Java reports a chained exception with `Caused by: ...`, back at column
 // 0, the same way python's terminator line is.
 it('folds a java "Caused by" line into the trace above it', () => {

@@ -54,7 +54,12 @@ const EXCEPTION_LINE = /^(?:Caused by: )?[A-Za-z_][\w.]*(?:Error|Exception)\b/
 // without this an unrelated `TypeError: ...` printed after one would fold
 // into it. The m flag matters: the marker lands on a folded line, never the
 // first.
-const TRACE_MARKER = /^(?:Traceback \(most recent call last\):|\s+at |\s+File ".*", line \d+)/m
+// A frame always carries a source location — parenthesised, or a bare
+// `:line` for node's unnamed frames — and wrapped prose does not. Without
+// that requirement `    at least three retries remain` reads as a frame and
+// reopens the same swallow one step further in.
+const TRACE_MARKER =
+  /^(?:Traceback \(most recent call last\):|\s+at .*(?:\([^)]*\)|:\d+)|\s+File ".*", line \d+)/m
 function isExceptionTerminator(line: string, previous: LogRow | undefined): boolean {
   return (
     EXCEPTION_LINE.test(line) &&
