@@ -29,6 +29,16 @@ const LEVEL_PATTERNS = [
   new RegExp(`^(${LEVEL_NAMES})\\b[\\s:-]*`, 'i'),
 ]
 
+// server/api.js:151 frames a two-phase run with these when a build ran.
+const DIVIDER = /^=== (build|invoke) ===$/
+
+// A continuation is output that belongs to the entry above it: an indented
+// stack frame, or the header python prints before one.
+const TRACEBACK_HEADER = /^Traceback \(most recent call last\):/
+function isContinuation(line: string): boolean {
+  return /^\s/.test(line) || TRACEBACK_HEADER.test(line)
+}
+
 // The column is fixed width, so pad a short fraction and drop anything past
 // milliseconds rather than rounding.
 function milliseconds(fraction: string | undefined): string {
@@ -71,6 +81,22 @@ export function parseLogs(raw: string): LogRow[] {
 
   const rows: LogRow[] = []
   for (const line of lines) {
+    // A blank line would render as an empty bordered row, which reads as a
+    // glitch. Whitespace-only lines are not blank — they fold below.
+    if (line === '') continue
+
+    const divider = DIVIDER.exec(line)
+    if (divider) {
+      rows.push({ kind: 'divider', label: divider[1] })
+      continue
+    }
+
+    const previous = rows[rows.length - 1]
+    if (isContinuation(line) && previous?.kind === 'line') {
+      previous.message += `\n${line}`
+      continue
+    }
+
     const { time, rest } = takeTime(line)
     const { level, message } = takeLevel(rest)
     rows.push({ kind: 'line', time, level, message })

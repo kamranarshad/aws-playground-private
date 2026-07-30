@@ -81,3 +81,68 @@ it('reads a time and a level off the same line', () => {
     kind: 'line', time: '10:23:45.123', level: 'error', message: 'boom',
   })
 })
+
+// server/api.js:151 prepends these when a build ran.
+it('turns the build and invoke markers into dividers', () => {
+  const rows = parseLogs('=== build ===\ntsc ok\n=== invoke ===\nhello\n')
+
+  expect(rows).toEqual([
+    { kind: 'divider', label: 'build' },
+    { kind: 'line', time: null, level: null, message: 'tsc ok' },
+    { kind: 'divider', label: 'invoke' },
+    { kind: 'line', time: null, level: null, message: 'hello' },
+  ])
+})
+
+// The whole point of the tidy-up: a traceback is one entry, not a dozen
+// level-less rows trailing after the line that explains them.
+it('folds an indented traceback into the line above it', () => {
+  const rows = lines(
+    'ERROR boom\nTraceback (most recent call last):\n  File "h.py", line 3\n    raise ValueError\n',
+  )
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0]).toEqual({
+    kind: 'line',
+    time: null,
+    level: 'error',
+    message: 'boom\nTraceback (most recent call last):\n  File "h.py", line 3\n    raise ValueError',
+  })
+})
+
+it('folds a java stack frame into the line above it', () => {
+  const rows = lines('ERROR boom\n\tat Handler.run(Handler.java:12)\n')
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0].message).toBe('boom\n\tat Handler.run(Handler.java:12)')
+})
+
+// Logs that open mid-trace have nothing to fold into; the line is still content.
+it('keeps a continuation with no line above it as its own row', () => {
+  expect(lines('  File "h.py", line 3\n')).toEqual([
+    { kind: 'line', time: null, level: null, message: '  File "h.py", line 3' },
+  ])
+})
+
+// A divider is not a fold target — a trace cannot continue across a phase.
+it('does not fold a continuation into a divider', () => {
+  const rows = parseLogs('=== invoke ===\n  indented first line\n')
+
+  expect(rows).toHaveLength(2)
+  expect(rows[1]).toMatchObject({ kind: 'line', message: '  indented first line' })
+})
+
+// A bare blank line would render as an empty bordered row, which reads as a
+// glitch rather than as spacing.
+it('drops blank lines between entries', () => {
+  expect(lines('one\n\n\ntwo\n')).toHaveLength(2)
+})
+
+// ...but a blank line inside a trace is part of it, and is indented or folded
+// by position, so it survives as part of the parent message.
+it('keeps a whitespace-only line inside a folded trace', () => {
+  const rows = lines('ERROR boom\n  File "h.py", line 3\n   \n')
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0].message).toBe('boom\n  File "h.py", line 3\n   ')
+})
