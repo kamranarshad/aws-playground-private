@@ -28,12 +28,11 @@ it('renders a plain line with no level text at all', () => {
 })
 
 it('renders a folded traceback as a single row', () => {
-  const { container } = render(
-    <LogViewer raw={'ERROR boom\n  File "h.py", line 3\n    raise ValueError\n'} />,
-  )
+  render(<LogViewer raw={'ERROR boom\n  File "h.py", line 3\n    raise ValueError\n'} />)
 
-  expect(container.querySelectorAll('[data-log-row]')).toHaveLength(1)
-  expect(screen.getByText(/raise ValueError/)).toBeInTheDocument()
+  // One element holding both ends of the trace is the proof it folded:
+  // unfolded, these would be three separate rows.
+  expect(screen.getByText(/boom[\s\S]*raise ValueError/)).toBeInTheDocument()
 })
 
 it('labels the build and invoke phases', () => {

@@ -51,7 +51,7 @@ export function LogViewer({ raw }: { raw: string | undefined }) {
           )
           : (
             <div
-              key={i} data-log-row
+              key={i}
               className={cn(
                 'flex items-start gap-2 border-b border-border/40 pr-3 hover:bg-muted/40',
                 row.level === 'error' && 'bg-red-500/5',
