@@ -238,6 +238,37 @@ it('folds an exception line into a node frame with no parentheses', () => {
   expect(rows[0].message).toBe('boom\n    at /app/handler.js:10:5\nTypeError: inner')
 })
 
+// A clock time in wrapped prose looks like a frame's `:line` suffix. What
+// separates them is position: a frame ends at its location, prose carries on
+// past it.
+it('does not treat a clock time in indented prose as a frame location', () => {
+  const rows = lines(
+    'INFO job scheduled:\n    at 10:30 the job started\nTypeError: not related\n',
+  )
+
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatchObject({
+    level: 'info', message: 'job scheduled:\n    at 10:30 the job started',
+  })
+  expect(rows[1]).toEqual({
+    kind: 'line', time: null, level: null, message: 'TypeError: not related',
+  })
+})
+
+// Java names a source with no line number at all for native and unknown
+// frames. Nothing inside the parentheses is numeric, so this is the shape
+// that rules out ever demanding digits there.
+it('folds an exception line into a java frame with no digits in its parens', () => {
+  const rows = lines(
+    'ERROR boom\n\tat Foo.bar(Native Method)\nCaused by: java.lang.RuntimeException: inner\n',
+  )
+
+  expect(rows).toHaveLength(1)
+  expect(rows[0].message).toBe(
+    'boom\n\tat Foo.bar(Native Method)\nCaused by: java.lang.RuntimeException: inner',
+  )
+})
+
 // Java reports a chained exception with `Caused by: ...`, back at column
 // 0, the same way python's terminator line is.
 it('folds a java "Caused by" line into the trace above it', () => {

@@ -55,11 +55,16 @@ const EXCEPTION_LINE = /^(?:Caused by: )?[A-Za-z_][\w.]*(?:Error|Exception)\b/
 // into it. The m flag matters: the marker lands on a folded line, never the
 // first.
 // A frame always carries a source location — parenthesised, or a bare
-// `:line` for node's unnamed frames — and wrapped prose does not. Without
-// that requirement `    at least three retries remain` reads as a frame and
-// reopens the same swallow one step further in.
+// `:line` for node's unnamed frames — and wrapped prose does not. The
+// location has to end the line: a frame stops there, where prose carrying a
+// clock time reads on past it, so `    at 10:30 the job started` is not a
+// frame but `    at /app/h.js:10:5` is.
+// This stays a heuristic. `    at the edge (see note)` is still misread as a
+// frame, which is accepted: the only way to reject it is to demand digits
+// inside the parens, and that would throw away java's `at Foo.bar(Native
+// Method)`. A stray fold is cheaper than a dropped trace.
 const TRACE_MARKER =
-  /^(?:Traceback \(most recent call last\):|\s+at .*(?:\([^)]*\)|:\d+)|\s+File ".*", line \d+)/m
+  /^(?:Traceback \(most recent call last\):|\s+at .*(?:\([^)]*\)|:\d+(?::\d+)?)\s*$|\s+File ".*", line \d+)/m
 function isExceptionTerminator(line: string, previous: LogRow | undefined): boolean {
   return (
     EXCEPTION_LINE.test(line) &&
