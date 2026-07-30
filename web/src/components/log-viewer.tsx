@@ -36,6 +36,14 @@ export function LogViewer({ raw }: { raw: string | undefined }) {
     return <p className="p-3 font-mono text-xs text-muted-foreground">No logs.</p>
   }
 
+  // Per batch, not per row: python `logging`'s default format has no
+  // timestamp at all, and if every row hid its own empty cell the column
+  // would still show up as ragged dead space wherever a timed line sat next
+  // to an untimed one. Hiding the whole column only when nothing in the
+  // batch has a time keeps mixed logs aligned, which is the same alignment
+  // concern the per-row empty cell below is protecting.
+  const hasTime = rows.some((row) => row.kind === 'line' && row.time)
+
   return (
     <ScrollArea className="h-full">
       {rows.map((row, i) => (
@@ -43,7 +51,7 @@ export function LogViewer({ raw }: { raw: string | undefined }) {
           ? (
             <div key={i} className="flex items-center gap-2 bg-surface-strip px-3 py-1">
               <span className="h-px flex-1 bg-border" aria-hidden="true" />
-              <span className="font-mono text-[10px] tracking-wider text-muted-foreground">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
                 {row.label}
               </span>
               <span className="h-px flex-1 bg-border" aria-hidden="true" />
@@ -64,12 +72,13 @@ export function LogViewer({ raw }: { raw: string | undefined }) {
                   row.level ? LEVEL_BAR[row.level] : 'bg-transparent')}
               />
               {/* Both cells keep their width when empty, so the message column
-                  stays put down a list of mixed lines. */}
-              <span className={TIME_CELL}>{row.time}</span>
+                  stays put down a list of mixed lines; the time cell itself
+                  disappears only when no row in the whole batch has one. */}
+              <span className={cn(TIME_CELL, !hasTime && 'hidden')}>{row.time}</span>
               <span className={cn(LEVEL_CELL, row.level && LEVEL_TEXT[row.level])}>
                 {row.level?.toUpperCase()}
               </span>
-              <span className="min-w-0 flex-1 py-1 font-mono text-xs break-all whitespace-pre-wrap">
+              <span className="min-w-0 flex-1 py-1 font-mono text-xs whitespace-pre-wrap wrap-anywhere">
                 {row.message}
               </span>
             </div>

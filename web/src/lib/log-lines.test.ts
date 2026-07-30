@@ -1,9 +1,9 @@
 import { expect, it } from 'vitest'
 import { parseLogs, type LogRow } from '@/lib/log-lines'
 
-// Only `line` rows exist until Task 2 adds dividers; narrowing here keeps the
-// assertions readable. The predicate is written out rather than left to
-// inference so `rows[0].message` typechecks regardless of TS version.
+// Divider rows are asserted separately; narrowing to `line` rows here keeps
+// the assertions below readable. The predicate is written out rather than
+// left to inference so `rows[0].message` typechecks regardless of TS version.
 function lines(raw: string) {
   return parseLogs(raw).filter(
     (r): r is Extract<LogRow, { kind: 'line' }> => r.kind === 'line',
@@ -60,6 +60,13 @@ it.each([
   ['TRACE entering handler', 'trace', 'entering handler'],
 ])('pulls the level out of %s', (raw, level, message) => {
   expect(lines(raw)[0]).toMatchObject({ level, message })
+})
+
+// Guards the longest-first sort feeding the alternation: with `warn` tried
+// before `warning`, this would match `warn` and leave `ING slow query`
+// behind as the message.
+it('does not let WARN swallow the ING of WARNING', () => {
+  expect(lines('WARNING slow query')[0]).toMatchObject({ level: 'warn', message: 'slow query' })
 })
 
 // FATAL and CRITICAL are error by another name; the viewer has no fifth colour.
@@ -136,6 +143,13 @@ it('does not fold a continuation into a divider', () => {
 // glitch rather than as spacing.
 it('drops blank lines between entries', () => {
   expect(lines('one\n\n\ntwo\n')).toHaveLength(2)
+})
+
+// A whitespace-only line is not blank, but with no line row above it to
+// fold into it would fall through to the same empty bordered row a bare
+// blank line renders as — the glitch the blank-line drop exists to prevent.
+it('drops a whitespace-only line with no line above it to fold into', () => {
+  expect(parseLogs('   \n')).toEqual([])
 })
 
 // ...but a blank line inside a trace is part of it, and is indented or folded
@@ -255,29 +269,17 @@ it('does not treat a clock time in indented prose as a frame location', () => {
   })
 })
 
-// Java names a source with no line number at all for native and unknown
-// frames. Nothing inside the parentheses is numeric, so this is the shape
-// that rules out ever demanding digits there.
-it('folds an exception line into a java frame with no digits in its parens', () => {
-  const rows = lines(
-    'ERROR boom\n\tat Foo.bar(Native Method)\nCaused by: java.lang.RuntimeException: inner\n',
-  )
+// Java reports a chained exception with `Caused by: ...`, back at column 0,
+// the same way python's terminator line is — over both frame forms it can
+// follow. `Native Method` is the load-bearing case: it names a source with
+// no line number at all, and nothing inside its parens is numeric, so it's
+// what rules out ever demanding digits there.
+it.each([
+  ['a numbered frame', 'at Handler.run(Handler.java:12)'],
+  ['a frame with no digits in its parens', 'at Foo.bar(Native Method)'],
+])('folds a java "Caused by" line into the trace above it, over %s', (_, frame) => {
+  const rows = lines(`ERROR boom\n\t${frame}\nCaused by: java.lang.RuntimeException: inner\n`)
 
   expect(rows).toHaveLength(1)
-  expect(rows[0].message).toBe(
-    'boom\n\tat Foo.bar(Native Method)\nCaused by: java.lang.RuntimeException: inner',
-  )
-})
-
-// Java reports a chained exception with `Caused by: ...`, back at column
-// 0, the same way python's terminator line is.
-it('folds a java "Caused by" line into the trace above it', () => {
-  const rows = lines(
-    'ERROR boom\n\tat Handler.run(Handler.java:12)\nCaused by: java.lang.RuntimeException: inner\n',
-  )
-
-  expect(rows).toHaveLength(1)
-  expect(rows[0].message).toBe(
-    'boom\n\tat Handler.run(Handler.java:12)\nCaused by: java.lang.RuntimeException: inner',
-  )
+  expect(rows[0].message).toBe(`boom\n\t${frame}\nCaused by: java.lang.RuntimeException: inner`)
 })

@@ -3,10 +3,40 @@ import { expect, it } from 'vitest'
 
 import { LogViewer } from '@/components/log-viewer'
 
-it.each([undefined, '', '\n'])('says there are no logs for %p', (raw) => {
+it.each([undefined, '', '\n', '   \n', '  \n\t\n'])('says there are no logs for %p', (raw) => {
   render(<LogViewer raw={raw} />)
 
   expect(screen.getByText('No logs.')).toBeInTheDocument()
+})
+
+// The time cell is a fixed-width span rather than a real grid column (see
+// TIME_CELL), so "no column" means every row's time span carries `hidden`.
+function timeCells(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('span')).filter((el) =>
+    el.className.includes('w-[12ch]'),
+  )
+}
+
+it('hides the time column when no row in the batch has a time', () => {
+  const { container } = render(<LogViewer raw={'LEVEL:name:one\nLEVEL:name:two\n'} />)
+
+  const cells = timeCells(container)
+  expect(cells).toHaveLength(2)
+  cells.forEach((cell) => expect(cell).toHaveClass('hidden'))
+})
+
+// Mixed logs are the point: one timed line must not shrink the column out
+// from under a neighbour that has none, or the two rows stop lining up.
+it('keeps the time column for every row when at least one has a time', () => {
+  const { container } = render(
+    <LogViewer raw={'2026-07-30T10:23:45.123Z boot\nno timestamp here\n'} />,
+  )
+
+  const cells = timeCells(container)
+  expect(cells).toHaveLength(2)
+  cells.forEach((cell) => expect(cell).not.toHaveClass('hidden'))
+  expect(cells[0]).toHaveTextContent('10:23:45.123')
+  expect(cells[1]).toHaveTextContent('')
 })
 
 it('shows the time and level alongside the message', () => {

@@ -19,7 +19,22 @@ const ISO_TIME =
 const BRACKET_TIME =
   /^\[(?:\d{4}-\d{2}-\d{2}[T ])?(\d{2}):(\d{2}):(\d{2})(?:[.,](\d+))?(?:Z|[+-]\d{2}:?\d{2})?\]/
 
-const LEVEL_NAMES = 'ERROR|WARN(?:ING)?|INFO|DEBUG|TRACE|FATAL|CRITICAL'
+// One table drives both the alternation and the mapping, so a new name can
+// never go out of sync with what it maps to. Sorted longest-first before
+// joining: alternation is first-match-wins left to right, and with `warn`
+// ahead of `warning` in the pattern, `WARNING x` would match `warn` and
+// leave `ING x` behind as the message.
+const LEVELS: Record<string, LogLevel> = {
+  error: 'error',
+  warn: 'warn',
+  warning: 'warn',
+  info: 'info',
+  debug: 'debug',
+  trace: 'trace',
+  fatal: 'error',
+  critical: 'error',
+}
+const LEVEL_NAMES = Object.keys(LEVELS).sort((a, b) => b.length - a.length).join('|')
 // Order matters: the python form has to be tried before the bare one, or
 // `ERROR:root:boom` loses only `ERROR:` and keeps `root:boom` as its message.
 const LEVEL_PATTERNS = [
@@ -52,8 +67,9 @@ const EXCEPTION_LINE = /^(?:Caused by: )?[A-Za-z_][\w.]*(?:Error|Exception)\b/
 // A row is mid-trace once it has absorbed a recognisable stack frame — not
 // merely any indented line. An indented config dump is multi-line too, and
 // without this an unrelated `TypeError: ...` printed after one would fold
-// into it. The m flag matters: the marker lands on a folded line, never the
-// first.
+// into it. The m flag is still needed: the marker doesn't always land on a
+// folded line — a log opening mid-trace makes the frame the orphan row's
+// first and only line, with no preceding fold to have put it there.
 // A frame always carries a source location — parenthesised, or a bare
 // `:line` for node's unnamed frames — and wrapped prose does not. The
 // location has to end the line: a frame stops there, where prose carrying a
@@ -90,12 +106,11 @@ function takeTime(text: string): { time: string | null; rest: string } {
 }
 
 function toLevel(name: string): LogLevel {
-  const n = name.toLowerCase()
-  // The viewer has four colours, not six: the two names for "worse than an
-  // error" fold into error, and WARNING into WARN.
-  if (n === 'fatal' || n === 'critical') return 'error'
-  if (n === 'warning') return 'warn'
-  return n as LogLevel
+  // The viewer has four colours, not five: LogLevel has five members, but
+  // debug and trace share one muted grey rather than getting one each. The
+  // LEVELS table above is what folds fatal/critical into error and warning
+  // into warn, so the lookup here never needs an unchecked cast.
+  return LEVELS[name.toLowerCase()]
 }
 
 function takeLevel(text: string): { level: LogLevel | null; message: string } {
@@ -116,7 +131,8 @@ export function parseLogs(raw: string): LogRow[] {
   const rows: LogRow[] = []
   for (const line of lines) {
     // A blank line would render as an empty bordered row, which reads as a
-    // glitch. Whitespace-only lines are not blank — they fold below.
+    // glitch. Whitespace-only lines are not blank — they fold below, but
+    // only when there is a row above them to fold into (see below).
     if (line === '') continue
 
     const divider = DIVIDER.exec(line)
@@ -126,6 +142,11 @@ export function parseLogs(raw: string): LogRow[] {
     }
 
     const previous = rows[rows.length - 1]
+    // This has to sit below the `previous` lookup, since it depends on it.
+    // With no line row above to fold into, a whitespace-only line would
+    // otherwise fall through to a row of its own — the same empty bordered
+    // row the blank-line drop above exists to prevent.
+    if (line.trim() === '' && previous?.kind !== 'line') continue
     if (
       (isContinuation(line) || isExceptionTerminator(line, previous)) &&
       previous?.kind === 'line'
