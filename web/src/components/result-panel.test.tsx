@@ -89,3 +89,23 @@ it('handles a successful invoke that returned nothing', () => {
   expect(screen.queryByText(/^undefined: undefined/)).not.toBeInTheDocument()
   expect(screen.queryByLabelText('Copy response JSON')).not.toBeInTheDocument()
 })
+
+// The Logs tab used to be a raw <pre>: a traceback was a dozen unstructured
+// rows and nothing separated an error from an info line.
+it('renders logs as parsed rows rather than one flat blob', async () => {
+  render(<ResultPanel result={{ ...ok, logs: '2026-07-30T10:23:45.123Z ERROR boom\n' }} />)
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Logs' }))
+
+  expect(screen.getByText('10:23:45.123')).toBeInTheDocument()
+  expect(screen.getByText('ERROR')).toBeInTheDocument()
+  expect(screen.getByText('boom')).toBeInTheDocument()
+})
+
+it('still says there are no logs when the run printed nothing', async () => {
+  render(<ResultPanel result={{ ...ok, logs: '' }} />)
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Logs' }))
+
+  expect(screen.getByText('No logs.')).toBeInTheDocument()
+})
