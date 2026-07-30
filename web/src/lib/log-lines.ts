@@ -43,15 +43,23 @@ function isContinuation(line: string): boolean {
 // `ValueError: boom`. Java's `Caused by: ...` does the same. Without this the
 // terminator breaks out of the fold and lands as an orphan row, which is the
 // exact mess folding exists to clean up.
+// Deliberately narrow, and so not exhaustive: terminators not shaped like
+// `<Identifier>Error`/`<Identifier>Exception` — `KeyboardInterrupt`,
+// `SystemExit`, `StopIteration`, a user-defined `class Boom(Exception)`
+// raised as `Boom: ...` — still orphan. Widening it would cost more in false
+// folds than those cases cost as stray rows.
 const EXCEPTION_LINE = /^(?:Caused by: )?[A-Za-z_][\w.]*(?:Error|Exception)\b/
-// Only a row already mid-trace is a valid fold target — its message having a
-// newline means it already absorbed a continuation — so a standalone
-// exception line printed on its own is left as its own row.
+// A row is mid-trace once it has absorbed a recognisable stack frame — not
+// merely any indented line. An indented config dump is multi-line too, and
+// without this an unrelated `TypeError: ...` printed after one would fold
+// into it. The m flag matters: the marker lands on a folded line, never the
+// first.
+const TRACE_MARKER = /^(?:Traceback \(most recent call last\):|\s+at |\s+File ".*", line \d+)/m
 function isExceptionTerminator(line: string, previous: LogRow | undefined): boolean {
   return (
     EXCEPTION_LINE.test(line) &&
     previous?.kind === 'line' &&
-    previous.message.includes('\n')
+    TRACE_MARKER.test(previous.message)
   )
 }
 

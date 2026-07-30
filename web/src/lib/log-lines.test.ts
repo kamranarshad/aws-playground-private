@@ -181,14 +181,32 @@ it('folds the terminating exception line of a real python traceback', () => {
 })
 
 // The terminator rule must not swallow an exception line that merely
-// follows an unrelated log line — only a row already mid-trace (its message
-// already holds a folded continuation) is a valid fold target.
+// follows an unrelated log line — only a row already holding a stack trace
+// is a valid fold target.
 it('does not fold a standalone exception line into an unrelated line above it', () => {
   const rows = lines('hello from the handler\nValueError: bad input\n')
 
   expect(rows).toHaveLength(2)
   expect(rows[1]).toEqual({
     kind: 'line', time: null, level: null, message: 'ValueError: bad input',
+  })
+})
+
+// Being multi-line is not the same as being a stack trace: an indented
+// config dump absorbs continuations too. Only a row holding a recognisable
+// stack frame is a fold target, or an unrelated exception printed after a
+// dump gets silently swallowed into it.
+it('does not fold an exception line into a multi-line row that is not a trace', () => {
+  const rows = lines(
+    'INFO listing config:\n  key: value\n  another: value\nTypeError: not related at all\n',
+  )
+
+  expect(rows).toHaveLength(2)
+  expect(rows[0]).toMatchObject({
+    level: 'info', message: 'listing config:\n  key: value\n  another: value',
+  })
+  expect(rows[1]).toEqual({
+    kind: 'line', time: null, level: null, message: 'TypeError: not related at all',
   })
 })
 
