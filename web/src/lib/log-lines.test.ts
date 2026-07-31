@@ -316,3 +316,81 @@ it('parses a real winston capture into one row per entry', () => {
   // is what keeps it readable as a frame.
   expect(rows[5].message).toBe('handler complete  order_id=A-1001')
 })
+
+// A JSON line carries its time and level inside the object, where the text
+// readers find neither — the whole entry used to land as one level-less row.
+it('reads time, level and message out of a structured line', () => {
+  const row = lines(
+    '{"timestamp":"2026-07-31T02:35:13.683Z","status":"warn","message":"slow call","service":"orders-api"}\n',
+  )[0]
+
+  expect(row).toMatchObject({ time: '02:35:13.683', level: 'warn', message: 'slow call' })
+  // The whole object rides along for the viewer to expand — including the
+  // fields already pulled into columns, so the entry reads in context.
+  expect(row.attrs).toEqual({
+    timestamp: '2026-07-31T02:35:13.683Z', status: 'warn',
+    message: 'slow call', service: 'orders-api',
+  })
+})
+
+// Field names differ by logger; the aliases are what make this work beyond
+// the one fixture that prompted it.
+it.each([
+  ['winston/datadog', '{"timestamp":"2026-07-31T02:35:13.683Z","status":"error","message":"boom"}'],
+  ['bunyan/generic', '{"time":"2026-07-31T02:35:13.683Z","level":"error","msg":"boom"}'],
+  ['elastic', '{"@timestamp":"2026-07-31T02:35:13.683Z","severity":"ERROR","message":"boom"}'],
+  ['python json', '{"ts":"2026-07-31T02:35:13.683Z","levelname":"error","message":"boom"}'],
+])('reads the %s field names', (_, line) => {
+  expect(lines(`${line}\n`)[0]).toMatchObject({
+    time: '02:35:13.683', level: 'error', message: 'boom',
+  })
+})
+
+// pino numbers its levels and stamps Date.now(). 1754014513683 is
+// 2026-07-31T02:15:13.683Z; 50 is its error step.
+it('decodes pino numeric levels and epoch-millisecond times', () => {
+  expect(lines('{"level":50,"time":1785464113683,"msg":"boom"}\n')[0]).toMatchObject({
+    time: '02:15:13.683', level: 'error', message: 'boom',
+  })
+})
+
+it.each([
+  [10, 'trace'], [20, 'debug'], [30, 'info'], [40, 'warn'], [50, 'error'], [60, 'error'],
+  // Between the standard steps, so a custom level still lands somewhere.
+  [35, 'info'],
+])('maps numeric level %i to %s', (level, expected) => {
+  expect(lines(`{"level":${level},"msg":"x"}\n`)[0].level).toBe(expected)
+})
+
+// Whole seconds rather than milliseconds — 1e11 ms is 1973 and 1e11 s is the
+// year 5138, so the two can't be confused for any real log.
+it('reads a whole-second epoch time', () => {
+  expect(lines('{"level":"info","time":1785464113,"msg":"x"}\n')[0].time).toBe('02:15:13.000')
+})
+
+// A handler printing data is not a log entry. Left as the raw JSON it is,
+// which is what it was before structured parsing existed.
+it.each([
+  ['a plain response payload', '{"statusCode":200,"body":"hi"}'],
+  ['a status that is not a level', '{"status":"ok","count":3}'],
+  ['a JSON array', '[{"level":"info","message":"x"}]'],
+  ['a broken object', '{"level":"info","message":'],
+])('leaves %s as raw text', (_, line) => {
+  const row = lines(`${line}\n`)[0]
+
+  expect(row).toMatchObject({ time: null, level: null, message: line })
+  expect(row.attrs).toBeUndefined()
+})
+
+// The level alone is enough to call it a log — a structured entry need not
+// carry a message.
+it('accepts a structured line with a level but no message', () => {
+  expect(lines('{"level":"debug","phase":"init"}\n')[0]).toMatchObject({
+    level: 'debug', message: '',
+  })
+})
+
+// Plain lines have nothing more to show, so nothing to expand.
+it('leaves plain text lines with no attrs', () => {
+  expect(lines('2026-07-31T02:35:13.683Z INFO hello\n')[0].attrs).toBeUndefined()
+})

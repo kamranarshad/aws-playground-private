@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { expect, it } from 'vitest'
 
 import { LogViewer } from '@/components/log-viewer'
@@ -70,4 +71,44 @@ it('labels the build and invoke phases', () => {
 
   expect(screen.getByText('build')).toBeInTheDocument()
   expect(screen.getByText('invoke')).toBeInTheDocument()
+})
+
+const STRUCTURED =
+  '{"timestamp":"2026-07-31T02:35:13.683Z","status":"warn","message":"slow call","service":"orders-api"}\n'
+
+it('shows a structured line in the same columns as a text one', () => {
+  render(<LogViewer raw={STRUCTURED} />)
+
+  expect(screen.getByText('02:35:13.683')).toBeInTheDocument()
+  expect(screen.getByText('WARN')).toBeInTheDocument()
+  expect(screen.getByText('slow call')).toBeInTheDocument()
+  // The raw object is not the row's text — that was the old behaviour.
+  expect(screen.queryByText(/"ddsource"|^\{/)).not.toBeInTheDocument()
+})
+
+// The attributes are one click down, the way Datadog's list works.
+it('expands a structured line into a tree of its attributes', async () => {
+  render(<LogViewer raw={STRUCTURED} />)
+  expect(screen.queryByText('service')).not.toBeInTheDocument()
+
+  await userEvent.click(screen.getByLabelText(/^Expand log entry/))
+
+  expect(screen.getByText('service')).toBeInTheDocument()
+  expect(screen.getByText('"orders-api"')).toBeInTheDocument()
+})
+
+it('collapses an expanded entry again', async () => {
+  render(<LogViewer raw={STRUCTURED} />)
+  await userEvent.click(screen.getByLabelText(/^Expand log entry/))
+
+  await userEvent.click(screen.getByLabelText(/^Collapse log entry/))
+
+  expect(screen.queryByText('service')).not.toBeInTheDocument()
+})
+
+// A plain text log has nothing to expand, so it carries no chevron gutter.
+it('offers no expander for plain text lines', () => {
+  render(<LogViewer raw={'2026-07-31T02:35:13.683Z INFO hello\n'} />)
+
+  expect(screen.queryByLabelText(/log entry/)).not.toBeInTheDocument()
 })

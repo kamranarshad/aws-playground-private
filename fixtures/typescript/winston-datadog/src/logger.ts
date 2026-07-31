@@ -1,9 +1,8 @@
 // Winston wired up two ways, so one fixture covers both halves of "Datadog
 // format". JSON is what Datadog's intake prefers and what most Node services
-// actually emit; text is what a grok pipeline reads, and the only one of the
-// two the playground's Logs tab can parse. Shipping both is deliberate: it
-// exercises the viewer AND shows what structured logs currently look like in
-// it (a column of level-less rows).
+// actually emit; text is what a grok pipeline reads. The Logs tab parses
+// both — text off the front of the line, JSON out of the object — so the
+// pair is what proves the two paths agree on the same six entries.
 import { createLogger as winstonLogger, format, transports, type Logger } from 'winston'
 
 export type LogFormat = 'text' | 'json'

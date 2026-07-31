@@ -122,12 +122,19 @@ row inheriting that line's level rather than a dozen level-less ones. When a
 build command runs, its output appears above the handler's under a `BUILD`
 divider.
 
+Structured logs work too. A line that is a JSON object gets its time, level
+and message read out of the object and shown in the same columns, with the
+whole entry one click away behind a chevron. Field names vary by logger, so
+the common aliases are accepted: `timestamp`/`time`/`@timestamp`/`ts` for the
+time, `level`/`status`/`severity`/`levelname` for the level, `message`/`msg`
+for the text. pino's numeric levels and epoch timestamps are decoded. JSON
+that isn't a log entry — a handler printing `{"statusCode":200}` — is left
+alone and shown as the raw text it is.
+
 Nothing in the pipeline stamps log lines for you: the time and level have to
 come from whatever the handler itself printed. `fixtures/typescript/winston-datadog`
-is the worked example — a winston logger that emits the text layout this
-parses, or Datadog's JSON intake shape with `{"format":"json"}` (useful for
-seeing what structured logs look like here: JSON lines carry their level
-inside the object, so the columns stay empty).
+is the worked example — a winston logger emitting either the text layout or
+Datadog's JSON intake shape, switched with `{"format":"json"}`.
 
 ## Data
 

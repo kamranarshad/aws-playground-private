@@ -7,7 +7,16 @@ export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
 export type LogRow =
   | { kind: 'divider'; label: string }
-  | { kind: 'line'; time: string | null; level: LogLevel | null; message: string }
+  | {
+      kind: 'line'
+      time: string | null
+      level: LogLevel | null
+      message: string
+      // The whole parsed object, for lines that were structured JSON. The
+      // viewer expands it; its presence is what makes a row expandable.
+      // Undefined for plain text lines, which have nothing more to show.
+      attrs?: Record<string, unknown>
+    }
 
 // Both shapes capture (hh, mm, ss, fraction) in that order so one reader
 // handles either. The date is non-capturing and, for the bracketed form,
@@ -122,6 +131,87 @@ function takeLevel(text: string): { level: LogLevel | null; message: string } {
   return { level: null, message: text }
 }
 
+// ---- structured (JSON) lines ------------------------------------------
+//
+// A JSON line carries its time and level inside the object, so the readers
+// above find neither and the whole entry lands as one level-less row. Which
+// field holds what differs by logger, so read the common aliases rather than
+// any one library's names. First match wins, most specific first.
+const TIME_KEYS = ['timestamp', 'time', '@timestamp', 'ts', 'date']
+const LEVEL_KEYS = ['level', 'status', 'severity', 'levelname', 'loglevel']
+const MESSAGE_KEYS = ['message', 'msg', 'event', 'short_message']
+
+function pick(obj: Record<string, unknown>, keys: string[]): unknown {
+  for (const key of keys) if (obj[key] != null) return obj[key]
+  return undefined
+}
+
+// pino and bunyan number their levels on the same scale. Ranges rather than
+// exact matches, so a custom level sitting between the standard steps still
+// lands somewhere sensible instead of nowhere.
+function numericLevel(value: number): LogLevel {
+  if (value < 20) return 'trace'
+  if (value < 30) return 'debug'
+  if (value < 40) return 'info'
+  if (value < 50) return 'warn'
+  return 'error'
+}
+
+function structuredLevel(value: unknown): LogLevel | null {
+  if (typeof value === 'number') return numericLevel(value)
+  if (typeof value !== 'string') return null
+  // Some transports write pino's numeric level back out as a string.
+  const numeric = Number(value)
+  if (value.trim() !== '' && Number.isFinite(numeric)) return numericLevel(numeric)
+  return LEVELS[value.toLowerCase()] ?? null
+}
+
+// pino stamps Date.now(); other loggers use whole seconds. Below the
+// threshold is read as seconds: 1e11 milliseconds is 1973 and 1e11 seconds is
+// the year 5138, so no real log is ambiguous.
+function fromEpoch(value: number): string | null {
+  if (!Number.isFinite(value) || value <= 0) return null
+  const date = new Date(value < 1e11 ? value * 1000 : value)
+  if (Number.isNaN(date.getTime())) return null
+  // UTC, which is how an ISO string ending in Z already renders above.
+  return date.toISOString().slice(11, 23)
+}
+
+function structuredTime(value: unknown): string | null {
+  if (typeof value === 'number') return fromEpoch(value)
+  if (typeof value !== 'string') return null
+  const numeric = Number(value)
+  if (value.trim() !== '' && Number.isFinite(numeric)) return fromEpoch(numeric)
+  // Reuse the text readers: a JSON timestamp is usually just an ISO string.
+  return takeTime(value).time
+}
+
+function parseStructured(line: string): LogRow | null {
+  if (!line.startsWith('{')) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(line)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+  const obj = parsed as Record<string, unknown>
+
+  const rawMessage = pick(obj, MESSAGE_KEYS)
+  const level = structuredLevel(pick(obj, LEVEL_KEYS))
+  // A handler printing plain data is not a log entry. Requiring a message, or
+  // a level that actually resolves to one we know, keeps `{"statusCode":200}`
+  // and `{"status":"ok"}` rendering as the raw JSON they are — `status` is a
+  // level key, but `"ok"` is not a level.
+  if (rawMessage === undefined && level === null) return null
+
+  const message = rawMessage === undefined
+    ? ''
+    : typeof rawMessage === 'string' ? rawMessage : JSON.stringify(rawMessage)
+
+  return { kind: 'line', time: structuredTime(pick(obj, TIME_KEYS)), level, message, attrs: obj }
+}
+
 export function parseLogs(raw: string): LogRow[] {
   const lines = raw.split('\n')
   // Child output ends with a newline, which split turns into a phantom
@@ -152,6 +242,15 @@ export function parseLogs(raw: string): LogRow[] {
       previous?.kind === 'line'
     ) {
       previous.message += `\n${line}`
+      continue
+    }
+
+    // Structured first: a JSON line starts with `{`, so the text readers
+    // below would find no leading time or level and hand back the whole
+    // object as one level-less message.
+    const structured = parseStructured(line)
+    if (structured) {
+      rows.push(structured)
       continue
     }
 

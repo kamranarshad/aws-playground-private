@@ -2,10 +2,9 @@
 // playground's Logs tab. Register the fixture folder with handler
 // `dist/index.handler`; the committed bundle runs without an npm install.
 //
-// Invoke with `{}` for the text layout the Logs tab parses, or
-// `{"format":"json"}` for the JSON shape Datadog's intake prefers — which
-// the tab does not parse, so every row comes out level-less. Both are worth
-// seeing.
+// Invoke with `{}` for winston's text layout, or `{"format":"json"}` for the
+// JSON shape Datadog's intake prefers. The Logs tab renders both the same
+// way; the JSON rows additionally expand to the full object.
 import { createLogger, type LogFormat } from './logger'
 
 interface LogEvent {
