@@ -108,6 +108,27 @@ screen-sharing the playground doesn't broadcast them. They are still
 stored in plain text in `functions.json` — the masking is shoulder-surfing
 protection, not encryption.
 
+## Logs
+
+Everything the handler writes to stdout and stderr lands in the Logs tab,
+one row per entry. A leading timestamp and log level are read off each line
+and shown in their own columns — ISO 8601, python `logging`'s
+`2026-07-31 10:23:45,123`, or a bracketed `[10:23:45]` for the time; `ERROR`,
+`[ERROR]`, or `ERROR:root:` for the level. A line with neither still renders,
+just without them.
+
+Stack traces fold into the line that explains them, so a traceback is one
+row inheriting that line's level rather than a dozen level-less ones. When a
+build command runs, its output appears above the handler's under a `BUILD`
+divider.
+
+Nothing in the pipeline stamps log lines for you: the time and level have to
+come from whatever the handler itself printed. `fixtures/typescript/winston-datadog`
+is the worked example — a winston logger that emits the text layout this
+parses, or Datadog's JSON intake shape with `{"format":"json"}` (useful for
+seeing what structured logs look like here: JSON lines carry their level
+inside the object, so the columns stay empty).
+
 ## Data
 
 Registered functions, per-function env vars, and saved events live in

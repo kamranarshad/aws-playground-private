@@ -283,3 +283,36 @@ it.each([
   expect(rows).toHaveLength(1)
   expect(rows[0].message).toBe(`boom\n\t${frame}\nCaused by: java.lang.RuntimeException: inner`)
 })
+
+// Captured verbatim from a real invoke of fixtures/typescript/winston-datadog,
+// the way the python capture above was. Hand-written fixtures kept agreeing
+// with whatever the parser already did; captures are what caught the bugs.
+// This one pins the node/winston shape: an ISO timestamp and a padded level
+// per line, a bare console.log carrying neither, and a stack printed as
+// frames only so the whole failure stays one row.
+it('parses a real winston capture into one row per entry', () => {
+  const rows = lines(
+    '2026-07-31T02:30:55.887Z DEBUG payload parsed  format=text\n' +
+    '2026-07-31T02:30:55.889Z INFO  fetching order  order_id=A-1001\n' +
+    '2026-07-31T02:30:55.889Z WARN  slow downstream call  order_id=A-1001 duration_ms=812\n' +
+    'plain console.log - no level, no timestamp\n' +
+    '2026-07-31T02:30:55.889Z ERROR order lookup failed  order_id=A-1001 errorKind=RangeError\n' +
+    '    at readFromStore (/app/dist/index.js:10806:9)\n' +
+    '    at lookupOrder (/app/dist/index.js:10809:10)\n' +
+    '    at new Promise (<anonymous>)\n' +
+    '2026-07-31T02:30:55.890Z INFO  handler complete  order_id=A-1001\n',
+  )
+
+  expect(rows.map((r) => r.level)).toEqual([
+    'debug', 'info', 'warn', null, 'error', 'info',
+  ])
+  expect(rows.map((r) => r.time)).toEqual([
+    '02:30:55.887', '02:30:55.889', '02:30:55.889', null, '02:30:55.889', '02:30:55.890',
+  ])
+  // The three frames land in the error row, not in rows of their own.
+  expect(rows[4].message.split('\n')).toHaveLength(4)
+  expect(rows[4].message).toContain('at new Promise (<anonymous>)')
+  // `at new Promise (<anonymous>)` has no line:col — the parenthesised source
+  // is what keeps it readable as a frame.
+  expect(rows[5].message).toBe('handler complete  order_id=A-1001')
+})
