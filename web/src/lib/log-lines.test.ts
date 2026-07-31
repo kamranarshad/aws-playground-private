@@ -394,3 +394,31 @@ it('accepts a structured line with a level but no message', () => {
 it('leaves plain text lines with no attrs', () => {
   expect(lines('2026-07-31T02:35:13.683Z INFO hello\n')[0].attrs).toBeUndefined()
 })
+
+// The text format prints its metadata after the message; a structured line
+// that dropped its own would read as barer than the identical text one.
+it('keeps whatever the columns did not consume as metadata', () => {
+  const row = lines(
+    '{"timestamp":"2026-07-31T02:35:13.683Z","status":"warn","message":"slow call",' +
+    '"service":"orders-api","order_id":"A-1001","duration_ms":812}\n',
+  )[0]
+
+  expect(row.meta).toEqual([
+    ['service', 'orders-api'], ['order_id', 'A-1001'], ['duration_ms', 812],
+  ])
+})
+
+// A field that resolved is consumed; one that did not stays visible rather
+// than being silently dropped on the floor.
+it('leaves an unparseable timestamp in the metadata', () => {
+  const row = lines('{"timestamp":"not a time","level":"info","msg":"x","a":1}\n')[0]
+
+  expect(row.time).toBeNull()
+  expect(row.meta).toEqual([['timestamp', 'not a time'], ['a', 1]])
+})
+
+it('reports no metadata when the object is only its columns', () => {
+  const row = lines('{"time":"2026-07-31T02:35:13.683Z","level":"info","msg":"x"}\n')[0]
+
+  expect(row.meta).toEqual([])
+})

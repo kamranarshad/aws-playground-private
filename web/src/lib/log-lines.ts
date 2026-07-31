@@ -16,6 +16,11 @@ export type LogRow =
       // viewer expands it; its presence is what makes a row expandable.
       // Undefined for plain text lines, which have nothing more to show.
       attrs?: Record<string, unknown>
+      // Whatever the columns did not consume, in the order the logger wrote
+      // it. Shown inline after the message, which is where the text format
+      // already puts its own metadata — without this a structured line reads
+      // as barer than the identical text one.
+      meta?: [string, unknown][]
     }
 
 // Both shapes capture (hh, mm, ss, fraction) in that order so one reader
@@ -141,9 +146,13 @@ const TIME_KEYS = ['timestamp', 'time', '@timestamp', 'ts', 'date']
 const LEVEL_KEYS = ['level', 'status', 'severity', 'levelname', 'loglevel']
 const MESSAGE_KEYS = ['message', 'msg', 'event', 'short_message']
 
-function pick(obj: Record<string, unknown>, keys: string[]): unknown {
-  for (const key of keys) if (obj[key] != null) return obj[key]
-  return undefined
+// Returns the key as well as the value: the caller has to know which field it
+// consumed, so the rest can be listed as metadata without repeating it.
+function pick(
+  obj: Record<string, unknown>, keys: string[],
+): { key: string; value: unknown } | null {
+  for (const key of keys) if (obj[key] != null) return { key, value: obj[key] }
+  return null
 }
 
 // pino and bunyan number their levels on the same scale. Ranges rather than
@@ -197,19 +206,38 @@ function parseStructured(line: string): LogRow | null {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
   const obj = parsed as Record<string, unknown>
 
-  const rawMessage = pick(obj, MESSAGE_KEYS)
-  const level = structuredLevel(pick(obj, LEVEL_KEYS))
+  const messageField = pick(obj, MESSAGE_KEYS)
+  const levelField = pick(obj, LEVEL_KEYS)
+  const timeField = pick(obj, TIME_KEYS)
+  const level = levelField && structuredLevel(levelField.value)
+  const time = timeField && structuredTime(timeField.value)
   // A handler printing plain data is not a log entry. Requiring a message, or
   // a level that actually resolves to one we know, keeps `{"statusCode":200}`
   // and `{"status":"ok"}` rendering as the raw JSON they are — `status` is a
   // level key, but `"ok"` is not a level.
-  if (rawMessage === undefined && level === null) return null
+  if (!messageField && !level) return null
 
-  const message = rawMessage === undefined
+  const raw = messageField?.value
+  const message = raw === undefined
     ? ''
-    : typeof rawMessage === 'string' ? rawMessage : JSON.stringify(rawMessage)
+    : typeof raw === 'string' ? raw : JSON.stringify(raw)
 
-  return { kind: 'line', time: structuredTime(pick(obj, TIME_KEYS)), level, message, attrs: obj }
+  // Only a field that actually resolved counts as consumed. A `timestamp`
+  // that didn't parse stays in the metadata rather than vanishing, so a
+  // malformed value is visible instead of silently dropped.
+  const consumed = new Set<string>()
+  if (messageField) consumed.add(messageField.key)
+  if (level && levelField) consumed.add(levelField.key)
+  if (time && timeField) consumed.add(timeField.key)
+
+  return {
+    kind: 'line',
+    time: time ?? null,
+    level: level ?? null,
+    message,
+    attrs: obj,
+    meta: Object.entries(obj).filter(([key]) => !consumed.has(key)),
+  }
 }
 
 export function parseLogs(raw: string): LogRow[] {

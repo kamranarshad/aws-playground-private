@@ -31,10 +31,22 @@ const LEVEL_BAR: Record<LogLevel, string> = {
 const TIME_CELL = 'w-[12ch] shrink-0 py-1 font-mono text-[11px] tabular-nums text-muted-foreground'
 const LEVEL_CELL = 'w-12 shrink-0 py-1 text-[10px] font-semibold'
 
-// A structured line's own row shows only its message, the way Datadog's list
-// does; everything else in the object lives one click down. The stack of an
-// error logged as an attribute is in there too, rather than folded into the
-// message, so one long trace can't push the rest of the list off screen.
+// Scalars read as themselves; a nested object or array is summarised, since
+// a whole stack inlined would bury the message it belongs to. The chevron is
+// there for those — this is a summary, not the payload.
+function metaValue(value: unknown): string {
+  if (Array.isArray(value)) return '[…]'
+  if (value !== null && typeof value === 'object') return '{…}'
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value)
+  // Unquoted whitespace would run two pairs together into one unreadable run.
+  return /\s/.test(text) ? JSON.stringify(text) : text
+}
+
+// A structured line shows its message, then whatever the columns didn't
+// consume — the same information the text format prints after its own
+// message, so the two shapes read alike. The full object, including any
+// stack logged as an attribute, is one click down rather than folded into
+// the message, so a long trace can't push the rest of the list off screen.
 function LogLine({ row, hasTime, hasAttrs }: {
   row: Extract<LogRow, { kind: 'line' }>
   hasTime: boolean
@@ -73,8 +85,26 @@ function LogLine({ row, hasTime, hasAttrs }: {
         <span className={cn(LEVEL_CELL, row.level && LEVEL_TEXT[row.level])}>
           {row.level?.toUpperCase()}
         </span>
-        <span className="min-w-0 flex-1 py-1 font-mono text-xs whitespace-pre-wrap wrap-anywhere">
-          {row.message}
+        <span className="min-w-0 flex-1 py-1 font-mono text-xs">
+          <span className="block whitespace-pre-wrap wrap-anywhere">{row.message}</span>
+          {row.meta && row.meta.length > 0 && (
+            // Its own line, clamped to one. Datadog's intake wants service,
+            // ddsource and ddtags on every entry, so inlining the lot after
+            // the message turned each row four lines tall and identical for
+            // three of them — the list stopped being scannable. One line
+            // each keeps the row height uniform; the chevron has the rest.
+            // line-clamp rather than truncate: truncate sets nowrap, and the
+            // Radix scroll viewport sizes to its content, so a nowrap line
+            // widens the whole list instead of ellipsing inside it.
+            // One text run, not a span per pair: line-clamp lays out with
+            // -webkit-box-orient vertical, which counts each child box as a
+            // line, so per-pair spans clamp after the first pair rather than
+            // at the edge of the row. No `block` either — line-clamp sets
+            // display itself and block would win, turning the clamp off.
+            <span className="line-clamp-1 text-muted-foreground">
+              {row.meta.map(([key, value]) => `${key}=${metaValue(value)}`).join('  ')}
+            </span>
+          )}
         </span>
       </div>
       {open && row.attrs && (
