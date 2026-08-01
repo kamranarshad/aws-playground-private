@@ -108,6 +108,34 @@ screen-sharing the playground doesn't broadcast them. They are still
 stored in plain text in `functions.json` — the masking is shoulder-surfing
 protection, not encryption.
 
+## Logs
+
+Everything the handler writes to stdout and stderr lands in the Logs tab,
+one row per entry. A leading timestamp and log level are read off each line
+and shown in their own columns — ISO 8601, python `logging`'s
+`2026-07-31 10:23:45,123`, or a bracketed `[10:23:45]` for the time; `ERROR`,
+`[ERROR]`, or `ERROR:root:` for the level. A line with neither still renders,
+just without them.
+
+Stack traces fold into the line that explains them, so a traceback is one
+row inheriting that line's level rather than a dozen level-less ones. When a
+build command runs, its output appears above the handler's under a `BUILD`
+divider.
+
+Structured logs work too. A line that is a JSON object gets its time, level
+and message read out of the object and shown in the same columns, with the
+whole entry one click away behind a chevron. Field names vary by logger, so
+the common aliases are accepted: `timestamp`/`time`/`@timestamp`/`ts` for the
+time, `level`/`status`/`severity`/`levelname` for the level, `message`/`msg`
+for the text. pino's numeric levels and epoch timestamps are decoded. JSON
+that isn't a log entry — a handler printing `{"statusCode":200}` — is left
+alone and shown as the raw text it is.
+
+Nothing in the pipeline stamps log lines for you: the time and level have to
+come from whatever the handler itself printed. `fixtures/typescript/winston-datadog`
+is the worked example — a winston logger emitting either the text layout or
+Datadog's JSON intake shape, switched with `{"format":"json"}`.
+
 ## Data
 
 Registered functions, per-function env vars, and saved events live in

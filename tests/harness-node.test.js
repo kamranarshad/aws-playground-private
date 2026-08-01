@@ -158,6 +158,62 @@ test('ts-apigw fixture: POST /sum adds numbers, 400 on bad body', async () => {
   assert.strictEqual(bad.envelope.response.statusCode, 400);
 });
 
+// The text layout is the one the Logs tab parses: a leading ISO timestamp,
+// then the level. Assert the shape rather than the wording, so rephrasing a
+// log message doesn't break the test that guards the format.
+test('ts-winston fixture: text mode leads every line with an ISO time and a level', async () => {
+  const { envelope, stdout } = await runHarness({
+    fixture: 'typescript/winston-datadog', handler: 'dist/index.handler', event: {} });
+
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(JSON.parse(envelope.response.body).logFormat, 'text');
+
+  const lines = stdout.trim().split('\n');
+  const logged = lines.filter(l => /^\d{4}-\d{2}-\d{2}T[\d:.]+Z /.test(l));
+  assert.deepStrictEqual(
+    logged.map(l => l.split(/\s+/)[1]),
+    ['DEBUG', 'INFO', 'WARN', 'ERROR', 'INFO']);
+
+  // The bare console.log has neither, on purpose — it is what gives the
+  // viewer a level-less row to render among the parsed ones.
+  assert.ok(lines.some(l => l === 'plain console.log - no level, no timestamp'));
+
+  // Frames only, all indented. A stack printed whole would put its
+  // "RangeError: ..." line at column 0, where the viewer starts a new row
+  // instead of folding — splitting one error across two.
+  const frames = lines.filter(l => /^\s+at /.test(l));
+  assert.ok(frames.length >= 2, `expected indented stack frames, got ${frames.length}`);
+  assert.ok(!lines.some(l => /^RangeError:/.test(l)));
+});
+
+// Datadog's intake keys off `status`, not `level`, and reads error.kind /
+// error.message / error.stack for error tracking.
+test('ts-winston fixture: json mode emits Datadog standard attributes', async () => {
+  const { envelope, stdout } = await runHarness({
+    fixture: 'typescript/winston-datadog', handler: 'dist/index.handler',
+    event: { format: 'json', orderId: 'B-2002' } });
+
+  assert.strictEqual(envelope.ok, true);
+  assert.strictEqual(JSON.parse(envelope.response.body).orderId, 'B-2002');
+
+  const entries = stdout.trim().split('\n')
+    .filter(l => l.startsWith('{'))
+    .map(l => JSON.parse(l));
+
+  assert.deepStrictEqual(entries.map(e => e.status),
+    ['debug', 'info', 'warn', 'error', 'info']);
+  for (const entry of entries) {
+    assert.match(entry.timestamp, /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
+    assert.strictEqual(entry.service, 'orders-api');
+    assert.strictEqual(entry.ddsource, 'nodejs');
+    assert.ok(entry.message);
+  }
+
+  const failure = entries.find(e => e.status === 'error');
+  assert.strictEqual(failure.error.kind, 'RangeError');
+  assert.match(failure.error.stack, /at readFromStore/);
+});
+
 test('malformed handler string -> phase:init Runtime.MalformedHandlerName', async () => {
   const { envelope } = await runHarness({ fixture: 'javascript/hello', handler: 'nodots' });
   assert.strictEqual(envelope.ok, false);

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
+import { LogViewer } from '@/components/log-viewer'
 import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
@@ -83,7 +84,10 @@ export function ResultPanel({ result, historyTab }: {
           )}
       </TabsContent>
       <TabsContent value="logs" className="min-h-0 flex-1">
-        <Pane>{result?.logs || 'No logs.'}</Pane>
+        {/* Re-keyed per invoke, like the response tree: rows are keyed by
+            index, so without this an expanded structured entry would stay
+            expanded over whatever landed at that index in the next run. */}
+        <LogViewer key={result?.report.requestId ?? 'empty'} raw={result?.logs} />
       </TabsContent>
       <TabsContent value="report" className="min-h-0 flex-1">
         <Pane>
