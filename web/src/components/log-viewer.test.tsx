@@ -77,27 +77,26 @@ const STRUCTURED =
   '{"timestamp":"2026-07-31T02:35:13.683Z","status":"warn","message":"slow call","service":"orders-api"}\n'
 
 it('shows a structured line in the same columns as a text one', () => {
-  render(<LogViewer raw={STRUCTURED} />)
+  const { container } = render(<LogViewer raw={STRUCTURED} />)
 
   expect(screen.getByText('02:35:13.683')).toBeInTheDocument()
   expect(screen.getByText('WARN')).toBeInTheDocument()
-  expect(screen.getByText('slow call')).toBeInTheDocument()
-  // The raw object is not the row's text — that was the old behaviour.
-  expect(screen.queryByText(/"ddsource"|^\{/)).not.toBeInTheDocument()
+  // The message is the message, not the raw object dumped into the row —
+  // which is what a structured line used to render as.
+  expect(container.querySelector('.whitespace-pre-wrap')).toHaveTextContent(/^slow call$/)
 })
 
 // The full object is one click down, the way Datadog's list works. Asserted
-// on the tree's quoted rendering rather than the bare key: the inline
-// metadata below already prints `service=orders-api` while collapsed, so a
-// bare `service` would be found either way and prove nothing.
+// on the tree's *unquoted* key: the collapsed summary prints the same
+// attribute as `"service"`, so a quoted key — or its value — is on screen
+// either way and would prove nothing.
 it('expands a structured line into a tree of its attributes', async () => {
   render(<LogViewer raw={STRUCTURED} />)
-  expect(screen.queryByText('"orders-api"')).not.toBeInTheDocument()
+  expect(screen.queryByText('service')).not.toBeInTheDocument()
 
   await userEvent.click(screen.getByLabelText(/^Expand log entry/))
 
   expect(screen.getByText('service')).toBeInTheDocument()
-  expect(screen.getByText('"orders-api"')).toBeInTheDocument()
   // The fields the columns took are in the tree too, so the entry reads in
   // context rather than as the leftovers.
   expect(screen.getByText('"slow call"')).toBeInTheDocument()
@@ -109,7 +108,7 @@ it('collapses an expanded entry again', async () => {
 
   await userEvent.click(screen.getByLabelText(/^Collapse log entry/))
 
-  expect(screen.queryByText('"orders-api"')).not.toBeInTheDocument()
+  expect(screen.queryByText('service')).not.toBeInTheDocument()
 })
 
 // A plain text log has nothing to expand, so it carries no chevron gutter.
@@ -121,25 +120,45 @@ it('offers no expander for plain text lines', () => {
 
 // Text lines print their metadata after the message; structured ones did
 // not, which made the same entry read as barer in JSON than in text.
-it('shows leftover attributes inline after a structured message', () => {
-  render(<LogViewer raw={STRUCTURED} />)
+// The summary is split across a span per token so each can be coloured, so
+// read it off the clamped line's text rather than with getByText.
+function metaLine(container: HTMLElement): string {
+  const el = container.querySelector('.line-clamp-1')
+  return el?.textContent ?? ''
+}
 
-  expect(screen.getByText('service=orders-api')).toBeInTheDocument()
+it('shows leftover attributes as compact JSON after a structured message', () => {
+  const { container } = render(<LogViewer raw={STRUCTURED} />)
+
+  expect(metaLine(container)).toBe('{"service": "orders-api"}')
 })
 
-// Every pair on one text run, so the one-line clamp measures the row width
-// rather than counting each pair as a line of its own.
-it('renders all leftover attributes as a single line', () => {
-  render(
+// Quoted keys and typed values, not key=value text: an attribute should read
+// as the same JSON the response tree shows.
+it('renders every leftover attribute with its JSON type', () => {
+  const { container } = render(
     <LogViewer
-      raw={'{"level":"info","msg":"x","service":"orders-api","order_id":"A-1","duration_ms":812}\n'}
+      raw={'{"level":"info","msg":"x","service":"orders-api","retries":3,"ok":true,"note":null}\n'}
     />,
   )
 
-  // Single-spaced here, double-spaced on screen: getByText's default
-  // normalizer collapses runs of whitespace before comparing.
-  expect(screen.getByText('service=orders-api order_id=A-1 duration_ms=812'))
-    .toBeInTheDocument()
+  expect(metaLine(container))
+    .toBe('{"service": "orders-api", "retries": 3, "ok": true, "note": null}')
+})
+
+// Values carry the response tree's colours so a log attribute and a response
+// field read alike. Scoped to the meta line: the INFO level cell is coloured
+// with the same sky class the tree gives a number, so an unscoped query for
+// it finds the level and passes for the wrong reason.
+it('colours attribute values by JSON type', () => {
+  const { container } = render(
+    <LogViewer raw={'{"level":"info","msg":"x","s":"str","n":1,"b":false}\n'} />,
+  )
+  const meta = container.querySelector('.line-clamp-1')!
+
+  expect(meta.querySelector('.text-emerald-700')).toHaveTextContent('"str"')
+  expect(meta.querySelector('.text-sky-700')).toHaveTextContent('1')
+  expect(meta.querySelector('.text-violet-700')).toHaveTextContent('false')
 })
 
 // A whole stack inlined would bury the message it belongs to; the chevron
@@ -147,6 +166,6 @@ it('renders all leftover attributes as a single line', () => {
 it('summarises a nested attribute rather than inlining it', () => {
   render(<LogViewer raw={'{"level":"error","msg":"boom","error":{"kind":"RangeError"}}\n'} />)
 
-  expect(screen.getByText('error={…}')).toBeInTheDocument()
+  expect(screen.getByText('{…}')).toBeInTheDocument()
   expect(screen.queryByText(/RangeError/)).not.toBeInTheDocument()
 })

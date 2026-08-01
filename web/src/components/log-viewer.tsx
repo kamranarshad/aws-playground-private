@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { JsonTree } from '@/components/json-tree'
+import { JsonTree, jsonLeafClass } from '@/components/json-tree'
 import { parseLogs, type LogLevel, type LogRow } from '@/lib/log-lines'
 import { cn } from '@/lib/utils'
 
@@ -37,9 +37,31 @@ const LEVEL_CELL = 'w-12 shrink-0 py-1 text-[10px] font-semibold'
 function metaValue(value: unknown): string {
   if (Array.isArray(value)) return '[…]'
   if (value !== null && typeof value === 'object') return '{…}'
-  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? String(value)
-  // Unquoted whitespace would run two pairs together into one unreadable run.
-  return /\s/.test(text) ? JSON.stringify(text) : text
+  if (typeof value === 'string') return JSON.stringify(value)
+  return String(value)
+}
+
+// The leftovers as compact JSON rather than key=value text, coloured off the
+// same palette as the response tree so a log attribute and a response field
+// read alike. Flat inline spans, no wrapper per pair: the one-line clamp
+// below lays out with -webkit-box-orient vertical, which counts each child
+// box as a line, so a span per pair clamps after the first pair instead of
+// at the edge of the row.
+function MetaJson({ entries }: { entries: [string, unknown][] }) {
+  return (
+    <>
+      <span className="text-muted-foreground">{'{'}</span>
+      {entries.map(([key, value], i) => (
+        <Fragment key={key}>
+          {i > 0 && <span className="text-muted-foreground">, </span>}
+          <span className="text-foreground/75">{JSON.stringify(key)}</span>
+          <span className="text-muted-foreground">: </span>
+          <span className={jsonLeafClass(value)}>{metaValue(value)}</span>
+        </Fragment>
+      ))}
+      <span className="text-muted-foreground">{'}'}</span>
+    </>
+  )
 }
 
 // A structured line shows its message, then whatever the columns didn't
@@ -96,13 +118,10 @@ function LogLine({ row, hasTime, hasAttrs }: {
             // line-clamp rather than truncate: truncate sets nowrap, and the
             // Radix scroll viewport sizes to its content, so a nowrap line
             // widens the whole list instead of ellipsing inside it.
-            // One text run, not a span per pair: line-clamp lays out with
-            // -webkit-box-orient vertical, which counts each child box as a
-            // line, so per-pair spans clamp after the first pair rather than
-            // at the edge of the row. No `block` either — line-clamp sets
-            // display itself and block would win, turning the clamp off.
-            <span className="line-clamp-1 text-muted-foreground">
-              {row.meta.map(([key, value]) => `${key}=${metaValue(value)}`).join('  ')}
+            // No `block` here: line-clamp sets display itself, and block
+            // would win the cascade and silently turn the clamp off.
+            <span className="line-clamp-1">
+              <MetaJson entries={row.meta} />
             </span>
           )}
         </span>

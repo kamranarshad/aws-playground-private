@@ -92,14 +92,24 @@ function Punct({ children }: { children: ReactNode }) {
   return <span className="text-muted-foreground">{children}</span>
 }
 
+// The colour language for a JSON scalar, exported so the log viewer's inline
+// attribute summary reads as the same JSON as the tree here rather than
+// inventing a second palette that drifts from this one.
+export function jsonLeafClass(value: unknown): string {
+  if (typeof value === 'string') return 'text-emerald-700 dark:text-emerald-400'
+  if (typeof value === 'number') return 'text-sky-700 dark:text-sky-300'
+  if (typeof value === 'boolean') return 'text-violet-700 dark:text-violet-300'
+  return 'text-muted-foreground'
+}
+
 function Leaf({ value }: { value: unknown }) {
   // JSON.stringify, not bare quotes: a value containing a quote or a newline
   // has to stay on its own row.
   if (typeof value === 'string') {
-    return <span className="text-emerald-700 dark:text-emerald-400">{JSON.stringify(value)}</span>
+    return <span className={jsonLeafClass(value)}>{JSON.stringify(value)}</span>
   }
-  if (typeof value === 'number') return <span className="text-sky-700 dark:text-sky-300">{String(value)}</span>
-  if (typeof value === 'boolean') return <span className="text-violet-700 dark:text-violet-300">{String(value)}</span>
+  if (typeof value === 'number') return <span className={jsonLeafClass(value)}>{String(value)}</span>
+  if (typeof value === 'boolean') return <span className={jsonLeafClass(value)}>{String(value)}</span>
   // null, or undefined for a handler that returned nothing at all.
   return <Punct>{value === null ? 'null' : 'undefined'}</Punct>
 }
