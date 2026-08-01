@@ -142,22 +142,24 @@ script.
 
 Written before the implementation.
 
-`tests/prepare.test.js`:
+`tests/node-version.test.js`: the predicate accepts `v22.12.0`, `v22.20.1` and
+`v24.0.0`, rejects `v20.11.0` and `v22.11.0` (the minor is below the floor) and
+an unparseable string, and the floor it exports matches `engines.node`.
 
-- the Node-version predicate accepts `v22.12.0`, `v22.20.1` and `v24.0.0`, and
-  rejects `v20.11.0` and `v22.11.0` (the minor is below the floor);
-- `prepare.js` exits 0 and spawns nothing when `AWS_PLAYGROUND_SKIP_WEB_BUILD=1`;
-- `prepare.js` exits 0 and spawns nothing when run against a directory with no
-  `web/package.json`.
+`tests/prepare.test.js`: `prepare.js` splits its decision from its doing —
+`planPrepare({ root, env })` returns either a skip reason or which npm install
+mode to use, and is tested directly for all four branches against temporary
+package roots. That proves "did not shell out" by construction, which is
+stronger than observing a shimmed `npm` was never called. One subprocess test
+covers the wiring: running the script with `AWS_PLAYGROUND_SKIP_WEB_BUILD=1`
+must exit 0 silently rather than spend a minute in vite.
 
-The last two are checked by running the script with a `PATH` whose `npm` is a
-shim that appends to a log file, then asserting the log is empty. That proves
-"did not shell out" rather than merely "exited 0".
-
-`tests/fixtures-install.test.js`: the discovery function returns exactly the
-three current fixture package directories — `fixtures/typescript/apigw`,
-`fixtures/typescript/node-s3`, `fixtures/typescript/winston-datadog` — and
-returns nothing from a directory tree containing only `node_modules`.
+`tests/fixtures-install.test.js`: the discovery function finds all three current
+fixture packages under `fixtures/typescript/`, every path it returns really
+contains a `package.json`, it returns nothing from a tree containing only
+`node_modules`, and it does not descend into a directory that is already a
+package. It deliberately does not assert an exact list — adding a fixture
+should not break the test.
 
 The existing suites must still pass unchanged.
 
