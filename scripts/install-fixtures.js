@@ -20,7 +20,11 @@ function findFixturePackages(dir) {
 
 function main() {
   const root = path.join(__dirname, '..');
-  const dirs = findFixturePackages(path.join(root, 'fixtures'));
+  const fixturesDir = path.join(root, 'fixtures');
+  // An installed copy of the package ships scripts/ but not fixtures/ (it is
+  // not in package.json's "files"), so this is the normal case there, not an
+  // error.
+  const dirs = fs.existsSync(fixturesDir) ? findFixturePackages(fixturesDir) : [];
   if (!dirs.length) {
     console.log('aws-playground: no fixture declares dependencies; nothing to install');
     return;
@@ -30,7 +34,11 @@ function main() {
     const res = spawnSync('npm', ['install'], {
       cwd: dir, stdio: 'inherit', shell: process.platform === 'win32',
     });
-    if (res.status !== 0) process.exit(res.status || 1);
+    if (res.status !== 0) {
+      const reason = res.error ? res.error.message : `exit code ${res.status}`;
+      console.error(`aws-playground: \`npm install\` failed in ${dir} (${reason})`);
+      process.exit(res.status || 1);
+    }
   }
 }
 
