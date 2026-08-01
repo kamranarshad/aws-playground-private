@@ -32,7 +32,10 @@ function npm(args, cwd) {
 function main() {
   const root = path.join(__dirname, '..');
   const plan = planPrepare({ root, env: process.env });
-  if (plan.skip) return;
+  if (plan.skip) {
+    console.error(`aws-playground: skipping web build (${plan.skip})`);
+    return;
+  }
   if (!nodeVersionOk(process.version)) {
     console.error(nodeVersionMessage(process.version));
     process.exit(1);
