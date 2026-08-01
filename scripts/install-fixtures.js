@@ -2,6 +2,8 @@
 // Fixtures are sample Lambda projects, each installed on its own and never part
 // of the build or the published package. Finding them beats listing them: a
 // fixture added later used to be left uninstalled with no sign of it.
+// "Found" means the directory has a package.json, not that it declares any
+// dependencies worth installing.
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
@@ -26,7 +28,7 @@ function main() {
   // error.
   const dirs = fs.existsSync(fixturesDir) ? findFixturePackages(fixturesDir) : [];
   if (!dirs.length) {
-    console.log('aws-playground: no fixture declares dependencies; nothing to install');
+    console.log('aws-playground: no fixture packages found; nothing to install');
     return;
   }
   for (const dir of dirs) {

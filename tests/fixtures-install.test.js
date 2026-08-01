@@ -7,7 +7,7 @@ const { findFixturePackages } = require('../scripts/install-fixtures');
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
 
-test('finds every fixture that declares dependencies', () => {
+test('finds every fixture package', () => {
   const found = findFixturePackages(FIXTURES).map((dir) => path.relative(FIXTURES, dir));
   for (const name of ['apigw', 'node-s3', 'winston-datadog']) {
     assert.ok(found.includes(path.join('typescript', name)), `missing typescript/${name}`);

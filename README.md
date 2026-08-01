@@ -169,7 +169,7 @@ is current.
 The `fixtures/` folder is never part of the build or the published package; it
 is sample Lambda projects, each installed on its own. To invoke the TypeScript
 fixtures, install their deps once with `npm run install:fixtures`, which finds
-every fixture that declares dependencies.
+every fixture package under `fixtures/`.
 
 CI runs both suites, the web typecheck, and the web build on every push
 and pull request (`.github/workflows/ci.yml`).
