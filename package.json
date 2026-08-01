@@ -15,7 +15,7 @@
     "dev": "npm --prefix web run dev",
     "prepare": "node scripts/prepare.js",
     "build": "node scripts/prepare.js",
-    "install:fixtures": "npm --prefix fixtures/typescript/apigw install && npm --prefix fixtures/typescript/node-s3 install && npm --prefix fixtures/typescript/winston-datadog install",
+    "install:fixtures": "node scripts/install-fixtures.js",
     "test": "npm run test:server && npm run test:web",
     "test:server": "node --test tests/*.test.js",
     "test:web": "npm --prefix web run test"
