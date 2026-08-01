@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { startWebServer } = require('../server/serve-web');
 const localServices = require('../server/services');
+const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);
@@ -18,14 +19,21 @@ if (flag('--help') || flag('-h')) {
 Starts the Lambda Playground server and opens it in your browser.
 
   --port <n>   Port to listen on (default 4590)
-  --no-open    Do not open the browser automatically`);
+  --no-open    Do not open the browser automatically
+
+From a source checkout, pass flags through npm: npm start -- --port 5000`);
   process.exit(0);
+}
+
+if (!nodeVersionOk(process.version)) {
+  console.error(nodeVersionMessage(process.version));
+  process.exit(1);
 }
 
 const DIST = path.join(__dirname, '..', 'web', 'dist');
 if (!fs.existsSync(path.join(DIST, 'server', 'server.js'))) {
   console.error('aws-playground: web app not built (web/dist missing).');
-  console.error('From a source checkout, run: npm run build');
+  console.error('From a source checkout, run: npm install');
   process.exit(1);
 }
 
