@@ -9,14 +9,22 @@ No Docker required. No RIE. No SAM. No LocalStack. No moto. Handlers run directl
 your machine via tiny per-language harnesses (fresh process per invoke =
 cold-start semantics, and your latest code edits are always picked up).
 
-## Install & run
+## Run it
 
-    npm install -g .        # or: npx aws-playground (once published)
-    aws-playground          # starts the server and opens your browser
+    npx github:kamranarshad/aws-playground     # no clone, no global install
 
-Flags: `--port <n>` (default 4590), `--no-open`.
+Or from a checkout:
 
-Running the playground itself requires Node >= 22.12.
+    git clone https://github.com/kamranarshad/aws-playground
+    cd aws-playground
+    npm install     # installs and builds the web UI
+    npm start       # starts the server and opens your browser
+
+Flags: `--port <n>` (default 4590), `--no-open`. From a checkout, pass them
+through npm: `npm start -- --port 5000`.
+
+Running the playground itself requires Node >= 22.12. Nothing is installed
+globally either way.
 
 ## Supported runtimes
 
@@ -145,19 +153,23 @@ function).
 
 ## Development
 
-    npm install
-    npm run build      # installs + builds the web UI (web/dist) — required once before npm start
-    npm start          # server without auto-opening the browser
-    npm run dev        # web UI dev server with hot reload (also serves the API)
-    npm test           # server (node --test) + web (vitest)
+    npm install         # installs and builds the web UI (web/dist)
+    npm start           # server, opens a browser; npm start -- --no-open to skip
+    npm run dev         # web UI dev server with hot reload (also serves the API)
+    npm run build       # rebuild web/dist after editing the web UI
+    npm test            # server (node --test) + web (vitest)
     npm run test:server # server only; language tests auto-skip missing runtimes
-    npm run test:web   # web only (needs npm --prefix web install first)
+    npm run test:web    # web only
 
-`npm run build` covers the `web/` folder only — it runs `npm install` there
-and builds `web/dist`. The `fixtures/` folder is never part of the build or
-the published package; it is sample Lambda projects, each installed on its
-own. If you want to invoke the two TypeScript fixtures, install their deps
-once with `npm run install:fixtures`.
+`npm install` builds the web UI through npm's `prepare` script, which is also
+what makes `npx github:...` work without a clone. Set
+`AWS_PLAYGROUND_SKIP_WEB_BUILD=1` to skip that build when you know `web/dist`
+is current.
+
+The `fixtures/` folder is never part of the build or the published package; it
+is sample Lambda projects, each installed on its own. To invoke the TypeScript
+fixtures, install their deps once with `npm run install:fixtures`, which finds
+every fixture that declares dependencies.
 
 CI runs both suites, the web typecheck, and the web build on every push
 and pull request (`.github/workflows/ci.yml`).

@@ -15,17 +15,13 @@ jobs:
         with:
           node-version: '22.12'
 
-      - name: Install root dependencies
+      # One step, and deliberately the same one a contributor runs: npm's
+      # prepare script installs web/ and builds web/dist. CI is set here, so
+      # the web install goes through `npm ci` and honours the lockfile.
+      # It must precede the server tests -- web/dist is gitignored, and the
+      # CLI refuses to boot without it, so tests/cli.test.js would skip.
+      - name: Install and build
         run: npm ci
-
-      - name: Install web dependencies
-        run: npm --prefix web ci
-
-      # Must precede the server tests: web/dist is gitignored, and the CLI
-      # refuses to boot without it, so tests/cli.test.js would skip (or, before
-      # it was guarded, fail with an opaque "no URL printed" timeout).
-      - name: Build web
-        run: npm --prefix web run build
 
       # Language runtimes the harness tests exercise. python3 and java are
       # preinstalled on ubuntu-latest; the tests skip whatever is missing.
