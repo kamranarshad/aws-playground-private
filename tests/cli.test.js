@@ -149,16 +149,6 @@ test('cli --help prints usage and exits 0', async () => {
   assert.strictEqual(code, 0);
   assert.ok(out.includes('--port'));
   assert.ok(out.includes('--no-open'));
-});
-
-// npm start no longer forces --no-open, so the flag has to keep working when
-// a developer passes it through: npm start -- --no-open.
-test('cli --help documents both flags and exits 0', async () => {
-  const child = spawn(process.execPath, [CLI, '--help']);
-  let out = '';
-  child.stdout.on('data', (d) => { out += d; });
-  const code = await new Promise((resolve) => child.on('close', resolve));
-  assert.strictEqual(code, 0);
   assert.ok(out.includes('npm start -- --port'),
     'help should show how to pass flags through npm start');
 });
