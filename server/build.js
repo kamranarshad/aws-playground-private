@@ -7,6 +7,14 @@ const path = require('path');
 // (npm, tsc, esbuild) need the user's real PATH.
 async function runBuild({ dir, command, timeoutMs = 60000 }) {
   const startedAt = Date.now();
+  // spawn fails on the cwd, not the command, when the project folder has been
+  // moved or deleted — and reports it as "spawn /bin/sh ENOENT", which reads
+  // like the shell is missing. Check first so the message names the folder.
+  if (!fs.existsSync(dir)) {
+    return { ok: false, exitCode: null, durationMs: 0,
+      output: `Project folder no longer exists: ${dir}\n`
+        + 'Point the function at its current location, or re-register it.' };
+  }
   const result = await new Promise((resolve) => {
     let output = '';
     let timedOut = false;
