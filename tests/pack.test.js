@@ -11,8 +11,12 @@ const built = fs.existsSync(path.join(ROOT, 'web', 'dist', 'server', 'server.js'
 test('packed tarball boots and serves the API',
   { skip: built ? false : 'web/dist missing - run npm run build first' }, async () => {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pack-'));
-  const tarball = execFileSync('npm', ['pack', '--pack-destination', work], { cwd: ROOT })
-    .toString().trim().split('\n').pop();
+  // `npm pack` runs the prepare script; this test already required a current
+  // web/dist to run at all, so rebuilding it here would just cost a minute.
+  const tarball = execFileSync('npm', ['pack', '--pack-destination', work], {
+    cwd: ROOT,
+    env: { ...process.env, AWS_PLAYGROUND_SKIP_WEB_BUILD: '1' },
+  }).toString().trim().split('\n').pop();
   execFileSync('tar', ['xzf', path.join(work, tarball)], { cwd: work });
   const pkgDir = path.join(work, 'package');
   const child = spawn(process.execPath, [path.join(pkgDir, 'bin', 'cli.js'), '--no-open', '--port', '0'], {
