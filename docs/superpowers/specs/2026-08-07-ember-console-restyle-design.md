@@ -133,5 +133,5 @@ tokens with zero edits.
   clicking an entry swaps to a detail view — so a selection hatch would never
   be visible. The plan and code are correct; this line supersedes §3 on that
   point.
-- Sidebar selection ships `border-brand/50` (the plan's value), not §1's
+- Sidebar selection ships `border-brand/50` (the plan's value), not §3's
   `border-brand/60`.
