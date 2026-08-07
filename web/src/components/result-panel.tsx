@@ -10,9 +10,10 @@ import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
 // Reference look: the active tab is orange text on a flat background — no
-// pill, no shadow — so all state lives in the text color.
+// pill, no shadow — so all state lives in the text color. Both light and dark
+// modes use orange text; shadows are suppressed at the specific selector depth.
 const TAB =
-  'text-xs data-[state=active]:bg-transparent data-[state=active]:text-brand data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent'
+  'text-xs data-[state=active]:bg-transparent data-[state=active]:text-brand group-data-[variant=default]/tabs-list:data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent dark:data-[state=active]:text-brand'
 
 function Pane({ children }: { children: ReactNode }) {
   return (

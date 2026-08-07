@@ -83,8 +83,8 @@ export function HistoryList({ fnId, onLoadEvent }: {
                 onClick={() => setOpenEntry(e)}
               >
                 {e.ok
-                  ? <CircleCheck className="size-3.5 shrink-0 text-success" />
-                  : <CircleX className="size-3.5 shrink-0 text-destructive" />}
+                  ? <CircleCheck aria-label="OK" className="size-3.5 shrink-0 text-success" />
+                  : <CircleX aria-label="Error" className="size-3.5 shrink-0 text-destructive" />}
                 {e.ok && <HttpStatusBadge response={e.response} prefix={false} />}
                 <span className="truncate font-mono">{e.handler}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
