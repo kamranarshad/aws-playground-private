@@ -163,7 +163,7 @@
 /*
   CodeMirror 6 surface reconciliation.
   The @uiw light/dark themes ship their own editor chrome (a blue-gray dark
-  background that clashes with our warm espresso card). Override the chrome to
+  background that clashes with our warm ember card). Override the chrome to
   inherit the shadcn tokens while keeping the theme's syntax colors. Rules live
   outside @layer base with !important so they win over CM's runtime-injected
   StyleModule sheet regardless of load order.

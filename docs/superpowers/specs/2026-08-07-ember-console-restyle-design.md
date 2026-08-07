@@ -125,3 +125,13 @@ tokens with zero edits.
    (add-function, settings sheet, command palette) — confirming contrast and
    that no espresso-era hardcoded color survives (grep for `amber`, `emerald`,
    `green-`, `stone-` class remnants).
+
+## Implementation notes
+
+- Spec §3 mentions `hatch-active` on the selected history entry; the shipped
+  history list applies none. The list has no persistent selected state —
+  clicking an entry swaps to a detail view — so a selection hatch would never
+  be visible. The plan and code are correct; this line supersedes §3 on that
+  point.
+- Sidebar selection ships `border-brand/50` (the plan's value), not §1's
+  `border-brand/60`.
