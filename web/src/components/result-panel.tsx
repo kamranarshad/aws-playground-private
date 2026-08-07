@@ -9,6 +9,11 @@ import { LogViewer } from '@/components/log-viewer'
 import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
+// Reference look: the active tab is orange text on a flat background — no
+// pill, no shadow — so all state lives in the text color.
+const TAB =
+  'text-xs data-[state=active]:bg-transparent data-[state=active]:text-brand data-[state=active]:shadow-none dark:data-[state=active]:border-transparent dark:data-[state=active]:bg-transparent'
+
 function Pane({ children }: { children: ReactNode }) {
   return (
     <ScrollArea className="h-full">
@@ -36,10 +41,10 @@ export function ResultPanel({ result, historyTab }: {
     <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
       <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
         <TabsList className="h-8 bg-transparent">
-          <TabsTrigger value="response" className="text-xs">Response</TabsTrigger>
-          <TabsTrigger value="logs" className="text-xs">Logs</TabsTrigger>
-          <TabsTrigger value="report" className="text-xs">Report</TabsTrigger>
-          {historyTab && <TabsTrigger value="history" className="text-xs">History</TabsTrigger>}
+          <TabsTrigger value="response" className={TAB}>Response</TabsTrigger>
+          <TabsTrigger value="logs" className={TAB}>Logs</TabsTrigger>
+          <TabsTrigger value="report" className={TAB}>Report</TabsTrigger>
+          {historyTab && <TabsTrigger value="history" className={TAB}>History</TabsTrigger>}
         </TabsList>
         {result && (
           <div className="ml-auto flex items-center gap-1.5">

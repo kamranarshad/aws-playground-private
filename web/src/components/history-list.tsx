@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowLeft, Download, Trash2 } from 'lucide-react'
+import { ArrowLeft, CircleCheck, CircleX, Download, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -82,10 +82,9 @@ export function HistoryList({ fnId, onLoadEvent }: {
                 className="flex w-full items-center gap-2 border-b px-3 py-1.5 text-left text-xs hover:bg-accent"
                 onClick={() => setOpenEntry(e)}
               >
-                <Badge variant={e.ok ? 'outline' : 'destructive'}
-                  className={cn('font-mono text-[10px]', e.ok && OK_CHIP)}>
-                  {e.ok ? 'OK' : 'ERR'}
-                </Badge>
+                {e.ok
+                  ? <CircleCheck className="size-3.5 shrink-0 text-success" />
+                  : <CircleX className="size-3.5 shrink-0 text-destructive" />}
                 {e.ok && <HttpStatusBadge response={e.response} prefix={false} />}
                 <span className="truncate font-mono">{e.handler}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">

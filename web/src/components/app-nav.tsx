@@ -32,7 +32,7 @@ export function AppNav() {
                   className={cn(
                     'flex size-9 items-center justify-center rounded-md transition-colors',
                     active
-                      ? 'bg-primary text-primary-foreground'
+                      ? 'bg-accent text-brand'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                   )}
                 >
