@@ -48,7 +48,7 @@ export function ResultPanel({ result, historyTab }: {
               variant={result.ok ? 'outline' : 'destructive'}
               className={cn(
                 'font-mono tabular-nums text-[10px]',
-                result.ok && 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+                result.ok && 'border-transparent bg-success/15 text-success',
               )}
             >
               {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}

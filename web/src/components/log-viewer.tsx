@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils'
 
 // Light/dark pairs, matching the leaf colours in json-tree.tsx.
 const LEVEL_TEXT: Record<LogLevel, string> = {
-  error: 'text-red-600 dark:text-red-400',
-  warn: 'text-amber-600 dark:text-amber-400',
+  error: 'text-destructive',
+  warn: 'text-brand',
   info: 'text-sky-700 dark:text-sky-300',
   debug: 'text-muted-foreground',
   trace: 'text-muted-foreground',
@@ -17,8 +17,8 @@ const LEVEL_TEXT: Record<LogLevel, string> = {
 // The left edge bar is the tell that reads before any text does, so it wants
 // a flat saturated colour rather than the text pair.
 const LEVEL_BAR: Record<LogLevel, string> = {
-  error: 'bg-red-500',
-  warn: 'bg-amber-500',
+  error: 'bg-destructive',
+  warn: 'bg-brand',
   info: 'bg-sky-500',
   debug: 'bg-muted-foreground/40',
   trace: 'bg-muted-foreground/40',
@@ -77,7 +77,7 @@ function LogLine({ row, hasTime, hasAttrs }: {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className={cn('border-b border-border/40', row.level === 'error' && 'bg-red-500/5')}>
+    <div className={cn('border-b border-border/40', row.level === 'error' && 'bg-destructive/5')}>
       <div className="flex items-start gap-2 pr-3 hover:bg-muted/40">
         {/* self-stretch so the bar runs the full height of a folded trace. */}
         <span

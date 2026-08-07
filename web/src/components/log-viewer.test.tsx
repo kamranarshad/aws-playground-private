@@ -156,7 +156,7 @@ it('colours attribute values by JSON type', () => {
   )
   const meta = container.querySelector('.line-clamp-1')!
 
-  expect(meta.querySelector('.text-emerald-700')).toHaveTextContent('"str"')
+  expect(meta.querySelector('.text-success')).toHaveTextContent('"str"')
   expect(meta.querySelector('.text-sky-700')).toHaveTextContent('1')
   expect(meta.querySelector('.text-violet-700')).toHaveTextContent('false')
 })

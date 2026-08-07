@@ -8,7 +8,7 @@ import { useClearHistory, useHistoryQuery } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { HistoryEntry } from '@/lib/types'
 
-const OK_CHIP = 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+const OK_CHIP = 'border-transparent bg-success/15 text-success'
 
 function age(ts: number): string {
   const s = Math.max(0, Math.round((Date.now() - ts) / 1000))

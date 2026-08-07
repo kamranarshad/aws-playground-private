@@ -32,10 +32,10 @@ it('confirms with a checkmark, then goes back to the copy icon', async () => {
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 
   await user.click(screen.getByLabelText('Copy secret'))
-  expect(screen.getByRole('button').querySelector('.text-emerald-500')).toBeTruthy()
+  expect(screen.getByRole('button').querySelector('.text-success')).toBeTruthy()
 
   await act(() => vi.advanceTimersByTimeAsync(1300))
-  expect(screen.getByRole('button').querySelector('.text-emerald-500')).toBeNull()
+  expect(screen.getByRole('button').querySelector('.text-success')).toBeNull()
   vi.useRealTimers()
 })
 
@@ -48,5 +48,5 @@ it('reports a failed copy instead of pretending it worked', async () => {
   await userEvent.click(screen.getByLabelText('Copy nope'))
 
   expect(toast.error).toHaveBeenCalledWith('Could not copy to clipboard')
-  expect(screen.getByRole('button').querySelector('.text-emerald-500')).toBeNull()
+  expect(screen.getByRole('button').querySelector('.text-success')).toBeNull()
 })

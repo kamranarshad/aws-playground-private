@@ -96,7 +96,7 @@ function Punct({ children }: { children: ReactNode }) {
 // attribute summary reads as the same JSON as the tree here rather than
 // inventing a second palette that drifts from this one.
 export function jsonLeafClass(value: unknown): string {
-  if (typeof value === 'string') return 'text-emerald-700 dark:text-emerald-400'
+  if (typeof value === 'string') return 'text-success'
   if (typeof value === 'number') return 'text-sky-700 dark:text-sky-300'
   if (typeof value === 'boolean') return 'text-violet-700 dark:text-violet-300'
   return 'text-muted-foreground'

@@ -9,8 +9,8 @@ export function httpStatusOf(response: unknown): number | null {
 }
 
 export function httpStatusClass(status: number): string {
-  if (status < 300) return 'border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+  if (status < 300) return 'border-transparent bg-success/15 text-success'
   if (status < 400) return 'border-transparent bg-sky-500/15 text-sky-600 dark:text-sky-400'
-  if (status < 500) return 'border-transparent bg-amber-500/15 text-amber-600 dark:text-amber-400'
-  return 'border-transparent bg-red-500/15 text-red-600 dark:text-red-400'
+  if (status < 500) return 'border-transparent bg-brand/15 text-brand'
+  return 'border-transparent bg-destructive/15 text-destructive'
 }

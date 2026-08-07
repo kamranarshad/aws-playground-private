@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
 import type { LocalService } from '@/lib/types'
 
 const STATE_DOT: Record<string, string> = {
-  running: 'bg-emerald-500',
-  stopped: 'bg-amber-500',
+  running: 'bg-success',
+  stopped: 'bg-brand',
   absent: 'bg-muted-foreground/40',
   unavailable: 'bg-muted-foreground/40',
 }
