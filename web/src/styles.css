@@ -117,6 +117,50 @@
 }
 
 /*
+  Selection language: the active card is framed by four orange corner
+  brackets (one pseudo-element, eight gradient strokes — a horizontal and a
+  vertical per corner) over a low-alpha 45° hatch fill. Both read --brand so
+  they hold up in either theme.
+*/
+.corner-frame {
+  position: relative;
+}
+.corner-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  --corner-stroke: color-mix(in oklab, var(--brand) 90%, transparent);
+  background-image:
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+    linear-gradient(var(--corner-stroke), var(--corner-stroke));
+  background-repeat: no-repeat;
+  background-size:
+    10px 1.5px, 1.5px 10px,
+    10px 1.5px, 1.5px 10px,
+    10px 1.5px, 1.5px 10px,
+    10px 1.5px, 1.5px 10px;
+  background-position:
+    top left, top left,
+    top right, top right,
+    bottom left, bottom left,
+    bottom right, bottom right;
+}
+.hatch-active {
+  background-image: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--brand) 10%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+}
+
+/*
   CodeMirror 6 surface reconciliation.
   The @uiw light/dark themes ship their own editor chrome (a blue-gray dark
   background that clashes with our warm espresso card). Override the chrome to

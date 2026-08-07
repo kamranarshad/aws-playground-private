@@ -28,10 +28,10 @@ export function AppSidebar({ functions, selectedId, onSelect, onAdd }: {
               <button
                 onClick={() => onSelect(fn.id)}
                 className={cn(
-                  'flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-accent',
+                  'flex w-full items-center justify-between gap-2 rounded-none border px-2.5 py-1.5 text-left text-sm transition-colors',
                   fn.id === selectedId
-                    ? 'bg-primary font-medium text-primary-foreground hover:bg-primary'
-                    : 'text-foreground',
+                    ? 'corner-frame hatch-active border-brand/50 bg-brand/5 font-medium text-foreground'
+                    : 'border-transparent text-foreground hover:bg-accent',
                 )}
               >
                 <span className="truncate">{fn.name}</span>
@@ -39,7 +39,7 @@ export function AppSidebar({ functions, selectedId, onSelect, onAdd }: {
                   variant="outline"
                   className={cn(
                     'shrink-0 font-mono text-[10px]',
-                    fn.id === selectedId && 'border-primary-foreground/25 text-primary-foreground/80',
+                    fn.id === selectedId && 'border-brand/40 text-brand',
                   )}
                 >
                   {fn.runtime}
