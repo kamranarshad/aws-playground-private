@@ -20,13 +20,20 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
   const update = useUpdateFunction()
 
   useEffect(() => {
+    // Re-seed from `fn` whenever the dialog opens, not just when the `fn`
+    // object identity changes. React Query's structural sharing keeps the
+    // same `fn` reference across a refetch that changes nothing (e.g. a
+    // blank-name save that falls back to the current name), so relying on
+    // `fn` alone left a stale, blank Name field the next time the dialog
+    // was reopened even though the saved name was correct.
+    if (!open) return
     setName(fn.name)
     setHandler(fn.handler)
     setTimeoutMs(String(fn.timeoutMs))
     setMemoryMb(String(fn.memoryMb))
     setJarPath(fn.jarPath ?? '')
     setBuildCommand(fn.buildCommand ?? '')
-  }, [fn])
+  }, [open, fn])
 
   function save() {
     // Empty/garbage input (NaN) keeps the current value; an explicit 0 clamps
