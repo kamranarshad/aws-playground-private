@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { SettingsSheet } from '@/components/settings-sheet'
+import { SettingsDialog } from '@/components/settings-dialog'
 import { useDeleteFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
@@ -20,7 +20,7 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>
       <div className="ml-auto flex items-center gap-1">
-        <SettingsSheet fn={fn} />
+        <SettingsDialog fn={fn} />
         <AlertDialog>
           <AlertDialogTrigger asChild>
             <Button variant="ghost" size="icon" aria-label="Delete function">
