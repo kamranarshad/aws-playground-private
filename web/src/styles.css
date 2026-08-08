@@ -125,6 +125,8 @@
   so Tailwind variants — e.g. select.tsx's data-[state=open]:corner-frame —
   compile correctly; a plain .corner-frame class isn't a recognized utility
   candidate and a variant-prefixed reference to it emits no CSS.
+  The position: relative is a fallback that position utilities on the same
+  element (e.g. fixed on dialog panels) are expected to override via utility order.
 */
 @utility corner-frame {
   position: relative;

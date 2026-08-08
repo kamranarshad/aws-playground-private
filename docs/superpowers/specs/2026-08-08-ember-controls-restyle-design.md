@@ -93,3 +93,14 @@ unaffected by the token and stay round.
    wrap in existing layouts.
 3. Rebuild `web/dist` at the end so `npm start`/`nub run start` serves the
    result.
+
+## Implementation notes
+
+- §2's claim that all derived radii clamp to 0 is wrong for `--radius-xl`
+  (`calc(var(--radius) + 4px)` computes to 4px). No `rounded-xl` consumer
+  exists today; if one appears it must use `rounded-none` or the token must
+  be revisited.
+- `corner-frame`/`hatch-active` are Tailwind `@utility` registrations (not
+  plain classes) so state variants like `data-[state=open]:` compose with
+  them; `SelectContent` defaults to `position="popper"` so the open trigger
+  stays visible. Both supersede §4/§6 where they conflict.
