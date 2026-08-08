@@ -121,39 +121,43 @@
   Selection language: the active card is framed by four orange corner
   brackets (one pseudo-element, eight gradient strokes — a horizontal and a
   vertical per corner) over a low-alpha 45° hatch fill. Both read --brand so
-  they hold up in either theme.
+  they hold up in either theme. Registered as @utility (not plain classes)
+  so Tailwind variants — e.g. select.tsx's data-[state=open]:corner-frame —
+  compile correctly; a plain .corner-frame class isn't a recognized utility
+  candidate and a variant-prefixed reference to it emits no CSS.
 */
-.corner-frame {
+@utility corner-frame {
   position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    --corner-stroke: color-mix(in oklab, var(--brand) 90%, transparent);
+    background-image:
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke)),
+      linear-gradient(var(--corner-stroke), var(--corner-stroke));
+    background-repeat: no-repeat;
+    background-size:
+      10px 1.5px, 1.5px 10px,
+      10px 1.5px, 1.5px 10px,
+      10px 1.5px, 1.5px 10px,
+      10px 1.5px, 1.5px 10px;
+    background-position:
+      top left, top left,
+      top right, top right,
+      bottom left, bottom left,
+      bottom right, bottom right;
+  }
 }
-.corner-frame::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  --corner-stroke: color-mix(in oklab, var(--brand) 90%, transparent);
-  background-image:
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke)),
-    linear-gradient(var(--corner-stroke), var(--corner-stroke));
-  background-repeat: no-repeat;
-  background-size:
-    10px 1.5px, 1.5px 10px,
-    10px 1.5px, 1.5px 10px,
-    10px 1.5px, 1.5px 10px,
-    10px 1.5px, 1.5px 10px;
-  background-position:
-    top left, top left,
-    top right, top right,
-    bottom left, bottom left,
-    bottom right, bottom right;
-}
-.hatch-active {
+@utility hatch-active {
   background-image: repeating-linear-gradient(
     45deg,
     color-mix(in oklab, var(--brand) 10%, transparent) 0 1px,
