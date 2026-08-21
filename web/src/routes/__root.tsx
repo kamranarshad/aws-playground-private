@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
-import { Outlet, createRootRoute, HeadContent, Scripts } from '@tanstack/react-router'
+import { Outlet, createRootRoute, HeadContent, Link, Scripts } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppNav } from '@/components/app-nav'
+import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { useReleaseSelectionOnUnload } from '@/lib/queries'
 import { ThemeProvider } from '@/lib/theme'
@@ -21,6 +22,7 @@ export const Route = createRootRoute({
     links: [{ rel: 'stylesheet', href: appCss }],
   }),
   component: RootComponent,
+  notFoundComponent: NotFound,
 })
 
 function RootComponent() {
@@ -41,6 +43,17 @@ function RootComponent() {
         </ThemeProvider>
       </QueryClientProvider>
     </RootDocument>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+      <p className="text-muted-foreground font-mono text-sm">Page not found</p>
+      <Button asChild size="sm">
+        <Link to="/">Back home</Link>
+      </Button>
+    </div>
   )
 }
 
