@@ -19,12 +19,20 @@ function planPrepare({ root, env }) {
   return { install: env.CI ? 'ci' : 'install' };
 }
 
-function npm(args, cwd) {
-  const res = spawnSync('npm', args, {
+function packageManagerBin(env) {
+  // nub fills npm_config_user_agent the same way npm does, so an install
+  // driven by `nub install` keeps using nub for the nested web/ install
+  // instead of silently switching back to npm. Anything unrecognised falls
+  // back to npm -- the one manager every contributor has.
+  return /^nub\//.test(env.npm_config_user_agent || '') ? 'nub' : 'npm';
+}
+
+function run(bin, args, cwd) {
+  const res = spawnSync(bin, args, {
     cwd, stdio: 'inherit', shell: process.platform === 'win32',
   });
   if (res.status !== 0) {
-    console.error(`aws-playground: \`npm ${args.join(' ')}\` failed in ${cwd}`);
+    console.error(`aws-playground: \`${bin} ${args.join(' ')}\` failed in ${cwd}`);
     process.exit(res.status || 1);
   }
 }
@@ -41,10 +49,11 @@ function main() {
     process.exit(1);
   }
   const web = path.join(root, 'web');
-  npm([plan.install], web);
-  npm(['run', 'build'], web);
+  const bin = packageManagerBin(process.env);
+  run(bin, [plan.install], web);
+  run(bin, ['run', 'build'], web);
 }
 
 if (require.main === module) main();
 
-module.exports = { planPrepare };
+module.exports = { planPrepare, packageManagerBin };

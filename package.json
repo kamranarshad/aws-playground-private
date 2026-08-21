@@ -17,8 +17,8 @@
     "build": "node scripts/prepare.js",
     "install:fixtures": "node scripts/install-fixtures.js",
     "test": "npm run test:server && npm run test:web",
-    "test:server": "node --test tests/*.test.js",
-    "test:web": "npm --prefix web run test"
+    "test:server": "node scripts/without-nub.js node --test tests/*.test.js",
+    "test:web": "node scripts/without-nub.js npm --prefix web run test"
   },
   "files": [
     "bin",
