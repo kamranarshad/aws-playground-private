@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { keymap, Prec } from '@uiw/react-codemirror'
 import { json } from '@codemirror/lang-json'
 import { Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
@@ -30,6 +30,21 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   const update = useUpdateFunction()
 
   useEffect(() => setMounted(true), [])
+
+  // CodeMirror's own default keymap binds Mod-Enter to insertBlankLine (its
+  // documented Ctrl-/Cmd-Enter behavior) and runs it before the app's
+  // window-level Cmd+Enter listener ever sees the event, so that listener's
+  // preventDefault is too late to undo the blank line CodeMirror already
+  // inserted. Prec.highest makes this binding win instead. stopPropagation
+  // is required too: preventDefault alone stops the browser's own newline
+  // but doesn't stop the event bubbling on to that window-level listener,
+  // which would otherwise invoke a second time for the same keypress.
+  const extensions = useMemo(() => [
+    Prec.highest(keymap.of([
+      { key: 'Mod-Enter', run: () => { onInvoke(); return true }, stopPropagation: true },
+    ])),
+    json(),
+  ], [onInvoke])
 
   const jsonError = useMemo(() => {
     try {
@@ -100,7 +115,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       <div className="cm-host min-h-0 flex-1 overflow-auto font-mono text-sm">
         {mounted && (
           <CodeMirror value={eventText} height="100%" theme={theme}
-            extensions={[json()]} onChange={onEventTextChange} />
+            extensions={extensions} onChange={onEventTextChange} />
         )}
       </div>
       <Dialog open={saveOpen} onOpenChange={(o) => { setSaveOpen(o); if (!o) setSaveName('') }}>
