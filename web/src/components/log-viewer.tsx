@@ -1,9 +1,14 @@
 import { Fragment, useMemo, useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { JsonTree, jsonLeafClass } from '@/components/json-tree'
-import { parseLogs, type LogLevel, type LogRow } from '@/lib/log-lines'
+import { filterLogRows, parseLogs, type LogLevel, type LogRow } from '@/lib/log-lines'
 import { cn } from '@/lib/utils'
+
+const LEVEL_ORDER: LogLevel[] = ['error', 'warn', 'info', 'debug', 'trace']
+const ALL_LEVELS = new Set<LogLevel>(LEVEL_ORDER)
 
 // Light/dark pairs, matching the leaf colours in json-tree.tsx.
 const LEVEL_TEXT: Record<LogLevel, string> = {
@@ -135,11 +140,53 @@ function LogLine({ row, hasTime, hasAttrs }: {
   )
 }
 
+// Chips rather than a dropdown, so the active filter is visible at a glance
+// instead of hidden behind a click — and colored off the same table the rows
+// use, so an active chip previews the color of what it lets through.
+function LevelFilter({ levels, onSolo }: {
+  levels: ReadonlySet<LogLevel>
+  onSolo: (level: LogLevel) => void
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {LEVEL_ORDER.map((level) => (
+        <button
+          key={level}
+          type="button"
+          aria-pressed={levels.has(level)}
+          onClick={() => onSolo(level)}
+          className={cn(
+            'rounded px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-wider transition-colors hover:bg-muted/60',
+            levels.has(level) ? LEVEL_TEXT[level] : 'text-muted-foreground/30',
+          )}
+        >
+          {level.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function LogViewer({ raw }: { raw: string | undefined }) {
   const rows = useMemo(() => parseLogs(raw ?? ''), [raw])
+  const [query, setQuery] = useState('')
+  const [levels, setLevels] = useState<ReadonlySet<LogLevel>>(ALL_LEVELS)
+  const filtered = useMemo(() => filterLogRows(rows, { query, levels }), [rows, query, levels])
 
   if (!rows.length) {
     return <p className="p-3 font-mono text-xs text-muted-foreground">No logs.</p>
+  }
+
+  // Solo, not multi-toggle: clicking a level isolates it, so one click gets
+  // you to "just this level" instead of clicking off the other four. Clicking
+  // the already-solo'd level is the way back to seeing everything.
+  function soloLevel(level: LogLevel) {
+    setLevels((prev) => (prev.size === 1 && prev.has(level) ? ALL_LEVELS : new Set([level])))
+  }
+
+  function clearFilters() {
+    setQuery('')
+    setLevels(ALL_LEVELS)
   }
 
   // Per batch, not per row: python `logging`'s default format has no
@@ -148,24 +195,48 @@ export function LogViewer({ raw }: { raw: string | undefined }) {
   // to an untimed one. Hiding the whole column only when nothing in the
   // batch has a time keeps mixed logs aligned, which is the same alignment
   // concern the per-row empty cell below is protecting.
-  const hasTime = rows.some((row) => row.kind === 'line' && row.time)
-  const hasAttrs = rows.some((row) => row.kind === 'line' && row.attrs)
+  const hasTime = filtered.some((row) => row.kind === 'line' && row.time)
+  const hasAttrs = filtered.some((row) => row.kind === 'line' && row.attrs)
 
   return (
-    <ScrollArea className="h-full">
-      {rows.map((row, i) => (
-        row.kind === 'divider'
+    <div className="flex h-full flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border/40 p-1.5">
+        <div className="relative flex-1">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search logs…"
+            className="h-7 pl-7 font-mono text-xs"
+          />
+        </div>
+        <LevelFilter levels={levels} onSolo={soloLevel} />
+      </div>
+      <ScrollArea className="min-h-0 flex-1">
+        {filtered.length === 0
           ? (
-            <div key={i} className="flex items-center gap-2 bg-surface-strip px-3 py-1">
-              <span className="h-px flex-1 bg-border" aria-hidden="true" />
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                {row.label}
-              </span>
-              <span className="h-px flex-1 bg-border" aria-hidden="true" />
+            <div className="flex flex-col items-center gap-2 p-6 text-center">
+              <p className="font-mono text-xs text-muted-foreground">No logs match your search.</p>
+              <Button type="button" variant="ghost" size="xs" onClick={clearFilters}>Clear</Button>
             </div>
           )
-          : <LogLine key={i} row={row} hasTime={hasTime} hasAttrs={hasAttrs} />
-      ))}
-    </ScrollArea>
+          : filtered.map((row, i) => (
+            row.kind === 'divider'
+              ? (
+                <div key={i} className="flex items-center gap-2 bg-surface-strip px-3 py-1">
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                    {row.label}
+                  </span>
+                  <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                </div>
+              )
+              : <LogLine key={i} row={row} hasTime={hasTime} hasAttrs={hasAttrs} />
+          ))}
+      </ScrollArea>
+    </div>
   )
 }

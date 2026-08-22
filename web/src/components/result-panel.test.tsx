@@ -93,12 +93,16 @@ it('handles a successful invoke that returned nothing', () => {
 // The Logs tab used to be a raw <pre>: a traceback was a dozen unstructured
 // rows and nothing separated an error from an info line.
 it('renders logs as parsed rows rather than one flat blob', async () => {
-  render(<ResultPanel result={{ ...ok, logs: '2026-07-30T10:23:45.123Z ERROR boom\n' }} />)
+  const { container } = render(
+    <ResultPanel result={{ ...ok, logs: '2026-07-30T10:23:45.123Z ERROR boom\n' }} />,
+  )
 
   await userEvent.click(screen.getByRole('tab', { name: 'Logs' }))
 
   expect(screen.getByText('10:23:45.123')).toBeInTheDocument()
-  expect(screen.getByText('ERROR')).toBeInTheDocument()
+  // Not getByText('ERROR'): the Logs tab's level filter toolbar has its own
+  // ERROR chip, so a bare text query is ambiguous once the tab is open.
+  expect(container.querySelector('.text-destructive')).toHaveTextContent('ERROR')
   expect(screen.getByText('boom')).toBeInTheDocument()
 })
 

@@ -18,6 +18,15 @@ function timeCells(container: HTMLElement) {
   )
 }
 
+// The level filter toolbar's chips print the same level names ("ERROR",
+// "WARN", ...) a row's own level cell does, so a bare getByText('ERROR')
+// is ambiguous once the toolbar exists. Scoped the same way timeCells is.
+function levelCells(container: HTMLElement) {
+  return Array.from(container.querySelectorAll('span')).filter((el) =>
+    el.className.includes('w-12'),
+  )
+}
+
 it('hides the time column when no row in the batch has a time', () => {
   const { container } = render(<LogViewer raw={'LEVEL:name:one\nLEVEL:name:two\n'} />)
 
@@ -42,20 +51,22 @@ it('keeps the time column for every row when at least one has a time', () => {
 
 it('shows the time and level alongside the message', () => {
   // Braces, not a quoted attribute: JSX string attributes do not process \n.
-  render(<LogViewer raw={'2026-07-30T10:23:45.123Z ERROR connection refused\n'} />)
+  const { container } = render(
+    <LogViewer raw={'2026-07-30T10:23:45.123Z ERROR connection refused\n'} />,
+  )
 
   expect(screen.getByText('10:23:45.123')).toBeInTheDocument()
-  expect(screen.getByText('ERROR')).toBeInTheDocument()
+  expect(levelCells(container)[0]).toHaveTextContent('ERROR')
   expect(screen.getByText('connection refused')).toBeInTheDocument()
 })
 
 // The level is uppercased in the markup, not by CSS, so what a screen reader
 // and a test see is what is on screen.
 it('renders a plain line with no level text at all', () => {
-  render(<LogViewer raw={'hello from the handler\n'} />)
+  const { container } = render(<LogViewer raw={'hello from the handler\n'} />)
 
   expect(screen.getByText('hello from the handler')).toBeInTheDocument()
-  expect(screen.queryByText('INFO')).not.toBeInTheDocument()
+  expect(levelCells(container).map((el) => el.textContent)).toEqual([''])
 })
 
 it('renders a folded traceback as a single row', () => {
@@ -80,7 +91,7 @@ it('shows a structured line in the same columns as a text one', () => {
   const { container } = render(<LogViewer raw={STRUCTURED} />)
 
   expect(screen.getByText('02:35:13.683')).toBeInTheDocument()
-  expect(screen.getByText('WARN')).toBeInTheDocument()
+  expect(levelCells(container)[0]).toHaveTextContent('WARN')
   // The message is the message, not the raw object dumped into the row —
   // which is what a structured line used to render as.
   expect(container.querySelector('.whitespace-pre-wrap')).toHaveTextContent(/^slow call$/)
@@ -168,4 +179,76 @@ it('summarises a nested attribute rather than inlining it', () => {
 
   expect(screen.getByText('{…}')).toBeInTheDocument()
   expect(screen.queryByText(/RangeError/)).not.toBeInTheDocument()
+})
+
+// ---- search and filter ---------------------------------------------------
+
+const MIXED = 'ERROR connection refused\nINFO listening on port 3000\n'
+
+it('offers no search or filter toolbar when there are no logs', () => {
+  render(<LogViewer raw={undefined} />)
+
+  expect(screen.queryByPlaceholderText('Search logs…')).not.toBeInTheDocument()
+})
+
+it('filters rows by the search box, live as you type', async () => {
+  render(<LogViewer raw={MIXED} />)
+
+  await userEvent.type(screen.getByPlaceholderText('Search logs…'), 'refused')
+
+  expect(screen.getByText('connection refused')).toBeInTheDocument()
+  expect(screen.queryByText('listening on port 3000')).not.toBeInTheDocument()
+})
+
+it('shows only that level when a chip is clicked', async () => {
+  render(<LogViewer raw={MIXED} />)
+
+  await userEvent.click(screen.getByRole('button', { name: 'ERROR' }))
+
+  expect(screen.getByText('connection refused')).toBeInTheDocument()
+  expect(screen.queryByText('listening on port 3000')).not.toBeInTheDocument()
+})
+
+it('returns to every level when the solo\'d chip is clicked again', async () => {
+  render(<LogViewer raw={MIXED} />)
+  await userEvent.click(screen.getByRole('button', { name: 'ERROR' }))
+
+  await userEvent.click(screen.getByRole('button', { name: 'ERROR' }))
+
+  expect(screen.getByText('connection refused')).toBeInTheDocument()
+  expect(screen.getByText('listening on port 3000')).toBeInTheDocument()
+})
+
+it('switches solo to the newly clicked level', async () => {
+  render(<LogViewer raw={MIXED} />)
+  await userEvent.click(screen.getByRole('button', { name: 'ERROR' }))
+
+  await userEvent.click(screen.getByRole('button', { name: 'INFO' }))
+
+  expect(screen.queryByText('connection refused')).not.toBeInTheDocument()
+  expect(screen.getByText('listening on port 3000')).toBeInTheDocument()
+})
+
+it('shows a dedicated empty state when the filter matches nothing', async () => {
+  render(<LogViewer raw={MIXED} />)
+
+  await userEvent.type(screen.getByPlaceholderText('Search logs…'), 'nope')
+
+  expect(screen.getByText('No logs match your search.')).toBeInTheDocument()
+  expect(screen.queryByText('No logs.')).not.toBeInTheDocument()
+})
+
+it('clears the search and re-enables every level from the empty-match state', async () => {
+  render(<LogViewer raw={MIXED} />)
+  await userEvent.click(screen.getByRole('button', { name: 'INFO' }))
+  await userEvent.type(screen.getByPlaceholderText('Search logs…'), 'refused')
+  // "refused" only matches the ERROR row, which the INFO solo already
+  // excludes, so nothing is left — proving the level and text filters
+  // combine (AND).
+  expect(screen.getByText('No logs match your search.')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
+
+  expect(screen.getByText('connection refused')).toBeInTheDocument()
+  expect(screen.getByText('listening on port 3000')).toBeInTheDocument()
 })

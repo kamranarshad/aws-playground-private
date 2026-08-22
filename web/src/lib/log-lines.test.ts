@@ -1,5 +1,7 @@
 import { expect, it } from 'vitest'
-import { parseLogs, type LogRow } from '@/lib/log-lines'
+import { filterLogRows, parseLogs, type LogLevel, type LogRow } from '@/lib/log-lines'
+
+const ALL_LEVELS = new Set<LogLevel>(['error', 'warn', 'info', 'debug', 'trace'])
 
 // Divider rows are asserted separately; narrowing to `line` rows here keeps
 // the assertions below readable. The predicate is written out rather than
@@ -421,4 +423,70 @@ it('reports no metadata when the object is only its columns', () => {
   const row = lines('{"time":"2026-07-31T02:35:13.683Z","level":"info","msg":"x"}\n')[0]
 
   expect(row.meta).toEqual([])
+})
+
+// ---- filterLogRows ------------------------------------------------------
+
+it('returns every row unchanged for an empty query and every level active', () => {
+  const rows = parseLogs('=== invoke ===\nERROR boom\nINFO ok\n')
+
+  expect(filterLogRows(rows, { query: '', levels: ALL_LEVELS })).toEqual(rows)
+})
+
+it('drops a row whose level is not in the active set', () => {
+  const rows = lines('ERROR boom\nINFO ok\n')
+
+  expect(filterLogRows(rows, { query: '', levels: new Set(['error']) })).toEqual([rows[0]])
+})
+
+// A level-less line is not classified as anything, so toggling levels off
+// must not hide output the parser could not attribute to a level at all.
+it('keeps a row with no level regardless of the active level set', () => {
+  const rows = lines('a bare print with no level\n')
+
+  expect(filterLogRows(rows, { query: '', levels: new Set(['error']) })).toEqual(rows)
+  expect(filterLogRows(rows, { query: '', levels: new Set() })).toEqual(rows)
+})
+
+it('matches the query against the message, case-insensitively', () => {
+  const rows = lines('INFO connection Refused\nINFO listening\n')
+
+  expect(filterLogRows(rows, { query: 'refused', levels: ALL_LEVELS })).toEqual([rows[0]])
+})
+
+// A search has to reach fields that are only visible once a structured row
+// is expanded, or a match sitting in an attribute is invisible to search.
+it('matches the query against structured attributes, not just the message', () => {
+  const rows = lines(
+    '{"level":"info","message":"slow call","service":"orders-api"}\n'
+    + '{"level":"info","message":"fast call","service":"billing-api"}\n',
+  )
+
+  expect(filterLogRows(rows, { query: 'orders-api', levels: ALL_LEVELS })).toEqual([rows[0]])
+})
+
+it('applies the query and the level filter together', () => {
+  const rows = lines('ERROR connection refused\nINFO connection refused\n')
+
+  expect(
+    filterLogRows(rows, { query: 'refused', levels: new Set(['info']) }),
+  ).toEqual([rows[1]])
+})
+
+it('drops a divider once every row in its section is filtered out', () => {
+  const rows = parseLogs('=== build ===\nINFO tsc ok\n=== invoke ===\nERROR boom\n')
+
+  expect(filterLogRows(rows, { query: '', levels: new Set(['error']) })).toEqual([
+    { kind: 'divider', label: 'invoke' },
+    rows[3],
+  ])
+})
+
+it('keeps a divider when at least one row in its section still matches', () => {
+  const rows = parseLogs('=== invoke ===\nERROR boom\nINFO ok\n')
+
+  expect(filterLogRows(rows, { query: '', levels: new Set(['error']) })).toEqual([
+    rows[0],
+    rows[1],
+  ])
 })

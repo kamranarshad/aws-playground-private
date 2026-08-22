@@ -240,6 +240,44 @@ function parseStructured(line: string): LogRow | null {
   }
 }
 
+export type LogFilter = { query: string; levels: ReadonlySet<LogLevel> }
+
+function rowMatches(row: Extract<LogRow, { kind: 'line' }>, filter: LogFilter): boolean {
+  if (row.level && !filter.levels.has(row.level)) return false
+  const query = filter.query.trim().toLowerCase()
+  if (!query) return true
+  if (row.message.toLowerCase().includes(query)) return true
+  // Structured fields are only visible once a row is expanded; without this
+  // a match sitting in an attribute would be invisible to search.
+  return row.attrs != null && JSON.stringify(row.attrs).toLowerCase().includes(query)
+}
+
+// Filtering is per-section, not per-row: a divider whose section lost every
+// row to the filter would otherwise survive as an empty header with nothing
+// under it.
+export function filterLogRows(rows: LogRow[], filter: LogFilter): LogRow[] {
+  const result: LogRow[] = []
+  let sectionStart = 0
+  const flushSection = (end: number) => {
+    const section = rows.slice(sectionStart, end).filter(
+      (row) => row.kind === 'line' && rowMatches(row, filter),
+    )
+    if (section.length) {
+      if (rows[sectionStart]?.kind === 'divider') result.push(rows[sectionStart])
+      result.push(...section)
+    }
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].kind === 'divider') {
+      flushSection(i)
+      sectionStart = i
+    }
+  }
+  flushSection(rows.length)
+  return result
+}
+
 export function parseLogs(raw: string): LogRow[] {
   const lines = raw.split('\n')
   // Child output ends with a newline, which split turns into a phantom
