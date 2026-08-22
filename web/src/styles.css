@@ -175,6 +175,13 @@
   outside @layer base with !important so they win over CM's runtime-injected
   StyleModule sheet regardless of load order.
 */
+/* @uiw/react-codemirror wraps .cm-editor in its own <div class="cm-theme-*">
+   with no height of its own, so .cm-editor's height:100% below had nothing
+   to resolve against and shrank to content height instead — leaving a dead
+   zone below the last line where clicking didn't focus the editor. */
+.cm-host > div {
+  height: 100%;
+}
 .cm-host .cm-editor {
   background: transparent !important;
   height: 100%;
