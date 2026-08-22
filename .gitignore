@@ -3,6 +3,8 @@ harnesses/java/gson.jar
 harnesses/java/build/
 fixtures/java/hello/lambda-core.jar
 fixtures/java/hello/build/
+fixtures/java/structured-logging/lambda-core.jar
+fixtures/java/structured-logging/build/
 # Fixtures ship a committed dist/ and invoke without an install, so their
 # lockfiles are only a by-product of `npm run install:fixtures`.
 fixtures/**/package-lock.json

@@ -143,6 +143,9 @@ Nothing in the pipeline stamps log lines for you: the time and level have to
 come from whatever the handler itself printed. `fixtures/typescript/winston-datadog`
 is the worked example — a winston logger emitting either the text layout or
 Datadog's JSON intake shape, switched with `{"format":"json"}`.
+`fixtures/java/structured-logging` is the same fixture in Java, hand-rolled
+rather than through a logging framework so its `build.sh` stays as dependency-free
+as `fixtures/java/hello`'s.
 
 ## Data
 
