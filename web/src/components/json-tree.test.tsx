@@ -100,9 +100,38 @@ it('counts the root itself, so the whole response can collapse', async () => {
   expect(screen.getByText('2 keys')).toBeInTheDocument()
 })
 
-// Strings with quotes or newlines must not break out of their row.
-it('escapes string values the way JSON does', () => {
-  render(<JsonTree value={{ msg: 'say "hi"\nbye' }} />)
+// Quotes must still not break a value out of its row, and out of its own
+// quoting — but a real newline (a logged Error.stack, most often) has to stay
+// a line break, not JSON.stringify's escaped "\n", or a stack trace prints
+// as one unreadable line.
+it('escapes a quote in a single-line string the way JSON does', () => {
+  render(<JsonTree value={{ msg: 'say "hi"' }} />)
 
-  expect(screen.getByText('"say \\"hi\\"\\nbye"')).toBeInTheDocument()
+  expect(screen.getByText('"say \\"hi\\""')).toBeInTheDocument()
+})
+
+it('keeps a real line break in a multi-line string instead of escaping it', () => {
+  const { container } = render(<JsonTree value={{ msg: 'say "hi"\nbye' }} />)
+
+  // Quotes stay escaped so the value still reads as a JSON string; the
+  // newline between them is an actual line break, not printed text.
+  expect(container.textContent).toContain('"say \\"hi\\"\nbye"')
+  expect(container.querySelector('.whitespace-pre-wrap')).not.toBeNull()
+})
+
+// The motivating case: a logged Error.stack riding along as a JSON
+// attribute (see fixtures/typescript/winston-datadog) must stay legible once
+// the row is expanded, frames on their own lines rather than run together.
+it('formats a stack trace on real line breaks when its row is expanded', () => {
+  const stack =
+    "RangeError: no order matching 'A-1001' in the local store\n"
+    + '    at readFromStore (/app/dist/index.js:10806:9)\n'
+    + '    at lookupOrder (/app/dist/index.js:10809:10)'
+  const { container } = render(<JsonTree value={{ error: { kind: 'RangeError', stack } }} />)
+
+  expect(container.textContent).toContain(
+    "\"RangeError: no order matching 'A-1001' in the local store\n"
+    + '    at readFromStore (/app/dist/index.js:10806:9)\n'
+    + '    at lookupOrder (/app/dist/index.js:10809:10)"',
+  )
 })

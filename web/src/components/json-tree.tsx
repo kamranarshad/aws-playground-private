@@ -102,10 +102,25 @@ export function jsonLeafClass(value: unknown): string {
   return 'text-muted-foreground'
 }
 
+// JSON.stringify would print a real newline as the two characters "\n",
+// which turns a logged Error.stack into one unreadable line. Escaping only
+// the characters that would otherwise end the quoting early keeps the value
+// reading as a JSON string while leaving an actual line break as one.
+function escapeLeafString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
 function Leaf({ value }: { value: unknown }) {
-  // JSON.stringify, not bare quotes: a value containing a quote or a newline
-  // has to stay on its own row.
   if (typeof value === 'string') {
+    if (value.includes('\n')) {
+      return (
+        <span className={cn(jsonLeafClass(value), 'block whitespace-pre-wrap wrap-anywhere')}>
+          {`"${escapeLeafString(value)}"`}
+        </span>
+      )
+    }
+    // JSON.stringify, not bare quotes: a value containing a quote has to
+    // stay legible as a JSON string.
     return <span className={jsonLeafClass(value)}>{JSON.stringify(value)}</span>
   }
   if (typeof value === 'number') return <span className={jsonLeafClass(value)}>{String(value)}</span>
