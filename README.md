@@ -5,6 +5,10 @@ Lambda project folders, set the handler (same syntax as the AWS console),
 pick or write a JSON event, and invoke — response, logs, and a
 CloudWatch-style REPORT line, right in your browser.
 
+The sidebar's search box and per-language chips filter the function list
+once it grows — a chip solos that language (click it again for every
+language back).
+
 No Docker required. No RIE. No SAM. No LocalStack. No moto. Handlers run directly on
 your machine via tiny per-language harnesses (fresh process per invoke =
 cold-start semantics, and your latest code edits are always picked up).
@@ -129,6 +133,11 @@ Stack traces fold into the line that explains them, so a traceback is one
 row inheriting that line's level rather than a dozen level-less ones. When a
 build command runs, its output appears above the handler's under a `BUILD`
 divider.
+
+A search box and per-level chips above the log list filter what's shown — the
+search reaches a structured entry's fields as well as its visible message, and
+a level chip solos that level (click it again for every level back), the same
+interaction the sidebar's language chips use.
 
 Structured logs work too. A line that is a JSON object gets its time, level
 and message read out of the object and shown in the same columns, with the
