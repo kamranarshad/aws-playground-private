@@ -175,10 +175,23 @@ it('copies a collapsed embedded-JSON string as the raw string, not the parsed ob
   const raw = '{"userId":7}'
   render(<JsonTree value={{ body: raw }} />)
 
+  // Still expanded (showing the parsed subtree) — the counterintuitive case:
+  // the row displays parsed keys/values, but its copy value is the raw string.
+  await userEvent.click(screen.getByLabelText('Copy body'))
+  expect(writeText).toHaveBeenCalledWith(JSON.stringify(raw))
+
   await userEvent.click(screen.getByLabelText('Collapse body'))
   await userEvent.click(screen.getByLabelText('Copy body'))
-
   expect(writeText).toHaveBeenCalledWith(JSON.stringify(raw))
+})
+
+it('offers a copy button for an empty container too', async () => {
+  const writeText = stubClipboard()
+  render(<JsonTree value={{ headers: {} }} />)
+
+  await userEvent.click(screen.getByLabelText('Copy headers'))
+
+  expect(writeText).toHaveBeenCalledWith('{}')
 })
 
 // A handler that returned nothing has no JSON to copy: JSON.stringify(undefined)

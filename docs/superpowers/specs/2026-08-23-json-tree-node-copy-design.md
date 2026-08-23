@@ -10,11 +10,12 @@ node's value.
 
 ## Interaction
 
-Every `Row` (`json-tree.tsx:57-79`) gets a trailing icon-only button,
-revealed on hover or keyboard focus, matching the existing chevron toggle's
-position and size. Clicking it copies that row's value and shows the same
-copied-checkmark confirmation `useCopy()` already drives for `CopyButton` and
-`CopyableValue` (`web/src/lib/use-copy.ts`).
+Every `Row` (`json-tree.tsx:57-79`) gets an icon-only button in the row's
+left gutter, between the toggle chevron (or its spacer) and the field name —
+not trailing after the value. Revealed on hover or keyboard focus. Clicking
+it copies that row's value and shows the same copied-checkmark confirmation
+`useCopy()` already drives for `CopyButton` and `CopyableValue`
+(`web/src/lib/use-copy.ts`).
 
 This applies uniformly to every row shape `Node` (`json-tree.tsx:142-174`)
 produces: a scalar leaf, an empty container (`{}`/`[]`), and an
@@ -55,10 +56,12 @@ renders is decided inside `Row`/`NodeCopyButton` from `copy.value` (the
 `undefined`-value guard above), not by the caller.
 
 Inside `Row`, a small `NodeCopyButton` (or inlined `useCopy()` call) renders
-after the content div, sized to match the chevron (`size-3` icon, `mt-[3px]`
-top alignment against `leading-6` rows) rather than the full shadcn `Button`
-component — `Button`'s smallest size is `size-8`, visibly taller than a
-dense JSON row. Reveal via `opacity-0` → `group-hover/row:opacity-100` and
+between the toggle/spacer and the content div — in the row's gutter, next to
+the chevron — rather than the full shadcn `Button` component — `Button`'s
+smallest size is `size-8`, visibly taller than a dense JSON row. Sized
+`size-3` (`mt-[3px]` top alignment against `leading-6` rows); the chevron
+itself is `size-3.5`, so the two gutter icons are close but not pixel-
+identical in size. Reveal via `opacity-0` → `group-hover/row:opacity-100` and
 `focus-visible:opacity-100`, on a named group (`group/row`) scoped to `Row`
 so it doesn't collide with any `group` a parent (log-viewer's row, etc.) may
 already use. `aria-label="Copy {label}"`.

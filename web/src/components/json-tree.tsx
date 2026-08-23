@@ -57,12 +57,11 @@ function embeddedJson(value: unknown): Children | null {
 
 function NodeCopyButton({ value, label }: { value: unknown; label: string }) {
   const { copied, copy } = useCopy()
-  const text = JSON.stringify(value)
-  if (text === undefined) return null
+  if (value === undefined) return null
 
   return (
     <button
-      type="button" onClick={() => copy(text)} aria-label={`Copy ${label}`}
+      type="button" onClick={() => copy(JSON.stringify(value))} aria-label={`Copy ${label}`}
       className="mt-[3px] shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
     >
       {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
