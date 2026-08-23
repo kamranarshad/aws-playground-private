@@ -62,7 +62,7 @@ function NodeCopyButton({ value, label }: { value: unknown; label: string }) {
   return (
     <button
       type="button" onClick={() => copy(JSON.stringify(value))} aria-label={`Copy ${label}`}
-      className="mt-[3px] shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
+      className="mt-1 shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
     >
       {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
     </button>
