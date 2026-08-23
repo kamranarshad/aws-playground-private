@@ -48,15 +48,15 @@ export function HistoryList({ fnId, onLoadEvent }: {
             {openEntry.truncated ? ' · truncated' : ''}
           </span>
           <Button variant="ghost" size="sm" className="ml-auto"
-            onClick={() => onLoadEvent(displayValue(openEntry.event, openEntry.truncated))}>
+            onClick={() => onLoadEvent(displayValue(openEntry.event, openEntry.eventTruncated))}>
             <Download className="size-3.5" /> Load event
           </Button>
         </div>
         <ScrollArea className="min-h-0 flex-1">
           <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">
-            {`EVENT\n${displayValue(openEntry.event, openEntry.truncated)}\n\n` +
+            {`EVENT\n${displayValue(openEntry.event, openEntry.eventTruncated)}\n\n` +
               (openEntry.ok
-                ? `RESPONSE\n${displayValue(openEntry.response, openEntry.truncated)}`
+                ? `RESPONSE\n${displayValue(openEntry.response, openEntry.responseTruncated)}`
                 : `ERROR\n${openEntry.error?.type}: ${openEntry.error?.message}`) +
               `\n\nLOGS\n${openEntry.logs || '(none)'}`}
           </pre>

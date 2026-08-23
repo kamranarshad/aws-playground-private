@@ -41,6 +41,20 @@ test('function CRUD with validation', async () => {
   r = api.updateFunction('missing', {});
   assert.strictEqual(r.status, 404);
 
+  // PATCH must reject the same things POST would, not just merge blindly —
+  // a bad timeoutMs otherwise clamps every future invoke's timeout to ~1ms.
+  r = api.updateFunction(id, { runtime: 'ruby' });
+  assert.strictEqual(r.status, 400);
+  r = api.updateFunction(id, { path: '/no/such/dir' });
+  assert.strictEqual(r.status, 400);
+  r = api.updateFunction(id, { timeoutMs: 'soon' });
+  assert.strictEqual(r.status, 400);
+  r = api.updateFunction(id, { memoryMb: -1 });
+  assert.strictEqual(r.status, 400);
+  const unaffected = api.listFunctions().body.functions.find(f => f.id === id);
+  assert.strictEqual(unaffected.runtime, 'python');
+  assert.strictEqual(unaffected.timeoutMs, 5000, 'rejected patches must not apply');
+
   r = api.deleteFunction(id);
   assert.strictEqual(r.status, 204);
   r = api.deleteFunction(id);
@@ -76,6 +90,25 @@ test('second concurrent invoke of same function -> 409', { skip: noPy }, async (
   assert.strictEqual(second.status, 409);
   const done = await first;
   assert.strictEqual(done.body.error.type, 'Sandbox.Timedout');
+});
+
+// Regression: deleting a function while an invoke is still running used to
+// succeed immediately, and the invoke completing afterward would recreate
+// the just-cleared history file as an orphan no endpoint can reach again.
+test('delete during an in-flight invoke is rejected (409)', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'slow-delete', path: path.join(FIXTURES, 'python/timeout'),
+    runtime: 'python', handler: 'app.handler', timeoutMs: 1500 });
+  const id = created.body.id;
+  const invoke = api.invokeFunction({ functionId: id, event: {} });
+  await new Promise(r => setTimeout(r, 300));
+
+  const del = api.deleteFunction(id);
+  assert.strictEqual(del.status, 409);
+
+  await invoke;
+  const del2 = api.deleteFunction(id);
+  assert.strictEqual(del2.status, 204);
+  assert.strictEqual(api.listHistory(id).status, 404);
 });
 
 test('invoke records history; delete clears it', { skip: noPy }, async () => {
@@ -356,6 +389,27 @@ test('enabled but stopped service short-circuits with Service.NotRunning', async
   assert.ok(r.body.error.message.includes('S3 (MinIO)'));
   const h = api.listHistory(created.body.id);
   assert.strictEqual(h.body.entries[0].error.type, 'Service.NotRunning');
+
+  // Each Service.NotRunning result needs its own requestId: the web UI keys
+  // its result panel on report.requestId to force a remount between invokes,
+  // and a shared '' would let stale per-invoke UI state carry over.
+  const r2 = await api.invokeFunction({ functionId: created.body.id, event: {} });
+  assert.ok(r.body.report.requestId, 'requestId must not be empty');
+  assert.notStrictEqual(r.body.report.requestId, r2.body.report.requestId);
+});
+
+test('unknown localServices name is rejected, not left to crash invoke or selection', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'bad-svc', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler', localServices: ['not-a-real-service'] });
+  const id = created.body.id;
+
+  const invoked = await api.invokeFunction({ functionId: id, event: {} });
+  assert.strictEqual(invoked.status, 400);
+  assert.match(invoked.body.error, /not-a-real-service/);
+
+  const selected = await api.setSelection({ functionId: id, waitReady: false });
+  assert.strictEqual(selected.status, 400);
+  assert.match(selected.body.error, /not-a-real-service/);
 });
 
 test('two aws services: per-service endpoints, no global', { skip: noPy }, async () => {

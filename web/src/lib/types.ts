@@ -93,7 +93,9 @@ export interface HistoryEntry {
   ts: number
   handler: string
   event: unknown
+  eventTruncated: boolean
   response?: unknown
+  responseTruncated: boolean
   error?: LambdaError | null
   logs: string
   report: Report | null

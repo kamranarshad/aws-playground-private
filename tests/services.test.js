@@ -201,6 +201,55 @@ test('setSelection starts missing services and auto-stops after grace', async ()
     'auto-started service should stop after grace');
 });
 
+// Regression: two overlapping calls used to let the slower one make its
+// start/stop decisions against a `need` set captured before a faster, later
+// call had already run — the service the slow call started then had nothing
+// scheduled to stop it. Firing both without awaiting between them reproduces
+// the interleaving that caused it; queueing calls closes it.
+test('setSelection queues overlapping calls so bookkeeping reflects the true current state', async () => {
+  scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } });
+  const selectA = services.setSelection(['minio'], { waitReady: false });
+  const selectB = services.setSelection([], { waitReady: false });
+  const [rA, rB] = await Promise.all([selectA, selectB]);
+  assert.deepStrictEqual(rA.started, ['minio']);
+  assert.deepStrictEqual(rB.scheduledStop, ['minio'],
+    'B must see minio (started by the still in-flight A) and schedule its stop');
+
+  scenario({ inspect: { code: 0, stdout: 'true' }, stop: { code: 0, stdout: 'x' } });
+  await sleep(PAST_GRACE_MS);
+  assert.ok(calls().some(c => c.startsWith('stop aws-playground-minio')));
+});
+
+test('graceMs falls back to the default when the env override is not a number', () => {
+  const prev = process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS;
+  process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = 'fifteen';
+  try {
+    assert.strictEqual(services.graceMs(), 15000);
+  } finally {
+    process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS = prev;
+  }
+});
+
+// Regression: a stalled service (TCP connects, HTTP never answers) used to
+// hang the fetch forever, so waitReady — and everything that awaits it
+// synchronously, like POST /api/selection — never returned.
+test('waitReady aborts a stalled HTTP probe instead of hanging past its deadline', async () => {
+  const realFetch = global.fetch;
+  let sawAbort = false;
+  global.fetch = (_url, opts) => new Promise((_resolve, reject) => {
+    opts?.signal?.addEventListener('abort', () => { sawAbort = true; reject(new Error('aborted')); });
+  });
+  try {
+    const startedAt = Date.now();
+    const ok = await services.waitReady({ type: 'http', target: 'http://127.0.0.1:1/x' }, 300);
+    assert.strictEqual(ok, false);
+    assert.ok(sawAbort, 'a stalled fetch must be aborted, not left to hang past the deadline');
+    assert.ok(Date.now() - startedAt < 5000, 'must not hang well past the requested timeout');
+  } finally {
+    global.fetch = realFetch;
+  }
+});
+
 test('reselection within grace cancels the pending stop', async () => {
   scenario({ ps: { code: 0, stdout: '' }, run: { code: 0, stdout: 'x' } });
   await services.setSelection(['elasticmq'], { waitReady: false });

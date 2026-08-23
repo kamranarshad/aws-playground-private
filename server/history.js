@@ -12,7 +12,8 @@ const MAX_FIELD_BYTES = 64 * 1024;
 const COMPACT_BYTES = 4 * 1024 * 1024;
 
 function compactBytes() {
-  return parseInt(process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES || String(COMPACT_BYTES), 10);
+  const parsed = parseInt(process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES, 10);
+  return Number.isFinite(parsed) ? parsed : COMPACT_BYTES;
 }
 
 function fileFor(functionId) {
@@ -82,7 +83,9 @@ function append(functionId, entry) {
     ts: Date.now(),
     handler: entry.handler ?? '',
     event: event.value,
+    eventTruncated: event.truncated,
     response: response.value,
+    responseTruncated: response.truncated,
     error: entry.error ?? null,
     logs: logs.value,
     report: report.value,
@@ -110,4 +113,5 @@ function clear(functionId) {
   }
 }
 
-module.exports = { append, list, clear, MAX_ENTRIES, MAX_FIELD_BYTES };
+module.exports = { append, list, clear, MAX_ENTRIES, MAX_FIELD_BYTES,
+  COMPACT_BYTES, compactBytes };

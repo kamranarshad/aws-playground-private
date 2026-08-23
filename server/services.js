@@ -193,10 +193,17 @@ async function waitReady(ready, timeoutMs = 30000) {
       if (await tcpReachable(ready.target)) return true;
     } else {
       // Any HTTP response counts: DynamoDB Local answers GET / with 400.
+      // Bounded so a service that accepts the connection but never answers
+      // can't hang this past the overall deadline.
+      const controller = new AbortController();
+      const abortTimer = setTimeout(() => controller.abort(),
+        Math.max(1, Math.min(deadline - Date.now(), 5000)));
       try {
-        await fetch(ready.target);
+        await fetch(ready.target, { signal: controller.signal });
         return true;
-      } catch {}
+      } catch {} finally {
+        clearTimeout(abortTimer);
+      }
     }
     await new Promise(r => setTimeout(r, 400));
   }
@@ -241,7 +248,8 @@ async function stop(name) {
 // them ("auto") stop GRACE_MS after no selection needs them. User-started
 // services are never touched.
 function graceMs() {
-  return parseInt(process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS || '15000', 10);
+  const parsed = parseInt(process.env.AWS_PLAYGROUND_SERVICE_GRACE_MS, 10);
+  return Number.isFinite(parsed) ? parsed : 15000;
 }
 
 const autoStarted = new Set();
@@ -255,7 +263,23 @@ function cancelStop(name) {
   }
 }
 
-async function setSelection(needed, { waitReady: wait = true } = {}) {
+// setSelection can race itself: two overlapping calls previously let the
+// slower one apply its start/stop bookkeeping against a `need` set captured
+// before the faster, later call had run — e.g. a slow start for selection A
+// resolving after a quick, unrelated selection B had already completed found
+// nothing yet in `autoStarted` to schedule a stop for, so A (still holding
+// its own stale need) never scheduled one either, and the service it started
+// kept running until some unrelated future selection happened to reap it.
+// Queueing calls means every call's bookkeeping sees the true current state.
+let selectionChain = Promise.resolve();
+
+function setSelection(needed, opts) {
+  const run = selectionChain.then(() => runSetSelection(needed, opts));
+  selectionChain = run.catch(() => {});
+  return run;
+}
+
+async function runSetSelection(needed, { waitReady: wait = true } = {}) {
   const need = new Set(needed);
   const started = [];
   const scheduledStop = [];
@@ -357,4 +381,4 @@ function labelFor(name) {
 }
 
 module.exports = { status, statusAll, start, stop, list, envFor,
-  composeEnv, names, labelFor, setSelection, stopAutoStarted };
+  composeEnv, names, labelFor, setSelection, stopAutoStarted, waitReady, graceMs };

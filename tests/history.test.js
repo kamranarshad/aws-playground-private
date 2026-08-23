@@ -88,15 +88,43 @@ test('oversized fields are truncated and flagged', () => {
   const big = 'x'.repeat(history.MAX_FIELD_BYTES + 1000);
   const stored = history.append('fn3', entry({ logs: big, event: { blob: big } }));
   assert.strictEqual(stored.truncated, true);
+  assert.strictEqual(stored.eventTruncated, true);
+  assert.strictEqual(stored.responseTruncated, false);
   assert.ok(Buffer.byteLength(stored.logs, 'utf8') <= history.MAX_FIELD_BYTES);
   assert.ok(Buffer.byteLength(JSON.stringify(stored.event), 'utf8') <= history.MAX_FIELD_BYTES + 16);
   const listed = history.list('fn3')[0];
   assert.strictEqual(listed.truncated, true);
+  assert.strictEqual(listed.eventTruncated, true);
+  assert.strictEqual(listed.responseTruncated, false);
 });
 
 test('small entries are not flagged truncated', () => {
   const stored = history.append('fn4', entry());
   assert.strictEqual(stored.truncated, false);
+  assert.strictEqual(stored.eventTruncated, false);
+  assert.strictEqual(stored.responseTruncated, false);
+});
+
+// Regression: the entry-wide `truncated` flag used to be the only signal the
+// web UI had, so a small response next to oversized logs got mis-rendered as
+// if the response itself were a truncated raw string.
+test('per-field truncation is independent of other oversized fields', () => {
+  const big = 'x'.repeat(history.MAX_FIELD_BYTES + 1000);
+  const stored = history.append('fn10', entry({ logs: big, response: { ok: 1 } }));
+  assert.strictEqual(stored.truncated, true, 'entry-wide flag still reflects the big logs field');
+  assert.strictEqual(stored.responseTruncated, false, 'the small response was not itself truncated');
+  assert.deepStrictEqual(stored.response, { ok: 1 });
+});
+
+test('compactBytes falls back to the default when the env override is not a number', () => {
+  const prev = process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
+  process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = 'unlimited';
+  try {
+    assert.strictEqual(history.compactBytes(), history.COMPACT_BYTES);
+  } finally {
+    if (prev === undefined) delete process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
+    else process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = prev;
+  }
 });
 
 test('clear removes the file', () => {
