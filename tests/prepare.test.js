@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
-const { planPrepare, packageManagerBin } = require('../scripts/prepare');
+const { planPrepare } = require('../scripts/prepare');
 
 const ROOT = path.join(__dirname, '..');
 
@@ -41,19 +41,6 @@ test('AWS_PLAYGROUND_SKIP_WEB_BUILD skips even in a full checkout', () => {
   });
   assert.ok(plan.skip, 'should report why it skipped');
   assert.ok(!plan.install, 'should not install anything');
-});
-
-test('an install driven by nub keeps using nub for web/', () => {
-  assert.strictEqual(packageManagerBin({
-    npm_config_user_agent: 'nub/0.7.1 npm/? node/v23.8.0 darwin arm64',
-  }), 'nub');
-});
-
-test('npm installs (and unknown agents) stay on npm', () => {
-  assert.strictEqual(packageManagerBin({
-    npm_config_user_agent: 'npm/10.9.2 node/v22.12.0 workspaces/false',
-  }), 'npm');
-  assert.strictEqual(packageManagerBin({}), 'npm');
 });
 
 // Proves the script is wired to the planner: with the skip flag it must

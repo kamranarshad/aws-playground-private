@@ -178,15 +178,7 @@ what makes `npx github:...` work without a clone. Set
 `AWS_PLAYGROUND_SKIP_WEB_BUILD=1` to skip that build when you know `web/dist`
 is current.
 
-npm is the canonical package manager (CI and `npx github:` depend on it), but
-alternative managers work too: `prepare` follows whichever manager drove the
-install (`npm_config_user_agent`). The test scripts run through
-`scripts/without-nub.js`, which strips nub's runtime injection from the
-environment — without it, nub 0.7.1's preload makes every `node --test` file
-exit green having run zero tests. Don't add a `.node-version` file: when it
-pins a version other than the system Node, nub 0.7.1 turns every `nub run`
-into a silent no-op (command echoed, nothing executed, exit 0);
-`nub run --node <script>` sidesteps both bugs if you hit them.
+npm is the canonical package manager (CI and `npx github:` depend on it).
 
 The `fixtures/` folder is never part of the build or the published package; it
 is sample Lambda projects, each installed on its own. To invoke the TypeScript
