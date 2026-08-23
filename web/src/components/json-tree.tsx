@@ -90,8 +90,8 @@ function Row({ toggle, copy, children }: {
           </button>
         )
         : <span className="w-3.5 shrink-0" aria-hidden="true" />}
-      <div className="min-w-0 flex-1 break-all">{children}</div>
       <NodeCopyButton value={copy.value} label={copy.label} />
+      <div className="min-w-0 flex-1 break-all">{children}</div>
     </div>
   )
 }
@@ -167,7 +167,8 @@ function Node({ label, index, value, depth }: {
   const embedded = kids ? null : embeddedJson(value)
   const [open, setOpen] = useState(depth < OPEN_DEPTH)
 
-  const copy = { value, label: label ?? 'root' }
+  const rowLabel = label ?? 'root'
+  const copy = { value, label: rowLabel }
 
   const branch = kids ?? embedded
   if (!branch) return <Row copy={copy}><Key label={label} index={index} /><Leaf value={value} /></Row>
@@ -178,7 +179,7 @@ function Node({ label, index, value, depth }: {
 
   return (
     <>
-      <Row toggle={{ open, label: label ?? 'root', onClick: () => setOpen(!open) }} copy={copy}>
+      <Row toggle={{ open, label: rowLabel, onClick: () => setOpen(!open) }} copy={copy}>
         <Key label={label} index={index} />
         {!open && embedded
           // Collapsed, an embedded subtree goes back to being the string it is.

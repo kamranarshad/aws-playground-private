@@ -77,7 +77,7 @@ it('leaves a string that only looks like JSON alone', () => {
   render(<JsonTree value={{ body: '{not json' }} />)
 
   expect(screen.getByText('"{not json"')).toBeInTheDocument()
-  expect(screen.queryByLabelText(/Expand|Collapse.*body/)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/(Expand|Collapse).*body/)).not.toBeInTheDocument()
 })
 
 it('renders a bare primitive response', () => {
@@ -91,7 +91,7 @@ it('renders empty containers inline', () => {
 
   expect(screen.getByText('0 keys')).toBeInTheDocument()
   expect(screen.getByText('0 items')).toBeInTheDocument()
-  expect(screen.queryByLabelText(/Expand|Collapse.*headers/)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/(Expand|Collapse).*headers/)).not.toBeInTheDocument()
 })
 
 // Indentation and the guide rails carry the nesting, so the braces and the
