@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { Check, ChevronRight, Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useCopy } from '@/lib/use-copy'
 
 // The root and two levels below it arrive expanded; anything deeper starts
 // collapsed so a big response doesn't dump hundreds of rows on arrival.
@@ -54,14 +55,30 @@ function embeddedJson(value: unknown): Children | null {
   }
 }
 
-function Row({ toggle, children }: {
+function NodeCopyButton({ value, label }: { value: unknown; label: string }) {
+  const { copied, copy } = useCopy()
+  const text = JSON.stringify(value)
+  if (text === undefined) return null
+
+  return (
+    <button
+      type="button" onClick={() => copy(text)} aria-label={`Copy ${label}`}
+      className="mt-[3px] shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
+    >
+      {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
+
+function Row({ toggle, copy, children }: {
   toggle?: { open: boolean; label: string; onClick: () => void }
+  copy: { value: unknown; label: string }
   children: ReactNode
 }) {
   // The gap sits on the row, not the chevron, so leaf rows (which fill the
   // chevron column with a spacer) keep the same text origin.
   return (
-    <div className="flex items-start gap-1.5">
+    <div className="group/row flex items-start gap-1.5">
       {toggle
         ? (
           <button
@@ -74,6 +91,7 @@ function Row({ toggle, children }: {
         )
         : <span className="w-3.5 shrink-0" aria-hidden="true" />}
       <div className="min-w-0 flex-1 break-all">{children}</div>
+      <NodeCopyButton value={copy.value} label={copy.label} />
     </div>
   )
 }
@@ -149,16 +167,18 @@ function Node({ label, index, value, depth }: {
   const embedded = kids ? null : embeddedJson(value)
   const [open, setOpen] = useState(depth < OPEN_DEPTH)
 
+  const copy = { value, label: label ?? 'root' }
+
   const branch = kids ?? embedded
-  if (!branch) return <Row><Key label={label} index={index} /><Leaf value={value} /></Row>
+  if (!branch) return <Row copy={copy}><Key label={label} index={index} /><Leaf value={value} /></Row>
 
   if (kids && !kids.entries.length) {
-    return <Row><Key label={label} index={index} /><Punct>{kids.summary}</Punct></Row>
+    return <Row copy={copy}><Key label={label} index={index} /><Punct>{kids.summary}</Punct></Row>
   }
 
   return (
     <>
-      <Row toggle={{ open, label: label ?? 'root', onClick: () => setOpen(!open) }}>
+      <Row toggle={{ open, label: label ?? 'root', onClick: () => setOpen(!open) }} copy={copy}>
         <Key label={label} index={index} />
         {!open && embedded
           // Collapsed, an embedded subtree goes back to being the string it is.

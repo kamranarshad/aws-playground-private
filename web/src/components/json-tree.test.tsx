@@ -1,8 +1,20 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { JsonTree } from '@/components/json-tree'
+
+function stubClipboard() {
+  const writeText = vi.fn(async () => {})
+  Object.defineProperty(window.navigator, 'clipboard', {
+    value: { writeText }, configurable: true,
+  })
+  return writeText
+}
+
+afterEach(() => vi.clearAllMocks())
 
 it('renders each key with its value', () => {
   render(<JsonTree value={{ statusCode: 200, ok: true, note: 'hi', extra: null }} />)
@@ -65,7 +77,7 @@ it('leaves a string that only looks like JSON alone', () => {
   render(<JsonTree value={{ body: '{not json' }} />)
 
   expect(screen.getByText('"{not json"')).toBeInTheDocument()
-  expect(screen.queryByLabelText(/body/)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/Expand|Collapse.*body/)).not.toBeInTheDocument()
 })
 
 it('renders a bare primitive response', () => {
@@ -79,7 +91,7 @@ it('renders empty containers inline', () => {
 
   expect(screen.getByText('0 keys')).toBeInTheDocument()
   expect(screen.getByText('0 items')).toBeInTheDocument()
-  expect(screen.queryByLabelText(/headers/)).not.toBeInTheDocument()
+  expect(screen.queryByLabelText(/Expand|Collapse.*headers/)).not.toBeInTheDocument()
 })
 
 // Indentation and the guide rails carry the nesting, so the braces and the
@@ -134,4 +146,45 @@ it('formats a stack trace on real line breaks when its row is expanded', () => {
     + '    at readFromStore (/app/dist/index.js:10806:9)\n'
     + '    at lookupOrder (/app/dist/index.js:10809:10)"',
   )
+})
+
+it('copies a leaf value as its own JSON, not the whole response', async () => {
+  const writeText = stubClipboard()
+  render(<JsonTree value={{ statusCode: 200, body: 'hi' }} />)
+
+  await userEvent.click(screen.getByLabelText('Copy statusCode'))
+
+  expect(writeText).toHaveBeenCalledWith('200')
+})
+
+it('copies a subtree independent of its expand state', async () => {
+  const writeText = stubClipboard()
+  const headers = { 'content-type': 'application/json' }
+  render(<JsonTree value={{ headers }} />)
+
+  await userEvent.click(screen.getByLabelText('Copy headers'))
+  expect(writeText).toHaveBeenCalledWith(JSON.stringify(headers))
+
+  await userEvent.click(screen.getByLabelText('Collapse headers'))
+  await userEvent.click(screen.getByLabelText('Copy headers'))
+  expect(writeText).toHaveBeenCalledWith(JSON.stringify(headers))
+})
+
+it('copies a collapsed embedded-JSON string as the raw string, not the parsed object', async () => {
+  const writeText = stubClipboard()
+  const raw = '{"userId":7}'
+  render(<JsonTree value={{ body: raw }} />)
+
+  await userEvent.click(screen.getByLabelText('Collapse body'))
+  await userEvent.click(screen.getByLabelText('Copy body'))
+
+  expect(writeText).toHaveBeenCalledWith(JSON.stringify(raw))
+})
+
+// A handler that returned nothing has no JSON to copy: JSON.stringify(undefined)
+// is undefined, not a string.
+it('renders no copy button for an undefined value', () => {
+  render(<JsonTree value={undefined} />)
+
+  expect(screen.queryByLabelText('Copy root')).not.toBeInTheDocument()
 })
