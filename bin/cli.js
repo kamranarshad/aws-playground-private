@@ -18,7 +18,7 @@ if (flag('--help') || flag('-h')) {
 
 Starts the Lambda Playground server and opens it in your browser.
 
-  --port <n>   Port to listen on (default 4590)
+  --port <n>   Port to listen on (default: first available from 3000)
   --no-open    Do not open the browser automatically
 
 From a source checkout, pass flags through npm: npm start -- --port 5000`);
@@ -37,10 +37,28 @@ if (!fs.existsSync(path.join(DIST, 'server', 'server.js'))) {
   process.exit(1);
 }
 
-const port = parseInt(optValue('--port', '4590'), 10);
+const DEFAULT_PORT = 3000;
+const portFlagProvided = flag('--port');
+const port = parseInt(optValue('--port', String(DEFAULT_PORT)), 10);
 if (Number.isNaN(port) || port < 0 || port > 65535) {
   console.error('aws-playground: invalid --port value');
   process.exit(1);
+}
+
+// When the caller didn't ask for a specific port, scan forward from the
+// default until we find one that isn't taken, rather than failing outright.
+async function startOnFirstAvailablePort(basePort, host, maxAttempts = 100) {
+  for (let i = 0; i < maxAttempts && basePort + i <= 65535; i++) {
+    try {
+      return await startWebServer({ distDir: DIST, port: basePort + i, host });
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE') throw err;
+    }
+  }
+  throw Object.assign(
+    new Error(`no available port found from ${basePort} to ${basePort + maxAttempts - 1}`),
+    { code: 'EADDRINUSE' },
+  );
 }
 // Containers the playground auto-started belong to this process's lifetime.
 // The grace timer that would normally stop them lives in here too, so
@@ -65,7 +83,10 @@ function installShutdownSweep(server) {
   process.on('SIGTERM', bye);
 }
 
-startWebServer({ distDir: DIST, port, host: '127.0.0.1' })
+const HOST = '127.0.0.1';
+(portFlagProvided
+  ? startWebServer({ distDir: DIST, port, host: HOST })
+  : startOnFirstAvailablePort(port, HOST))
   .then((server) => {
     installShutdownSweep(server);
     const url = `http://localhost:${server.address().port}`;
@@ -79,7 +100,9 @@ startWebServer({ distDir: DIST, port, host: '127.0.0.1' })
   })
   .catch((err) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`Port ${port} is already in use. Try: aws-playground --port ${port + 1}`);
+      console.error(portFlagProvided
+        ? `Port ${port} is already in use. Try: aws-playground --port ${port + 1}`
+        : `No available port found starting at ${port}. Try: aws-playground --port <n>`);
       process.exit(1);
     }
     throw err;

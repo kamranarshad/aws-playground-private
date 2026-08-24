@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite'
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => ({
-  server: { port: 4590 },
+  server: { port: 3000 },
   resolve: { alias: { '@': path.resolve(dirname, './src') } },
   plugins: [tailwindcss(), tanstackStart(), viteReact()],
   // Build only: bundle all deps so dist/server is self-contained for npm

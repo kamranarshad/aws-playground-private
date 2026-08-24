@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
+const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -139,6 +140,38 @@ process.exit(process.argv[2] === 'inspect' ? 1 : 0);
   }
   assert.ok(fs.readFileSync(calls, 'utf8').includes('stop aws-playground-minio'),
     'the auto-started container should be stopped on shutdown');
+});
+
+test('cli without --port skips a busy port and binds the next free one',
+  { skip: needsBuild }, async () => {
+  const occupier = net.createServer();
+  await new Promise((resolve, reject) => {
+    occupier.once('error', reject);
+    occupier.listen(3000, '127.0.0.1', resolve);
+  });
+
+  const child = spawn(process.execPath, [CLI, '--no-open'], {
+    env: { ...process.env,
+      AWS_PLAYGROUND_DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-cli-port-')) },
+  });
+  try {
+    const url = await new Promise((resolve, reject) => {
+      let out = '';
+      const timer = setTimeout(() => reject(new Error('no URL printed. output: ' + out)), 5000);
+      child.stdout.on('data', (d) => {
+        out += d;
+        const m = out.match(/listening at (http:\/\/localhost:(\d+))/);
+        if (m) { clearTimeout(timer); resolve(m); }
+      });
+    });
+    assert.notStrictEqual(url[2], '3000', 'should have skipped the occupied port 3000');
+    const res = await fetch(url[1] + '/api/health');
+    assert.strictEqual(res.status, 200);
+  } finally {
+    child.kill('SIGTERM');
+    await new Promise((resolve) => child.on('close', resolve));
+    await new Promise((resolve) => occupier.close(resolve));
+  }
 });
 
 test('cli --help prints usage and exits 0', async () => {

@@ -24,8 +24,8 @@ Or from a checkout:
     npm install     # installs and builds the web UI
     npm start       # starts the server and opens your browser
 
-Flags: `--port <n>` (default 4590), `--no-open`. From a checkout, pass them
-through npm: `npm start -- --port 5000`.
+Flags: `--port <n>` (default: first available port starting at 3000),
+`--no-open`. From a checkout, pass them through npm: `npm start -- --port 5000`.
 
 Running the playground itself requires Node >= 22.12. Nothing is installed
 globally either way.
