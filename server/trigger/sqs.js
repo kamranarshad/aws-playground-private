@@ -33,11 +33,15 @@ async function runLoop({ fn, signal, onStatus = () => {},
     onStatus({ state: 'polling', lastError: null, lastPolledAt: Date.now() });
     if (!message) continue;
     const event = buildSqsEvent(message, fn.trigger.queueName);
-    await invokeFunction({
-      functionId: fn.id,
-      event,
-      source: { type: 'trigger', messageId: message.MessageId },
-    });
+    try {
+      await invokeFunction({
+        functionId: fn.id,
+        event,
+        source: { type: 'trigger', messageId: message.MessageId },
+      });
+    } catch (err) {
+      onStatus({ state: 'error', lastError: `invoke failed: ${err.message}` });
+    }
     try {
       await remove(message.ReceiptHandle);
     } catch (err) {

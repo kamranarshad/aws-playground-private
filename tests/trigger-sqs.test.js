@@ -87,6 +87,24 @@ test('runLoop deletes the message even when the invoke fails', async () => {
   assert.deepStrictEqual(removed, ['rh1']);
 });
 
+test('runLoop deletes the message even when invokeFunction throws', async () => {
+  const controller = new AbortController();
+  const removed = [];
+  const statuses = [];
+  const receive = async () => ({ MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' });
+  const remove = async (rh) => { removed.push(rh); controller.abort(); };
+  const invokeFunction = async () => { throw new Error('invoke crashed'); };
+
+  await runLoop({
+    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
+    receive, remove, invokeFunction,
+    onStatus: (s) => statuses.push(s),
+  });
+
+  assert.deepStrictEqual(removed, ['rh1']);
+  assert.ok(statuses.some((s) => s.state === 'error' && s.lastError === 'invoke failed: invoke crashed'));
+});
+
 test('runLoop skips a poll cycle while the function is already in flight', async () => {
   const controller = new AbortController();
   inFlight.add('fn1');
