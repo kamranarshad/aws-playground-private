@@ -108,6 +108,17 @@ test('invoke returns result; unknown id 404', { skip: noPy }, async () => {
   assert.strictEqual(nf.status, 404);
 });
 
+test('invokeFunction tags history with the given source, defaulting to manual', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'hello3', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  await api.invokeFunction({ functionId: created.body.id, event: {} });
+  await api.invokeFunction({ functionId: created.body.id, event: {},
+    source: { type: 'trigger', messageId: 'm1' } });
+  const entries = api.listHistory(created.body.id).body.entries;
+  assert.deepStrictEqual(entries[0].source, { type: 'trigger', messageId: 'm1' });
+  assert.deepStrictEqual(entries[1].source, { type: 'manual' });
+});
+
 test('second concurrent invoke of same function -> 409', { skip: noPy }, async () => {
   const created = api.createFunction({ name: 'slow', path: path.join(FIXTURES, 'python/timeout'),
     runtime: 'python', handler: 'app.handler', timeoutMs: 3000 });

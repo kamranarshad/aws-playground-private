@@ -10,7 +10,7 @@ const inFlight = require('./in-flight');
 const { effectiveServices, unknownServiceError } = require('./services');
 
 async function invokeFunction(input) {
-  const { functionId } = input || {};
+  const { functionId, source } = input || {};
   const fn = store.get(functionId);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
   if (inFlight.has(fn.id)) {
@@ -47,6 +47,7 @@ async function invokeFunction(input) {
             handler: input.handler ?? fn.handler, event: input.event ?? {},
             response: undefined, error: result.error, logs: '',
             report: result.report, durationMs: 0, ok: false,
+            source: source ?? { type: 'manual' },
           });
         } catch {}
         return { status: 200, body: result };
@@ -105,6 +106,7 @@ async function invokeFunction(input) {
         report: result.report,
         durationMs: result.report.durationMs,
         ok: result.ok,
+        source: source ?? { type: 'manual' },
       });
     } catch (err) {
       console.warn(`aws-playground: failed to record invoke history: ${err.message}`);

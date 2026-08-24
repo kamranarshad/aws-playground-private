@@ -105,6 +105,15 @@ test('small entries are not flagged truncated', () => {
   assert.strictEqual(stored.responseTruncated, false);
 });
 
+test('append defaults source to manual and preserves an explicit trigger source', () => {
+  const manual = history.append('fn11', entry());
+  assert.deepStrictEqual(manual.source, { type: 'manual' });
+  const triggered = history.append('fn11', entry({ source: { type: 'trigger', messageId: 'm1' } }));
+  assert.deepStrictEqual(triggered.source, { type: 'trigger', messageId: 'm1' });
+  const listed = history.list('fn11');
+  assert.deepStrictEqual(listed[0].source, { type: 'trigger', messageId: 'm1' });
+});
+
 // Regression: the entry-wide `truncated` flag used to be the only signal the
 // web UI had, so a small response next to oversized logs got mis-rendered as
 // if the response itself were a truncated raw string.

@@ -82,6 +82,7 @@ function append(functionId, entry) {
     id: crypto.randomUUID(),
     ts: Date.now(),
     handler: entry.handler ?? '',
+    source: entry.source ?? { type: 'manual' },
     event: event.value,
     eventTruncated: event.truncated,
     response: response.value,
