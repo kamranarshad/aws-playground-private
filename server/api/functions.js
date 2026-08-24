@@ -10,6 +10,16 @@ function listFunctions() {
   return { status: 200, body: { functions: store.list() } };
 }
 
+function triggerError(trigger) {
+  if (trigger === null || trigger === undefined) return null;
+  if (trigger.type !== 'sqs') return `unsupported trigger type '${trigger.type}'`;
+  if (typeof trigger.queueName !== 'string' || !trigger.queueName.trim()) {
+    return 'trigger.queueName is required';
+  }
+  if (typeof trigger.enabled !== 'boolean') return 'trigger.enabled must be a boolean';
+  return null;
+}
+
 // Shared between create (fields always present) and update (fields present
 // only when patched) so a PATCH can't put the store into a state POST would
 // have rejected — e.g. a non-numeric timeoutMs, which downstream clamps
@@ -27,6 +37,10 @@ function fieldError(fields) {
   }
   if ('memoryMb' in fields && !(Number.isFinite(fields.memoryMb) && fields.memoryMb > 0)) {
     return 'memoryMb must be a positive number';
+  }
+  if ('trigger' in fields) {
+    const triggerErr = triggerError(fields.trigger);
+    if (triggerErr) return triggerErr;
   }
   return null;
 }

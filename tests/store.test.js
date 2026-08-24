@@ -65,3 +65,13 @@ test('corrupted registry file is quarantined, not silently wiped', () => {
   assert.deepStrictEqual(store.list(), []);
   assert.strictEqual(fs.readFileSync(corruptFile, 'utf8'), 'still garbage');
 });
+
+test('trigger field defaults to null and round-trips through create/update', () => {
+  const fn = store.create({ name: 'trig1', path: '/tmp/trig1', runtime: 'node' });
+  assert.strictEqual(fn.trigger, null);
+  const withTrigger = store.create({ name: 'trig2', path: '/tmp/trig2', runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q', enabled: true } });
+  assert.deepStrictEqual(withTrigger.trigger, { type: 'sqs', queueName: 'q', enabled: true });
+  const updated = store.update(withTrigger.id, { trigger: { type: 'sqs', queueName: 'q2', enabled: false } });
+  assert.deepStrictEqual(updated.trigger, { type: 'sqs', queueName: 'q2', enabled: false });
+});

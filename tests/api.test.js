@@ -61,6 +61,33 @@ test('function CRUD with validation', async () => {
   assert.strictEqual(r.status, 404);
 });
 
+test('trigger field validation on create and update', () => {
+  let r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sns', queueName: 'q', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q', enabled: 'yes' } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q', enabled: false } });
+  assert.strictEqual(r.status, 201);
+  const id = r.body.id;
+  assert.deepStrictEqual(r.body.trigger, { type: 'sqs', queueName: 'q', enabled: false });
+
+  r = api.updateFunction(id, { trigger: { type: 'sqs', queueName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.updateFunction(id, { trigger: null });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.trigger, null);
+});
+
 test('detect endpoint logic', () => {
   let r = api.detect({});
   assert.strictEqual(r.status, 400);
