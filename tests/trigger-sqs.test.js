@@ -77,7 +77,10 @@ test('runLoop deletes the message even when the invoke fails', async () => {
   const removed = [];
   const receive = async () => ({ MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' });
   const remove = async (rh) => { removed.push(rh); controller.abort(); };
-  const invokeFunction = async () => ({ status: 500 });
+  // A handler error still comes back as status 200 (the failure lives in the
+  // body) — only guard responses like 409/404 are non-200, and those are
+  // covered by the dedicated test below.
+  const invokeFunction = async () => ({ status: 200, body: { ok: false, error: { message: 'boom' } } });
 
   await runLoop({
     fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
@@ -103,6 +106,26 @@ test('runLoop deletes the message even when invokeFunction throws', async () => 
 
   assert.deepStrictEqual(removed, ['rh1']);
   assert.ok(statuses.some((s) => s.state === 'error' && s.lastError === 'invoke failed: invoke crashed'));
+});
+
+test('runLoop leaves the message on the queue when invokeFunction returns a 409 guard response', async () => {
+  const controller = new AbortController();
+  const removed = [];
+  let receiveCalls = 0;
+  const receive = async () => {
+    receiveCalls++;
+    if (receiveCalls > 1) { controller.abort(); return null; }
+    return { MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' };
+  };
+  const remove = async (rh) => { removed.push(rh); };
+  const invokeFunction = async () => ({ status: 409, body: { error: 'in flight' } });
+
+  await runLoop({
+    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
+    receive, remove, invokeFunction,
+  });
+
+  assert.deepStrictEqual(removed, []);
 });
 
 test('runLoop skips a poll cycle while the function is already in flight', async () => {

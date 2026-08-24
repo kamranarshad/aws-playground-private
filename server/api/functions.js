@@ -53,7 +53,9 @@ function createFunction(input) {
   }
   const err = fieldError(input);
   if (err) return { status: 400, body: { error: err } };
-  return { status: 201, body: store.create(input) };
+  const fn = store.create(input);
+  manager.sync(fn);
+  return { status: 201, body: fn };
 }
 
 function updateFunction(id, patch) {

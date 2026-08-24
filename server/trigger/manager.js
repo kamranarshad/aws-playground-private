@@ -27,6 +27,13 @@ async function startFor(fn) {
   try {
     const started = await localServices.start('elasticmq', { auto: false });
     if (record.cancelled) return;
+    if (!store.get(fn.id)) {
+      // Function was deleted while ElasticMQ was starting up; deleteFunction's
+      // manager.stop(id) was a no-op since nothing was in `running` yet. Clean
+      // up instead of starting a poller for a function that no longer exists.
+      running.delete(fn.id);
+      return;
+    }
     if (!started.ok) {
       Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
       return;
@@ -56,7 +63,7 @@ async function sync(fn) {
     if (current) stop(fn.id);
     return;
   }
-  if (current && current.queueName === fn.trigger.queueName) return;
+  if (current && current.queueName === fn.trigger.queueName && current.status.state !== 'error') return;
   if (current) stop(fn.id);
   await startFor(fn);
 }
@@ -66,7 +73,7 @@ async function resumeAll() {
 }
 
 function stopAll() {
-  for (const id of [...running.keys()]) stop(id);
+  for (const id of running.keys()) stop(id);
 }
 
 module.exports = { sync, stop, resumeAll, stopAll, status, statusAll };

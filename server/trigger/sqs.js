@@ -35,8 +35,9 @@ async function runLoop({ fn, signal, onStatus = () => {},
     onStatus({ state: 'polling', lastError: null, lastPolledAt: Date.now() });
     if (!message) continue;
     const event = buildSqsEvent(message, fn.trigger.queueName);
+    let result;
     try {
-      await invokeFunction({
+      result = await invokeFunction({
         functionId: fn.id,
         event,
         source: { type: 'trigger', messageId: message.MessageId },
@@ -44,6 +45,12 @@ async function runLoop({ fn, signal, onStatus = () => {},
     } catch (err) {
       onStatus({ state: 'error', lastError: `invoke failed: ${err.message}` });
     }
+    // A non-200 result means the invoke never actually ran (e.g. a 409 guard
+    // for an in-flight manual invoke, or a 404 for a deleted function) — leave
+    // the message on the queue for the next visibility-timeout cycle instead
+    // of silently losing it. A thrown error (result stays undefined) still
+    // deletes, per the established behavior above.
+    if (result !== undefined && result.status !== 200) continue;
     try {
       await remove(message.ReceiptHandle);
     } catch (err) {

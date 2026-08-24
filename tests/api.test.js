@@ -98,10 +98,13 @@ test('updating a function trigger notifies the trigger manager; deleting stops i
   try {
     const created = api.createFunction({ name: 'trigwire', path: FIXTURES, runtime: 'node' });
     const id = created.body.id;
-    assert.deepStrictEqual(calls.sync, []);
+    // createFunction always calls manager.sync so a trigger set at creation
+    // time (via a direct API call) starts a poller immediately; sync() itself
+    // is a no-op when there's no enabled trigger.
+    assert.deepStrictEqual(calls.sync, [id]);
 
     api.updateFunction(id, { trigger: { type: 'sqs', queueName: 'q', enabled: true } });
-    assert.deepStrictEqual(calls.sync, [id]);
+    assert.deepStrictEqual(calls.sync, [id, id]);
 
     api.deleteFunction(id);
     assert.deepStrictEqual(calls.stop, [id]);
