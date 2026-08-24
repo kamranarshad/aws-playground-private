@@ -1,4 +1,4 @@
-import { Check, Copy } from 'lucide-react'
+import { CopyIcon } from '@/components/copy-icon'
 import { useCopy } from '@/lib/use-copy'
 
 // A click-to-copy value that renders the value as its own label, for short
@@ -11,9 +11,7 @@ export function CopyableValue({ value, className }: { value: string; className?:
       className={className ??
         'group inline-flex items-center gap-1 font-mono text-xs text-foreground/90 hover:text-foreground'}>
       {value}
-      {copied
-        ? <Check className="size-3 text-success" />
-        : <Copy className="size-3 opacity-40 group-hover:opacity-100" />}
+      <CopyIcon copied={copied} className="size-3" idleClassName="opacity-40 group-hover:opacity-100" />
     </button>
   )
 }

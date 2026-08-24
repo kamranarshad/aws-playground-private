@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronRight, Copy } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { CopyIcon } from '@/components/copy-icon'
 import { cn } from '@/lib/utils'
 import { useCopy } from '@/lib/use-copy'
 
@@ -64,7 +65,7 @@ function NodeCopyButton({ value, label }: { value: unknown; label: string }) {
       type="button" onClick={() => copy(JSON.stringify(value))} aria-label={`Copy ${label}`}
       className="mt-1 shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
     >
-      {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+      <CopyIcon copied={copied} className="size-3" />
     </button>
   )
 }

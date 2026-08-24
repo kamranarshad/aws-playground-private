@@ -1,5 +1,5 @@
-import { Check, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { CopyIcon } from '@/components/copy-icon'
 import { useCopy } from '@/lib/use-copy'
 import { cn } from '@/lib/utils'
 
@@ -18,7 +18,7 @@ export function CopyButton({ value, label, className }: {
       onClick={() => copy(value)}
       className={cn('text-muted-foreground hover:text-foreground', className)}
     >
-      {copied ? <Check className="size-3.5 text-success" /> : <Copy className="size-3.5" />}
+      <CopyIcon copied={copied} className="size-3.5" />
     </Button>
   )
 }
