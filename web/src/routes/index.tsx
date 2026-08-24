@@ -23,7 +23,15 @@ export const Route = createFileRoute('/')({
 
 function App() {
   const { data: functions = [] } = useFunctions()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The user's explicit pick, if it's still in the list; otherwise fall back
+  // to the first function. Deriving this during render (rather than via an
+  // effect that corrects a stale/unset id after the fact) means a function
+  // list that arrives or changes never renders a transient "nothing
+  // selected" frame first.
+  const [pinnedId, setPinnedId] = useState<string | null>(null)
+  const selectedId = pinnedId && functions.some((f) => f.id === pinnedId)
+    ? pinnedId
+    : functions[0]?.id ?? null
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
@@ -31,10 +39,12 @@ function App() {
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
 
-  useEffect(() => {
-    if (selectedId && !functions.some((f) => f.id === selectedId)) setSelectedId(null)
-    if (!selectedId && functions.length > 0) setSelectedId(functions[0].id)
-  }, [functions, selectedId])
+  // Every path that changes the selection goes through here so the invoke
+  // result from the previous function never bleeds into the next one.
+  function selectFunction(id: string | null) {
+    setPinnedId(id)
+    setResult(null)
+  }
 
   // Tell the server which function is active so playground.json services
   // auto-start on selection and auto-stop after the grace period.
@@ -68,8 +78,6 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  useEffect(() => setResult(null), [selectedId])
-
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
@@ -82,11 +90,11 @@ function App() {
       </header>
       <div className="flex min-h-0 flex-1">
         <AppSidebar functions={functions} selectedId={selectedId}
-          onSelect={setSelectedId} onAdd={() => setAddOpen(true)} />
+          onSelect={selectFunction} onAdd={() => setAddOpen(true)} />
         <main className="min-w-0 flex-1">
           {selected ? (
             <div className="flex h-full flex-col">
-              <FunctionHeader fn={selected} onDeleted={() => setSelectedId(null)} />
+              <FunctionHeader fn={selected} onDeleted={() => selectFunction(null)} />
               <EnvEditor key={selected.id} fn={selected} />
               <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <ResizablePanel defaultSize={50} minSize={25}>
@@ -132,11 +140,11 @@ function App() {
           )}
         </main>
       </div>
-      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={setSelectedId} />
+      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={selectFunction} />
       <CommandPalette
         functions={functions}
         canInvoke={!!selectedId}
-        onSelect={setSelectedId}
+        onSelect={selectFunction}
         onAdd={() => setAddOpen(true)}
         onInvoke={() => selectedId && runInvoke(selectedId)}
       />
