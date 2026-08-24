@@ -1,3 +1,5 @@
+const { SQSClient, CreateQueueCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+const { entry } = require('../services/registry');
 const inFlight = require('../api/in-flight');
 
 const POLL_IDLE_MS = 2000;
@@ -71,4 +73,57 @@ function buildSqsEvent(message, queueName) {
   };
 }
 
-module.exports = { buildSqsEvent, runLoop, POLL_IDLE_MS, ERROR_BACKOFF_MS };
+function buildClient() {
+  const svc = entry('elasticmq');
+  return new SQSClient({
+    endpoint: svc.endpoint,
+    region: 'elasticmq',
+    credentials: { accessKeyId: 'playground', secretAccessKey: 'playground123' },
+  });
+}
+
+async function ensureQueue(client, queueName) {
+  const r = await client.send(new CreateQueueCommand({ QueueName: queueName }));
+  return r.QueueUrl;
+}
+
+async function receiveMessage(client, queueUrl, { signal } = {}) {
+  const r = await client.send(new ReceiveMessageCommand({
+    QueueUrl: queueUrl,
+    MaxNumberOfMessages: 1,
+    WaitTimeSeconds: 10,
+    MessageAttributeNames: ['All'],
+    AttributeNames: ['All'],
+  }), { abortSignal: signal });
+  return r.Messages?.[0] ?? null;
+}
+
+async function deleteMessage(client, queueUrl, receiptHandle) {
+  await client.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }));
+}
+
+function start(fn, { onStatus }) {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const client = buildClient();
+      const queueUrl = await ensureQueue(client, fn.trigger.queueName);
+      await runLoop({
+        fn,
+        signal: controller.signal,
+        onStatus,
+        receive: (opts) => receiveMessage(client, queueUrl, opts),
+        remove: (receiptHandle) => deleteMessage(client, queueUrl, receiptHandle),
+        invokeFunction: require('../api/invoke').invokeFunction,
+      });
+    } catch (err) {
+      if (!controller.signal.aborted) onStatus({ state: 'error', lastError: err.message });
+    }
+  })();
+  return { stop: () => controller.abort() };
+}
+
+module.exports = {
+  buildSqsEvent, runLoop, POLL_IDLE_MS, ERROR_BACKOFF_MS,
+  buildClient, ensureQueue, receiveMessage, deleteMessage, start,
+};
