@@ -1,4 +1,6 @@
-import type { Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus } from './types'
+import type {
+  Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus, TriggersStatus,
+} from './types'
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -52,4 +54,5 @@ export const api = {
     request<{ state: string }>(`/api/services/${name}/start`, { method: 'POST' }),
   stopService: (name: string) =>
     request<{ state: string }>(`/api/services/${name}/stop`, { method: 'POST' }),
+  listTriggerStatus: () => request<TriggersStatus>('/api/triggers'),
 }

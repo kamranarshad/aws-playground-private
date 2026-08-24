@@ -96,6 +96,14 @@ export function useServices() {
   })
 }
 
+export function useTriggerStatus() {
+  return useQuery({
+    queryKey: ['triggers'],
+    queryFn: api.listTriggerStatus,
+    refetchInterval: SERVICES_POLL_MS,
+  })
+}
+
 export function useServiceAction() {
   const qc = useQueryClient()
   return useMutation({
