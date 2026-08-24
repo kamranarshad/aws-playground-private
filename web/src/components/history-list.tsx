@@ -43,6 +43,9 @@ export function HistoryList({ fnId, onLoadEvent }: {
             {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
           </Badge>
           {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
+          {openEntry.source?.type === 'trigger' && (
+            <Badge variant="outline" className="font-mono text-[10px]">trigger</Badge>
+          )}
           <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
             {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
             {openEntry.truncated ? ' · truncated' : ''}
@@ -86,6 +89,9 @@ export function HistoryList({ fnId, onLoadEvent }: {
                   ? <CircleCheck role="img" aria-label="OK" className="size-3.5 shrink-0 text-success" />
                   : <CircleX role="img" aria-label="Error" className="size-3.5 shrink-0 text-destructive" />}
                 {e.ok && <HttpStatusBadge response={e.response} prefix={false} />}
+                {e.source?.type === 'trigger' && (
+                  <Badge variant="outline" className="shrink-0 font-mono text-[10px]">trigger</Badge>
+                )}
                 <span className="truncate font-mono">{e.handler}</span>
                 <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
                   {e.durationMs ?? '?'}ms · {age(e.ts)}
