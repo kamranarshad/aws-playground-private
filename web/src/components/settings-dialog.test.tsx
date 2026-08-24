@@ -98,3 +98,31 @@ it('reseeds the Name field from the live function when reopened after a blank-na
   const reopened = await screen.findByLabelText('Name')
   await waitFor(() => expect(reopened).toHaveValue('test'))
 })
+
+it('seeds the trigger fields from the function', async () => {
+  render(<SettingsDialog fn={{ ...fn, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  await openSettings()
+  expect(screen.getByLabelText('SQS trigger queue')).toHaveValue('my-queue')
+  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
+})
+
+it('saves the trigger config through the patch', async () => {
+  render(<SettingsDialog fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openSettings()
+  await user.type(screen.getByLabelText('SQS trigger queue'), 'new-queue')
+  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', expect.objectContaining({
+    trigger: { type: 'sqs', queueName: 'new-queue', enabled: true },
+  }))
+})
+
+it('clears the trigger when the queue name is left blank', async () => {
+  render(<SettingsDialog fn={{ ...fn, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openSettings()
+  await user.clear(screen.getByLabelText('SQS trigger queue'))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', expect.objectContaining({ trigger: null }))
+})
