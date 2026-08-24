@@ -1,5 +1,5 @@
 const { SQSClient, CreateQueueCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
-const { entry } = require('../services/registry');
+const { entry, AWS_DUMMY_CREDS } = require('../services/registry');
 const inFlight = require('../api/in-flight');
 
 const POLL_IDLE_MS = 2000;
@@ -78,7 +78,10 @@ function buildClient() {
   return new SQSClient({
     endpoint: svc.endpoint,
     region: 'elasticmq',
-    credentials: { accessKeyId: 'playground', secretAccessKey: 'playground123' },
+    credentials: {
+      accessKeyId: AWS_DUMMY_CREDS.AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_DUMMY_CREDS.AWS_SECRET_ACCESS_KEY,
+    },
   });
 }
 

@@ -159,4 +159,4 @@ function composeEnv(names) {
   return env;
 }
 
-module.exports = { REGISTRY, entry, names, labelFor, envFor, composeEnv };
+module.exports = { REGISTRY, entry, names, labelFor, envFor, composeEnv, AWS_DUMMY_CREDS };
