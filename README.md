@@ -98,6 +98,16 @@ reads/writes S3 via the AWS SDK, with a `playground.json` that
 auto-starts MinIO when you select it (`{"action":"put","key":"x",
 "body":"..."}` / `{"action":"get","key":"x"}` / `{"action":"list"}`).
 
+A function can also be invoked automatically instead of manually: open its
+Settings, set an SQS queue name under "SQS trigger queue", and enable it.
+The playground auto-starts ElasticMQ, creates the queue if it doesn't
+exist, and invokes the function for every message that arrives (one
+message per invoke, deleted after every invoke whether it succeeds or
+fails — no batching or redelivery in this first cut). Trigger-caused runs
+are tagged in the History tab so you can tell them apart from manual
+invokes. Enabling a trigger is saved with the function, so it resumes
+automatically the next time you start the playground.
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you
