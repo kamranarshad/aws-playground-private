@@ -91,7 +91,7 @@ it('reads a time and a level off the same line', () => {
   })
 })
 
-// server/api.js:151 prepends these when a build ran.
+// server/api/invoke.js:94 prepends these when a build ran.
 it('turns the build and invoke markers into dividers', () => {
   const rows = parseLogs('=== build ===\ntsc ok\n=== invoke ===\nhello\n')
 

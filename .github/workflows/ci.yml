@@ -33,3 +33,6 @@ jobs:
 
       - name: Typecheck web
         run: npm --prefix web run typecheck
+
+      - name: Lint
+        run: npm run lint

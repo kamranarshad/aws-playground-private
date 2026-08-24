@@ -1,0 +1,30 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "react"
+  ],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    // Several components deliberately sync state from an external source
+    // (DOM class set by a pre-paint script, a reopened dialog re-seeding
+    // from props, a hydration-safe mount flag) inside useEffect, each with
+    // a comment explaining why. Warn rather than error so new instances
+    // still get a second look without forcing a rewrite of existing ones.
+    "react/set-state-in-effect": "warn"
+  },
+  "env": {
+    "builtin": true
+  },
+  "ignorePatterns": [
+    "fixtures/**",
+    "web/dist/**",
+    "web/src/routeTree.gen.ts",
+    "docs/**",
+    ".context/**"
+  ]
+}

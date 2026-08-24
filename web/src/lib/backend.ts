@@ -3,30 +3,38 @@ import { fileURLToPath } from 'node:url'
 import fs from 'node:fs'
 import path from 'node:path'
 
+// server/ is plain CJS with no HTTP server of its own — every route under
+// web/src/routes/api.*.ts is a thin pass-through that calls straight into it
+// in-process via `backend` below, rather than the web app proxying to a
+// separately-running API process. That's why this reaches across the repo
+// with require() instead of a package import.
+//
 // Works from web/src/lib (dev) and web/dist/server (built): walk up
 // until the repo's server/ directory is found.
 function serverDir(): string {
   let dir = path.dirname(fileURLToPath(import.meta.url))
   for (let i = 0; i < 8; i++) {
-    if (fs.existsSync(path.join(dir, 'server', 'api.js'))) return path.join(dir, 'server')
+    if (fs.existsSync(path.join(dir, 'server', 'api', 'index.js'))) return path.join(dir, 'server')
     dir = path.dirname(dir)
   }
-  throw new Error('could not locate server/api.js relative to the web build')
+  throw new Error('could not locate server/api/index.js relative to the web build')
 }
 
 const req = createRequire(import.meta.url)
 const SERVER_DIR = serverDir()
-const API_PATH = path.join(SERVER_DIR, 'api.js')
+const API_PATH = path.join(SERVER_DIR, 'api', 'index.js')
 
 function loadBackend() {
   return req(API_PATH)
 }
 
+// server/ nests modules a directory deep now (server/api/, server/services/),
+// so this has to walk down into them rather than just the top level.
 function newestServerMtime(): number {
   let newest = 0
-  for (const f of fs.readdirSync(SERVER_DIR)) {
-    if (!f.endsWith('.js')) continue
-    const t = fs.statSync(path.join(SERVER_DIR, f)).mtimeMs
+  for (const f of fs.readdirSync(SERVER_DIR, { withFileTypes: true, recursive: true })) {
+    if (!f.isFile() || !f.name.endsWith('.js')) continue
+    const t = fs.statSync(path.join(f.parentPath, f.name)).mtimeMs
     if (t > newest) newest = t
   }
   return newest

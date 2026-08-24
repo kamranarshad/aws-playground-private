@@ -6,7 +6,7 @@
   "bin": {
     "aws-playground": "bin/cli.js"
   },
-  "main": "server/api.js",
+  "main": "server/api/index.js",
   "engines": {
     "node": ">=22.12.0"
   },
@@ -18,7 +18,8 @@
     "install:fixtures": "node scripts/install-fixtures.js",
     "test": "npm run test:server && npm run test:web",
     "test:server": "node --test tests/*.test.js",
-    "test:web": "npm --prefix web run test"
+    "test:web": "npm --prefix web run test",
+    "lint": "oxlint --react-plugin ."
   },
   "files": [
     "bin",
@@ -26,5 +27,8 @@
     "harnesses",
     "scripts",
     "web/dist"
-  ]
+  ],
+  "devDependencies": {
+    "oxlint": "^1.79.0"
+  }
 }

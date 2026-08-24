@@ -58,7 +58,7 @@ const LEVEL_PATTERNS = [
   new RegExp(`^(${LEVEL_NAMES})\\b[\\s:-]*`, 'i'),
 ]
 
-// server/api.js:151 frames a two-phase run with these when a build ran.
+// server/api/invoke.js:94 frames a two-phase run with these when a build ran.
 const DIVIDER = /^=== (build|invoke) ===$/
 
 // A continuation is output that belongs to the entry above it: an indented
