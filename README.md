@@ -188,5 +188,12 @@ every fixture package under `fixtures/`.
 CI runs both suites, the web typecheck, and the web build on every push
 and pull request (`.github/workflows/ci.yml`).
 
+`server/` is plain CJS with no HTTP server of its own; the web app's
+`api.*` routes call straight into it in-process (see
+`web/src/lib/backend.ts`) rather than proxying to a separately-running
+API process. Server tests live centrally in `tests/*.test.js`; web
+tests are colocated next to the source they cover as `*.test.ts(x)`
+under `web/src/`.
+
 Architecture and design: `docs/superpowers/specs/2026-07-18-lambda-playground-design.md` and
 `docs/superpowers/specs/2026-07-18-tanstack-start-shadcn-ui-design.md`.
