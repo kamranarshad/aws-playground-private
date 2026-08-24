@@ -183,7 +183,7 @@ test('ts-winston fixture: text mode leads every line with an ISO time and a leve
   // instead of folding — splitting one error across two.
   const frames = lines.filter(l => /^\s+at /.test(l));
   assert.ok(frames.length >= 2, `expected indented stack frames, got ${frames.length}`);
-  assert.ok(!lines.some(l => /^RangeError:/.test(l)));
+  assert.ok(!lines.some(l => l.startsWith('RangeError:')));
 });
 
 // Datadog's intake keys off `status`, not `level`, and reads error.kind /

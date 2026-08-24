@@ -18,7 +18,6 @@ function arg(name, fallback) {
 const resultFile = arg('--result-file');
 const handlerSpec = arg('--handler', 'bootstrap');
 const timeoutMs = parseInt(arg('--timeout-ms', '30000'), 10);
-const memoryMb = parseInt(arg('--memory-mb', '128'), 10);
 const requestId = arg('--request-id', randomUUID());
 
 let done = false;

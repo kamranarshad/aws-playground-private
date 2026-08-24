@@ -27,6 +27,7 @@ test('vite dev server serves the app shell and the API',
           out += d;
           // Strip ANSI escapes before matching, in case color sneaks through
           // NO_COLOR (e.g. a lib that only honors FORCE_COLOR).
+          // eslint-disable-next-line no-control-regex -- \x1b is the ANSI escape itself, not a mistake
           const plain = out.replace(/\x1b\[[0-9;]*m/g, '');
           const m = plain.match(/Local:\s+http:\/\/localhost:(\d+)\//);
           if (m) { clearTimeout(timer); resolve(Number(m[1])); }

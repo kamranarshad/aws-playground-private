@@ -75,7 +75,7 @@ test('java-structured-logging fixture: text mode leads every line with an ISO ti
   // a new row instead of folding — splitting one error across two.
   const frames = lines.filter(l => /^\s+at /.test(l));
   assert.ok(frames.length >= 2, `expected indented stack frames, got ${frames.length}`);
-  assert.ok(!lines.some(l => /^java\.util\.NoSuchElementException:/.test(l)));
+  assert.ok(!lines.some(l => l.startsWith('java.util.NoSuchElementException:')));
 });
 
 // Datadog's intake keys off `status`, not `level`, and reads error.kind /
