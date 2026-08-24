@@ -17,18 +17,28 @@ function statusAll() {
 
 async function startFor(fn) {
   const st = { state: 'polling', lastError: null, lastPolledAt: null };
-  const record = { queueName: fn.trigger.queueName, stop: () => {}, status: st };
+  const record = {
+    queueName: fn.trigger.queueName,
+    status: st,
+    cancelled: false,
+    stop: () => { record.cancelled = true; },
+  };
   running.set(fn.id, record);
   try {
     const started = await localServices.start('elasticmq', { auto: false });
+    if (record.cancelled) return;
     if (!started.ok) {
       Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
       return;
     }
     const handle = sqs.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    if (record.cancelled) {
+      handle.stop();
+      return;
+    }
     record.stop = handle.stop;
   } catch (err) {
-    Object.assign(st, { state: 'error', lastError: err.message });
+    if (!record.cancelled) Object.assign(st, { state: 'error', lastError: err.message });
   }
 }
 

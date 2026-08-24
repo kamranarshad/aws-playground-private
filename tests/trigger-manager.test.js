@@ -137,6 +137,31 @@ test('a service start failure is reported as an error status, not thrown', async
   }
 });
 
+test('stop() called while sync() is still starting elasticmq prevents the poller from ever starting', async () => {
+  let resolveStart;
+  localServices.start = () => new Promise((resolve) => { resolveStart = resolve; });
+  try {
+    let sqsStartCalled = false;
+    sqs.start = (fn, { onStatus }) => {
+      sqsStartCalled = true;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    const fn = store.create({ name: 'f6', path: '/tmp/f6', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q6', enabled: true } });
+
+    const syncPromise = manager.sync(fn); // don't await yet — it's stuck on localServices.start
+    manager.stop(fn.id); // race: stop before elasticmq "finishes starting"
+    resolveStart({ ok: true, state: 'running', output: '' }); // now let it finish
+    await syncPromise;
+
+    assert.strictEqual(sqsStartCalled, false, 'sqs.start must never be called once cancelled');
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
+});
+
 test('resumeAll starts a poller for every function with an enabled trigger; stopAll tears them all down', async () => {
   elasticmqAlreadyRunning();
   // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
