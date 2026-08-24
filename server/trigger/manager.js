@@ -20,7 +20,7 @@ async function startFor(fn) {
   const record = { queueName: fn.trigger.queueName, stop: () => {}, status: st };
   running.set(fn.id, record);
   try {
-    const started = await localServices.start('elasticmq', { auto: false, waitReady: false });
+    const started = await localServices.start('elasticmq', { auto: false });
     if (!started.ok) {
       Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
       return;

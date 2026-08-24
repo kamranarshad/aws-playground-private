@@ -24,100 +24,141 @@ function elasticmqAlreadyRunning() {
 
 const sqs = require('../server/trigger/sqs');
 const store = require('../server/store');
+const localServices = require('../server/services');
 const manager = require('../server/trigger/manager');
+
+// Save the original localServices.start so we can restore it between tests
+const originalLocalServicesStart = localServices.start;
 
 test('sync starts elasticmq and the poll loop when a trigger is enabled', async () => {
   elasticmqAlreadyRunning();
-  const stop = () => { stop.called = true; };
-  sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop }; };
-  const fn = store.create({ name: 'f1', path: '/tmp/f1', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'q1', enabled: true } });
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stop = () => { stop.called = true; };
+    sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop }; };
+    const fn = store.create({ name: 'f1', path: '/tmp/f1', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q1', enabled: true } });
 
-  await manager.sync(fn);
+    await manager.sync(fn);
 
-  assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
-  manager.stop(fn.id);
-  assert.strictEqual(stop.called, true);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+    assert.strictEqual(stop.called, true);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
 });
 
 test('sync is a no-op when the trigger is already running with the same queue', async () => {
   elasticmqAlreadyRunning();
-  let starts = 0;
-  sqs.start = (fn, { onStatus }) => { starts++; onStatus({ state: 'polling', lastError: null }); return { stop: () => {} }; };
-  const fn = store.create({ name: 'f2', path: '/tmp/f2', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'q2', enabled: true } });
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let starts = 0;
+    sqs.start = (fn, { onStatus }) => { starts++; onStatus({ state: 'polling', lastError: null }); return { stop: () => {} }; };
+    const fn = store.create({ name: 'f2', path: '/tmp/f2', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q2', enabled: true } });
 
-  await manager.sync(fn);
-  await manager.sync(fn);
+    await manager.sync(fn);
+    await manager.sync(fn);
 
-  assert.strictEqual(starts, 1);
-  manager.stop(fn.id);
+    assert.strictEqual(starts, 1);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
 });
 
 test('sync restarts the loop when the queue name changes', async () => {
   elasticmqAlreadyRunning();
-  const stopped = [];
-  let n = 0;
-  sqs.start = (fn, { onStatus }) => {
-    n++;
-    const id = n;
-    onStatus({ state: 'polling', lastError: null });
-    return { stop: () => stopped.push(id) };
-  };
-  let fn = store.create({ name: 'f3', path: '/tmp/f3', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'q3', enabled: true } });
-  await manager.sync(fn);
-  fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q3-renamed', enabled: true } });
-  await manager.sync(fn);
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stopped = [];
+    let n = 0;
+    sqs.start = (fn, { onStatus }) => {
+      n++;
+      const id = n;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => stopped.push(id) };
+    };
+    let fn = store.create({ name: 'f3', path: '/tmp/f3', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q3', enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q3-renamed', enabled: true } });
+    await manager.sync(fn);
 
-  assert.deepStrictEqual(stopped, [1]);
-  assert.strictEqual(n, 2);
-  manager.stop(fn.id);
+    assert.deepStrictEqual(stopped, [1]);
+    assert.strictEqual(n, 2);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
 });
 
 test('sync stops the loop when the trigger is disabled', async () => {
   elasticmqAlreadyRunning();
-  let stopped = false;
-  sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { stopped = true; } }; };
-  let fn = store.create({ name: 'f4', path: '/tmp/f4', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'q4', enabled: true } });
-  await manager.sync(fn);
-  fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q4', enabled: false } });
-  await manager.sync(fn);
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let stopped = false;
+    sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { stopped = true; } }; };
+    let fn = store.create({ name: 'f4', path: '/tmp/f4', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q4', enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q4', enabled: false } });
+    await manager.sync(fn);
 
-  assert.strictEqual(stopped, true);
-  assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+    assert.strictEqual(stopped, true);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
 });
 
 test('a service start failure is reported as an error status, not thrown', async () => {
   scenario({ inspect: { code: 1, stdout: '' }, run: { code: 125, stdout: 'port is already allocated' } });
-  const fn = store.create({ name: 'f5', path: '/tmp/f5', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'q5', enabled: true } });
+  // Restore the original localServices.start to exercise the real docker-shim failure path
+  // (The docker run command fails before reaching the waitReady check)
+  localServices.start = originalLocalServicesStart;
+  try {
+    const fn = store.create({ name: 'f5', path: '/tmp/f5', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q5', enabled: true } });
 
-  await manager.sync(fn);
+    await manager.sync(fn);
 
-  const st = manager.status(fn.id);
-  assert.strictEqual(st.state, 'error');
-  assert.match(st.lastError, /port is already allocated/);
-  manager.stop(fn.id);
+    const st = manager.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /port is already allocated/);
+    manager.stop(fn.id);
+  } finally {
+    // No need to restore here since test 6 will set its own monkeypatch
+  }
 });
 
 test('resumeAll starts a poller for every function with an enabled trigger; stopAll tears them all down', async () => {
   elasticmqAlreadyRunning();
-  const started = [];
-  sqs.start = (fn, { onStatus }) => {
-    started.push(fn.id);
-    onStatus({ state: 'polling', lastError: null });
-    return { stop: () => {} };
-  };
-  const a = store.create({ name: 'a', path: '/tmp/a', runtime: 'node',
-    trigger: { type: 'sqs', queueName: 'qa', enabled: true } });
-  const b = store.create({ name: 'b', path: '/tmp/b', runtime: 'node' });
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const started = [];
+    sqs.start = (fn, { onStatus }) => {
+      started.push(fn.id);
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    const a = store.create({ name: 'a', path: '/tmp/a', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'qa', enabled: true } });
+    const b = store.create({ name: 'b', path: '/tmp/b', runtime: 'node' });
 
-  await manager.resumeAll();
+    await manager.resumeAll();
 
-  assert.ok(started.includes(a.id));
-  assert.ok(!started.includes(b.id));
-  manager.stopAll();
-  assert.deepStrictEqual(manager.status(a.id), { state: 'idle', lastError: null, lastPolledAt: null });
+    assert.ok(started.includes(a.id));
+    assert.ok(!started.includes(b.id));
+    manager.stopAll();
+    assert.deepStrictEqual(manager.status(a.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
 });
