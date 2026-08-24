@@ -88,6 +88,42 @@ test('trigger field validation on create and update', () => {
   assert.strictEqual(r.body.trigger, null);
 });
 
+test('updating a function trigger notifies the trigger manager; deleting stops it', () => {
+  const manager = require('../server/trigger/manager');
+  const calls = { sync: [], stop: [] };
+  const originalSync = manager.sync;
+  const originalStop = manager.stop;
+  manager.sync = (fn) => calls.sync.push(fn.id);
+  manager.stop = (id) => calls.stop.push(id);
+  try {
+    const created = api.createFunction({ name: 'trigwire', path: FIXTURES, runtime: 'node' });
+    const id = created.body.id;
+    assert.deepStrictEqual(calls.sync, []);
+
+    api.updateFunction(id, { trigger: { type: 'sqs', queueName: 'q', enabled: true } });
+    assert.deepStrictEqual(calls.sync, [id]);
+
+    api.deleteFunction(id);
+    assert.deepStrictEqual(calls.stop, [id]);
+  } finally {
+    manager.sync = originalSync;
+    manager.stop = originalStop;
+  }
+});
+
+test('GET /api/triggers reports manager status', () => {
+  const manager = require('../server/trigger/manager');
+  const original = manager.statusAll;
+  manager.statusAll = () => ({ someId: { state: 'polling', lastError: null, lastPolledAt: 123 } });
+  try {
+    const r = api.listTriggerStatus();
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body, { someId: { state: 'polling', lastError: null, lastPolledAt: 123 } });
+  } finally {
+    manager.statusAll = original;
+  }
+});
+
 test('detect endpoint logic', () => {
   let r = api.detect({});
   assert.strictEqual(r.status, 400);
