@@ -147,3 +147,18 @@ test('bootstrap wins over other runtime markers', () => {
   const res = detectProject(dir);
   assert.strictEqual(res.runtime, 'provided');
 });
+
+test('projectTrigger reflects a playground.json-declared trigger', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'app.py'), 'def handler(event, context):\n    return {}\n');
+  fs.writeFileSync(path.join(dir, 'playground.json'), JSON.stringify({ trigger: { type: 'http' } }));
+  const res = detectProject(dir);
+  assert.deepStrictEqual(res.projectTrigger, { type: 'http', enabled: true });
+});
+
+test('projectTrigger is null when playground.json declares none', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'app.py'), 'def handler(event, context):\n    return {}\n');
+  const res = detectProject(dir);
+  assert.strictEqual(res.projectTrigger, null);
+});

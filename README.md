@@ -138,6 +138,19 @@ playground stops everything it auto-started — containers you started by
 hand are left alone. Service state is polled, so stopping a container
 from a terminal is reflected in the UI within a few seconds.
 
+A `playground.json` can declare a trigger the same way it declares
+services — `{"trigger": {"type": "http"}}` or `{"trigger": {"type": "sqs",
+"queueName": "my-queue"}}` — and it overrides whatever's set manually for
+that function, the same "file wins" rule services follow. The trigger
+button in the function header shows this as a read-only label instead of
+the interactive picker when a file declaration is present. Like services,
+this is read fresh on every use, not cached — but unlike services (which
+re-evaluate on every function selection), a trigger's file declaration is
+picked up at the same points the playground would otherwise start or stop
+it: registering the function, saving any change to it, or restarting the
+playground. A hand-edit to `playground.json` for an already-registered,
+otherwise-untouched function won't take effect until one of those happens.
+
 A project's `.env` file is loaded automatically when present, re-read on
 every invoke. The env-vars section has a picker to choose a different
 `.env.*` file or `None` per function. Precedence, lowest to highest:

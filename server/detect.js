@@ -163,9 +163,11 @@ function detectProject(dir) {
       if (pkg !== null && JSON.parse(pkg)?.scripts?.build) buildCommand = 'npm run build';
     } catch {}
   }
+  const projectConfig = projectconfig.read(dir);
   return { runtime, handlerCandidates, venvPython, jarPath,
     envFiles: envfile.list(dir), buildCommand,
-    projectServices: projectconfig.read(dir).services };
+    projectServices: projectConfig.services,
+    projectTrigger: projectConfig.trigger };
 }
 
 module.exports = { detectProject, findVenvPython, findJar };
