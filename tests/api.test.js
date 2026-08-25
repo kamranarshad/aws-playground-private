@@ -88,6 +88,61 @@ test('trigger field validation on create and update', () => {
   assert.strictEqual(r.body.trigger, null);
 });
 
+test('function names must be globally unique', () => {
+  const a = api.createFunction({ name: 'uniq-a', path: FIXTURES, runtime: 'node' });
+  assert.strictEqual(a.status, 201);
+
+  const dup = api.createFunction({ name: 'uniq-a', path: FIXTURES, runtime: 'node' });
+  assert.strictEqual(dup.status, 400);
+  assert.match(dup.body.error, /already exists/);
+
+  const b = api.createFunction({ name: 'uniq-b', path: FIXTURES, runtime: 'node' });
+  assert.strictEqual(b.status, 201);
+
+  // Renaming into a collision is rejected...
+  let r = api.updateFunction(b.body.id, { name: 'uniq-a' });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /already exists/);
+
+  // ...but saving a function's own unchanged name is not a collision with itself.
+  r = api.updateFunction(a.body.id, { name: 'uniq-a' });
+  assert.strictEqual(r.status, 200);
+});
+
+test('trigger.type "http" requires a boolean enabled and a name without slashes', () => {
+  let r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'http', enabled: 'yes' } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'http', enabled: false } });
+  assert.strictEqual(r.status, 201);
+  assert.deepStrictEqual(r.body.trigger, { type: 'http', enabled: false });
+  const id = r.body.id;
+
+  // Enabling it is fine (name has no slash)...
+  r = api.updateFunction(id, { trigger: { type: 'http', enabled: true } });
+  assert.strictEqual(r.status, 200);
+
+  // ...but a name containing '/' can't be enabled as an HTTP trigger route.
+  r = api.updateFunction(id, { name: 'has/slash', trigger: { type: 'http', enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /without .\/. characters/);
+});
+
+test('enabling an HTTP trigger is rejected if another function already has that name', () => {
+  const a = api.createFunction({ name: 'dup-route', path: FIXTURES, runtime: 'node' });
+  assert.strictEqual(a.status, 201);
+  // A grandfathered duplicate name (created before this validation existed, or
+  // via a path that bypasses it) must still be caught here, not just at create time.
+  const store = require('../server/store');
+  store.create({ name: 'dup-route', path: FIXTURES, runtime: 'node' });
+
+  const r = api.updateFunction(a.body.id, { trigger: { type: 'http', enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /already exists/);
+});
+
 test('updating a function trigger notifies the trigger manager; deleting stops it', () => {
   const manager = require('../server/trigger/manager');
   const calls = { sync: [], stop: [] };
