@@ -12,3 +12,8 @@ it('shows the error state with the message in a title attribute', () => {
   const badge = screen.getByText('Trigger: error')
   expect(badge).toHaveAttribute('title', 'connection refused')
 })
+
+it('shows the listening state', () => {
+  render(<TriggerStatusBadge status={{ state: 'listening', lastError: null, lastPolledAt: null }} />)
+  expect(screen.getByText('Trigger: listening')).toBeInTheDocument()
+})

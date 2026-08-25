@@ -5,11 +5,9 @@ export interface SavedEvent {
   event: unknown
 }
 
-export interface FunctionTrigger {
-  type: 'sqs'
-  queueName: string
-  enabled: boolean
-}
+export type FunctionTrigger =
+  | { type: 'sqs'; queueName: string; enabled: boolean }
+  | { type: 'http'; enabled: boolean }
 
 export interface FunctionDef {
   id: string
@@ -50,7 +48,7 @@ export interface ServicesStatus {
 }
 
 export interface TriggerStatus {
-  state: 'idle' | 'polling' | 'error'
+  state: 'idle' | 'polling' | 'listening' | 'error'
   lastError: string | null
   lastPolledAt: number | null
 }
@@ -103,7 +101,10 @@ export interface InvokeResult {
   report: Report
 }
 
-export type InvokeSource = { type: 'manual' } | { type: 'trigger'; messageId: string }
+export type InvokeSource =
+  | { type: 'manual' }
+  | { type: 'trigger'; messageId: string }
+  | { type: 'trigger'; method: string; path: string }
 
 export interface HistoryEntry {
   id: string

@@ -5,12 +5,14 @@ import type { TriggerStatus } from '@/lib/types'
 const STATE_LABEL: Record<TriggerStatus['state'], string> = {
   idle: 'Trigger: idle',
   polling: 'Trigger: polling',
+  listening: 'Trigger: listening',
   error: 'Trigger: error',
 }
 
 const STATE_CLASS: Record<TriggerStatus['state'], string> = {
   idle: 'border-transparent bg-muted text-muted-foreground',
   polling: 'border-transparent bg-success/15 text-success',
+  listening: 'border-transparent bg-success/15 text-success',
   error: 'border-transparent bg-destructive/15 text-destructive',
 }
 
