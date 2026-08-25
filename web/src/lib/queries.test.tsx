@@ -10,11 +10,12 @@ vi.mock('@/lib/api', () => ({
       services: [],
     }),
     listTriggerStatus: vi.fn().mockResolvedValue({}),
+    listHistory: vi.fn().mockResolvedValue({ entries: [] }),
   },
 }))
 
 import { api } from '@/lib/api'
-import { useReleaseSelectionOnUnload, useServices, useTriggerStatus } from '@/lib/queries'
+import { useHistoryQuery, useReleaseSelectionOnUnload, useServices, useTriggerStatus } from '@/lib/queries'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -83,4 +84,15 @@ it('polls the trigger status so a poller that errors out stops showing as health
 
   await act(() => vi.advanceTimersByTimeAsync(5_000))
   expect(api.listTriggerStatus).toHaveBeenCalledTimes(2)
+})
+
+it('polls history so a trigger-caused run shows up without reselecting the function', async () => {
+  vi.useFakeTimers()
+  renderHook(() => useHistoryQuery('fn1'), { wrapper: makeWrapper() })
+
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(api.listHistory).toHaveBeenCalledTimes(1)
+
+  await act(() => vi.advanceTimersByTimeAsync(5_000))
+  expect(api.listHistory).toHaveBeenCalledTimes(2)
 })
