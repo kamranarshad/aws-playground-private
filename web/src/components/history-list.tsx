@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { ArrowLeft, CircleCheck, CircleX, Download, Trash2 } from 'lucide-react'
+import { CircleCheck, CircleX, Download, Trash2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { useClearHistory, useHistoryQuery } from '@/lib/queries'
@@ -31,41 +32,9 @@ export function HistoryList({ fnId, onLoadEvent }: {
   const clear = useClearHistory()
   const [openEntry, setOpenEntry] = useState<HistoryEntry | null>(null)
 
-  if (openEntry) {
-    return (
-      <div className="flex h-full flex-col">
-        <div className="flex items-center gap-2 border-b px-3 py-1.5">
-          <Button variant="ghost" size="sm" onClick={() => setOpenEntry(null)}>
-            <ArrowLeft className="size-3.5" /> Back
-          </Button>
-          <Badge variant={openEntry.ok ? 'outline' : 'destructive'}
-            className={cn('font-mono text-[10px]', openEntry.ok && OK_CHIP)}>
-            {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
-          </Badge>
-          {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
-          {openEntry.source?.type === 'trigger' && (
-            <Badge variant="outline" className="font-mono text-[10px]">trigger</Badge>
-          )}
-          <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
-            {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
-            {openEntry.truncated ? ' · truncated' : ''}
-          </span>
-          <Button variant="ghost" size="sm" className="ml-auto"
-            onClick={() => onLoadEvent(displayValue(openEntry.event, openEntry.eventTruncated))}>
-            <Download className="size-3.5" /> Load event
-          </Button>
-        </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">
-            {`EVENT\n${displayValue(openEntry.event, openEntry.eventTruncated)}\n\n` +
-              (openEntry.ok
-                ? `RESPONSE\n${displayValue(openEntry.response, openEntry.responseTruncated)}`
-                : `ERROR\n${openEntry.error?.type}: ${openEntry.error?.message}`) +
-              `\n\nLOGS\n${openEntry.logs || '(none)'}`}
-          </pre>
-        </ScrollArea>
-      </div>
-    )
+  function loadEvent(entryToLoad: HistoryEntry) {
+    onLoadEvent(displayValue(entryToLoad.event, entryToLoad.eventTruncated))
+    setOpenEntry(null)
   }
 
   return (
@@ -106,6 +75,43 @@ export function HistoryList({ fnId, onLoadEvent }: {
           )}
         </ul>
       </ScrollArea>
+
+      <Dialog open={openEntry !== null} onOpenChange={(open) => { if (!open) setOpenEntry(null) }}>
+        {openEntry && (
+          <DialogContent className="flex max-h-[85vh] max-w-2xl flex-col gap-0 p-0">
+            <DialogHeader className="sr-only">
+              <DialogTitle>{openEntry.handler} invoke details</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center gap-2 border-b px-4 py-2 pr-10">
+              <Badge variant={openEntry.ok ? 'outline' : 'destructive'}
+                className={cn('font-mono text-[10px]', openEntry.ok && OK_CHIP)}>
+                {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
+              </Badge>
+              {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
+              {openEntry.source?.type === 'trigger' && (
+                <Badge variant="outline" className="font-mono text-[10px]">trigger</Badge>
+              )}
+              <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
+                {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
+                {openEntry.truncated ? ' · truncated' : ''}
+              </span>
+              <Button variant="ghost" size="sm" className="ml-auto"
+                onClick={() => loadEvent(openEntry)}>
+                <Download className="size-3.5" /> Load event
+              </Button>
+            </div>
+            <ScrollArea className="min-h-0 flex-1">
+              <pre className="whitespace-pre-wrap break-all p-4 font-mono text-xs tabular-nums">
+                {`EVENT\n${displayValue(openEntry.event, openEntry.eventTruncated)}\n\n` +
+                  (openEntry.ok
+                    ? `RESPONSE\n${displayValue(openEntry.response, openEntry.responseTruncated)}`
+                    : `ERROR\n${openEntry.error?.type}: ${openEntry.error?.message}`) +
+                  `\n\nLOGS\n${openEntry.logs || '(none)'}`}
+              </pre>
+            </ScrollArea>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
 }

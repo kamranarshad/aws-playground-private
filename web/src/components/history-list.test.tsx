@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', () => ({
@@ -52,4 +53,37 @@ it('badges a trigger-sourced run but not a manual one', async () => {
 
   expect(within(rows[0]).queryByText('trigger')).not.toBeInTheDocument()
   expect(within(rows[1]).getByText('trigger')).toBeInTheDocument()
+})
+
+it('opens a run in a modal on click, showing its event/response/logs, and the list stays visible behind it', async () => {
+  vi.mocked(api.listHistory).mockResolvedValue({
+    entries: [entry({ id: 'e1', handler: 'app.handler', event: { q: 1 }, response: { ok: true }, logs: 'line one' })],
+  })
+  const user = userEvent.setup()
+  render(<HistoryList fnId="fn1" onLoadEvent={() => {}} />, { wrapper: makeWrapper() })
+
+  await user.click(await screen.findByText('app.handler'))
+
+  const dialog = await screen.findByRole('dialog')
+  expect(within(dialog).getByText(/"q": 1/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/"ok": true/)).toBeInTheDocument()
+  expect(within(dialog).getByText(/line one/)).toBeInTheDocument()
+  // the row list is still in the document, not replaced by the modal
+  expect(screen.getByText('1 runs (max 50 kept)')).toBeInTheDocument()
+})
+
+it('loading the event closes the modal and passes the event text up', async () => {
+  vi.mocked(api.listHistory).mockResolvedValue({
+    entries: [entry({ id: 'e1', event: { q: 2 } })],
+  })
+  const onLoadEvent = vi.fn()
+  const user = userEvent.setup()
+  render(<HistoryList fnId="fn1" onLoadEvent={onLoadEvent} />, { wrapper: makeWrapper() })
+
+  await user.click(await screen.findByText('app.handler'))
+  await screen.findByRole('dialog')
+  await user.click(screen.getByRole('button', { name: /load event/i }))
+
+  expect(onLoadEvent).toHaveBeenCalledWith(JSON.stringify({ q: 2 }, null, 2))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 })
