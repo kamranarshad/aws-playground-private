@@ -110,6 +110,8 @@ it('seeds the trigger fields from the function', async () => {
 it('saves the trigger config through the patch', async () => {
   render(<SettingsDialog fn={fn} />, { wrapper: makeWrapper() })
   const user = await openSettings()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'SQS queue' }))
   await user.type(screen.getByLabelText('SQS trigger queue'), 'new-queue')
   await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
   await user.click(screen.getByRole('button', { name: 'Save' }))
@@ -123,6 +125,36 @@ it('clears the trigger when the queue name is left blank', async () => {
     { wrapper: makeWrapper() })
   const user = await openSettings()
   await user.clear(screen.getByLabelText('SQS trigger queue'))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', expect.objectContaining({ trigger: null }))
+})
+
+it('seeds an http trigger and shows its computed URL', async () => {
+  render(<SettingsDialog fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  await openSettings()
+  expect(screen.getByLabelText('HTTP trigger URL')).toHaveValue('http://localhost:9500/test/...')
+  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
+})
+
+it('saves an http trigger through the patch', async () => {
+  render(<SettingsDialog fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openSettings()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'HTTP (API Gateway)' }))
+  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', expect.objectContaining({
+    trigger: { type: 'http', enabled: true },
+  }))
+})
+
+it('clears the trigger when switched back to None', async () => {
+  render(<SettingsDialog fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openSettings()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'None' }))
   await user.click(screen.getByRole('button', { name: 'Save' }))
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', expect.objectContaining({ trigger: null }))
 })

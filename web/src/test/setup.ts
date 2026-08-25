@@ -14,4 +14,17 @@ vi.stubGlobal('ResizeObserver', class {
   disconnect() {}
 })
 
+// jsdom doesn't implement pointer capture or scrollIntoView, both of which
+// Radix's Select touches when opening/closing — without these, clicking a
+// Select trigger throws from inside Radix rather than opening the listbox.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {}
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 afterEach(cleanup)
