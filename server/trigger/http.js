@@ -87,6 +87,53 @@ function translateInvokeResult(result) {
   return { status: resp.statusCode, headers: resp.headers ?? {}, bodyBuffer };
 }
 
+function sendResult(res, result) {
+  res.writeHead(result.status, result.headers);
+  res.end(result.bodyBuffer);
+}
+
+function createRequestHandler({ resolveFunctionId, invokeFunction }) {
+  return async function handleRequest(req, res) {
+    try {
+      const { name, rawPath, url } = routeFor(req);
+      const functionId = resolveFunctionId(name);
+      if (!functionId) {
+        return sendResult(res, jsonResult(404, { error: `no function registered for "${name}"` }));
+      }
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const bodyBuffer = Buffer.concat(chunks);
+      const event = buildHttpEvent({ method: req.method, rawPath, url, headers: req.headers, bodyBuffer });
+      const result = await invokeFunction({
+        functionId, event, source: { type: 'trigger', method: req.method, path: rawPath },
+      });
+      sendResult(res, translateInvokeResult(result));
+    } catch (err) {
+      // An invokeFunction() rejection is a bug, not a normal Lambda error —
+      // translateInvokeResult only handles results it actually returned.
+      if (!res.headersSent) sendResult(res, jsonResult(500, { error: err.message }));
+      else res.destroy();
+    }
+  };
+}
+
+// One shared listener across every function with an enabled HTTP trigger;
+// `resolveFunctionId` is called fresh on every request, so the caller (the
+// trigger manager) can mutate its route table live without restarting this
+// listener.
+function createListener({ resolveFunctionId, invokeFunction, port = PORT, host = HOST, onError }) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(createRequestHandler({ resolveFunctionId, invokeFunction }));
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.removeListener('error', reject);
+      if (onError) server.on('error', onError);
+      resolve({ server, stop: () => server.close() });
+    });
+  });
+}
+
 module.exports = {
   PORT, HOST, routeFor, encodeBody, buildHttpEvent, isValidProxyResponse, translateInvokeResult,
+  createRequestHandler, createListener,
 };

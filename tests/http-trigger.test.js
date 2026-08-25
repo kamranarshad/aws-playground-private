@@ -113,3 +113,93 @@ test('translateInvokeResult passes through a valid proxy response, decoding base
   assert.deepStrictEqual(r.headers, { 'x-test': '1' });
   assert.strictEqual(r.bodyBuffer.toString('utf8'), 'hello');
 });
+
+const http = require('http');
+const { createListener } = require('../server/trigger/http');
+
+function request(port, pathAndQuery, { method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const r = http.request({ port, host: '127.0.0.1', path: pathAndQuery, method, headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+}
+
+test('the listener routes by name, invokes the function, and returns its proxy response', async () => {
+  const invokeCalls = [];
+  const listener = await createListener({
+    port: 0,
+    resolveFunctionId: (name) => (name === 'myfn' ? 'fn-id-1' : null),
+    invokeFunction: async (input) => {
+      invokeCalls.push(input);
+      return {
+        status: 200,
+        body: { ok: true, response: { statusCode: 200, headers: { 'content-type': 'text/plain' }, body: `hi ${input.event.rawPath}` } },
+      };
+    },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await request(port, '/myfn/hello?x=1');
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body, 'hi /hello');
+    assert.strictEqual(invokeCalls.length, 1);
+    assert.strictEqual(invokeCalls[0].functionId, 'fn-id-1');
+    assert.deepStrictEqual(invokeCalls[0].source, { type: 'trigger', method: 'GET', path: '/hello' });
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 404 for a name with no registered route', async () => {
+  const listener = await createListener({
+    port: 0,
+    resolveFunctionId: () => null,
+    invokeFunction: async () => { throw new Error('should not be called'); },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await request(port, '/unknown/hello');
+    assert.strictEqual(res.status, 404);
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 500 when invokeFunction itself throws', async () => {
+  const listener = await createListener({
+    port: 0,
+    resolveFunctionId: () => 'fn-id-1',
+    invokeFunction: async () => { throw new Error('handler crashed'); },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await request(port, '/myfn/hello');
+    assert.strictEqual(res.status, 500);
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener passes the request body through and responds 429 on an in-flight conflict', async () => {
+  const listener = await createListener({
+    port: 0,
+    resolveFunctionId: () => 'fn-id-1',
+    invokeFunction: async (input) => {
+      assert.strictEqual(input.event.body, '{"a":1}');
+      return { status: 409, body: { error: 'in flight' } };
+    },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await request(port, '/myfn/sum', { method: 'POST', body: '{"a":1}' });
+    assert.strictEqual(res.status, 429);
+  } finally {
+    listener.stop();
+  }
+});
