@@ -73,6 +73,7 @@ export interface Detection {
   envFiles?: string[]
   buildCommand?: string | null
   projectServices?: string[] | null
+  projectTrigger?: FunctionTrigger | null
 }
 
 export interface LambdaError {

@@ -1,0 +1,98 @@
+import type { ReactNode } from 'react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+
+vi.mock('@/lib/api', () => ({
+  api: { updateFunction: vi.fn(), listFunctions: vi.fn(), detect: vi.fn() },
+}))
+
+import { TriggerButton } from '@/components/trigger-button'
+import { api } from '@/lib/api'
+import type { FunctionDef } from '@/lib/types'
+
+const fn: FunctionDef = {
+  id: 'fn1', name: 'test', path: '/tmp/test', runtime: 'node',
+  handler: 'index.handler', timeoutMs: 30000, memoryMb: 128, jarPath: null,
+  env: {}, envFile: 'auto', buildCommand: '', localServices: [], trigger: null, savedEvents: [],
+}
+
+beforeEach(() => {
+  vi.mocked(api.updateFunction).mockResolvedValue(fn)
+  vi.mocked(api.detect).mockResolvedValue({ runtime: 'node', handlerCandidates: [], projectTrigger: null })
+})
+
+afterEach(() => vi.clearAllMocks())
+
+function makeWrapper() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  )
+}
+
+async function openPicker() {
+  const user = userEvent.setup()
+  await user.click(await screen.findByRole('button', { name: 'Configure trigger' }))
+  return user
+}
+
+it('opens the picker when no playground.json trigger is declared', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  await openPicker()
+  expect(await screen.findByRole('dialog')).toBeInTheDocument()
+})
+
+it('seeds the trigger fields from the function', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  await openPicker()
+  expect(screen.getByLabelText('SQS trigger queue')).toHaveValue('my-queue')
+  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
+})
+
+it('saves an sqs trigger through the patch', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'SQS queue' }))
+  await user.type(screen.getByLabelText('SQS trigger queue'), 'new-queue')
+  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 'sqs', queueName: 'new-queue', enabled: true },
+  })
+})
+
+it('saves an http trigger through the patch, computing the URL from the function name', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'HTTP (API Gateway)' }))
+  expect(screen.getByLabelText('HTTP trigger URL')).toHaveValue('http://localhost:9500/test/...')
+  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 'http', enabled: true },
+  })
+})
+
+it('clears the trigger when switched back to None', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'None' }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
+})
+
+it('shows a read-only label instead of the picker when playground.json declares a trigger', async () => {
+  vi.mocked(api.detect).mockResolvedValue({
+    runtime: 'node', handlerCandidates: [], projectTrigger: { type: 'http', enabled: true },
+  })
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  expect(await screen.findByTitle('Declared in playground.json — edit the file to change'))
+    .toHaveTextContent('http')
+  expect(screen.queryByRole('button', { name: 'Configure trigger' })).not.toBeInTheDocument()
+})
