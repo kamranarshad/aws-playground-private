@@ -1,21 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
-
-const HTTP_TRIGGER_PORT = 9500 // must match server/trigger/http.js's PORT
-
-type TriggerType = 'none' | 'sqs' | 'http'
 
 export function SettingsDialog({ fn }: { fn: FunctionDef }) {
   const [open, setOpen] = useState(false)
@@ -25,9 +17,6 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
   const [memoryMb, setMemoryMb] = useState(String(fn.memoryMb))
   const [jarPath, setJarPath] = useState(fn.jarPath ?? '')
   const [buildCommand, setBuildCommand] = useState(fn.buildCommand ?? '')
-  const [triggerType, setTriggerType] = useState<TriggerType>(fn.trigger?.type ?? 'none')
-  const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
-  const [triggerEnabled, setTriggerEnabled] = useState(fn.trigger?.enabled ?? false)
   const update = useUpdateFunction()
 
   useEffect(() => {
@@ -44,9 +33,6 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
     setMemoryMb(String(fn.memoryMb))
     setJarPath(fn.jarPath ?? '')
     setBuildCommand(fn.buildCommand ?? '')
-    setTriggerType(fn.trigger?.type ?? 'none')
-    setTriggerQueueName(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
-    setTriggerEnabled(fn.trigger?.enabled ?? false)
   }, [open, fn])
 
   function save() {
@@ -65,13 +51,6 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
           memoryMb: Math.max(128, Number.isNaN(m) ? fn.memoryMb : m),
           jarPath: fn.runtime === 'java' ? (jarPath.trim() || null) : fn.jarPath,
           buildCommand: buildCommand.trim(),
-          trigger: triggerType === 'sqs'
-            ? (triggerQueueName.trim()
-              ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled: triggerEnabled }
-              : null)
-            : triggerType === 'http'
-              ? { type: 'http', enabled: triggerEnabled }
-              : null,
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -125,52 +104,6 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
             <p className="text-xs text-muted-foreground">
               Runs in the project folder before every invoke.
             </p>
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="s-trigger-type">Trigger</Label>
-            <Select value={triggerType} onValueChange={(v) => setTriggerType(v as TriggerType)}>
-              <SelectTrigger id="s-trigger-type" size="sm" className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="sqs">SQS queue</SelectItem>
-                <SelectItem value="http">HTTP (API Gateway)</SelectItem>
-              </SelectContent>
-            </Select>
-            {triggerType === 'sqs' && (
-              <>
-                <Label htmlFor="s-trigger-queue">SQS trigger queue</Label>
-                <Input id="s-trigger-queue" value={triggerQueueName}
-                  onChange={(e) => setTriggerQueueName(e.target.value)}
-                  spellCheck={false} placeholder="queue name (empty = no trigger)" />
-                <label className="flex items-center gap-2 text-xs">
-                  <Checkbox checked={triggerEnabled} disabled={!triggerQueueName.trim()}
-                    onCheckedChange={(v) => setTriggerEnabled(v === true)} />
-                  Invoke automatically when a message arrives
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't exist.
-                </p>
-              </>
-            )}
-            {triggerType === 'http' && (
-              <>
-                <Label htmlFor="s-trigger-url">HTTP trigger URL</Label>
-                <Input id="s-trigger-url" readOnly
-                  value={`http://localhost:${HTTP_TRIGGER_PORT}/${name.trim() || fn.name}/...`}
-                  spellCheck={false} onFocus={(e) => e.target.select()} />
-                <label className="flex items-center gap-2 text-xs">
-                  <Checkbox checked={triggerEnabled}
-                    onCheckedChange={(v) => setTriggerEnabled(v === true)} />
-                  Invoke automatically on incoming requests
-                </label>
-                <p className="text-xs text-muted-foreground">
-                  Shares one listener on port {HTTP_TRIGGER_PORT} across every function with an
-                  HTTP trigger enabled, routed by name — names must be unique.
-                </p>
-              </>
-            )}
           </div>
         </div>
         <DialogFooter>
