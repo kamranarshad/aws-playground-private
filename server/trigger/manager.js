@@ -2,6 +2,7 @@ const store = require('../store');
 const localServices = require('../services');
 const sqs = require('./sqs');
 const httpTrigger = require('./http');
+const { effectiveTrigger } = require('./effective');
 
 // functionId -> { queueName, stop, status }  (one SQS poller per function)
 const running = new Map();
@@ -131,7 +132,7 @@ async function syncHttp(fn) {
 }
 
 async function sync(fn) {
-  const trigger = fn.trigger;
+  const trigger = effectiveTrigger(fn);
   // Clean up any stale registration under the *other* trigger type first —
   // covers switching sqs <-> http on the same function.
   if (trigger?.type !== 'http' && httpTriggered.has(fn.id)) stopHttp(fn.id);
@@ -146,12 +147,21 @@ async function sync(fn) {
     }
     if (current && current.queueName === trigger.queueName && current.status.state !== 'error') return;
     if (current) stopSqs(fn.id);
-    await startFor(fn);
+    // startFor (and everything it calls) reads fn.trigger.queueName directly
+    // off the object it's given — pass the resolved effective trigger
+    // through fn so a playground.json-only sqs trigger (where fn.trigger
+    // itself may be null or different) still reaches the right queue.
+    await startFor({ ...fn, trigger });
     return;
   }
 
   if (trigger?.type === 'http') {
-    if (!trigger.enabled) { stopHttp(fn.id); return; }
+    // A '/' in the name can never be routed (the listener splits on the
+    // first path segment) — the API refuses to let a *manual* trigger be
+    // enabled against such a name, but a playground.json trigger bypasses
+    // that check entirely. Treat it as inert rather than corrupt the
+    // shared route table.
+    if (!trigger.enabled || fn.name.includes('/')) { stopHttp(fn.id); return; }
     await syncHttp(fn);
   }
 }

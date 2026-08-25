@@ -370,3 +370,70 @@ test('a function disabling its http trigger while the shared listener is still s
     httpTrigger.createListener = originalCreateListener;
   }
 });
+
+test('sync resolves an sqs trigger declared only in playground.json (fn.trigger stays null)', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-eff-'));
+    fs.writeFileSync(path.join(dir, 'playground.json'),
+      JSON.stringify({ trigger: { type: 'sqs', queueName: 'from-file' } }));
+    let startedQueueName;
+    sqs.start = (fn, { onStatus }) => {
+      startedQueueName = fn.trigger.queueName;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    const fn = store.create({ name: 'eff-sqs', path: dir, runtime: 'node' }); // no manual trigger
+
+    await manager.sync(fn);
+
+    assert.strictEqual(startedQueueName, 'from-file');
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
+});
+
+test('sync resolves an http trigger declared only in playground.json, overriding a manual sqs one', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-eff2-'));
+  fs.writeFileSync(path.join(dir, 'playground.json'), JSON.stringify({ trigger: { type: 'http' } }));
+  let httpCalls = 0;
+  httpTrigger.createListener = async () => {
+    httpCalls++;
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const fn = store.create({ name: 'eff-http', path: dir, runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'manual-queue', enabled: true } });
+
+    await manager.sync(fn);
+
+    assert.strictEqual(httpCalls, 1);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('a name containing "/" is never registered as an http route, even via playground.json', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-eff3-'));
+  fs.writeFileSync(path.join(dir, 'playground.json'), JSON.stringify({ trigger: { type: 'http' } }));
+  let listenerCalls = 0;
+  httpTrigger.createListener = async () => {
+    listenerCalls++;
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const fn = store.create({ name: 'has/slash', path: dir, runtime: 'node' });
+
+    await manager.sync(fn);
+
+    assert.strictEqual(listenerCalls, 0, 'no listener should ever start for an unroutable name');
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
