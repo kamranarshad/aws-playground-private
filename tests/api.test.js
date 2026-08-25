@@ -110,24 +110,34 @@ test('function names must be globally unique', () => {
 });
 
 test('trigger.type "http" requires a boolean enabled and a name without slashes', () => {
-  let r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
-    trigger: { type: 'http', enabled: 'yes' } });
-  assert.strictEqual(r.status, 400);
+  // This test only exercises the request-validation layer, not the trigger
+  // manager's real listener wiring — stub manager.sync so enabling the HTTP
+  // trigger below doesn't bind a real socket that would outlive the test.
+  const manager = require('../server/trigger/manager');
+  const originalSync = manager.sync;
+  manager.sync = () => {};
+  try {
+    let r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
+      trigger: { type: 'http', enabled: 'yes' } });
+    assert.strictEqual(r.status, 400);
 
-  r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
-    trigger: { type: 'http', enabled: false } });
-  assert.strictEqual(r.status, 201);
-  assert.deepStrictEqual(r.body.trigger, { type: 'http', enabled: false });
-  const id = r.body.id;
+    r = api.createFunction({ name: 'http-trig', path: FIXTURES, runtime: 'node',
+      trigger: { type: 'http', enabled: false } });
+    assert.strictEqual(r.status, 201);
+    assert.deepStrictEqual(r.body.trigger, { type: 'http', enabled: false });
+    const id = r.body.id;
 
-  // Enabling it is fine (name has no slash)...
-  r = api.updateFunction(id, { trigger: { type: 'http', enabled: true } });
-  assert.strictEqual(r.status, 200);
+    // Enabling it is fine (name has no slash)...
+    r = api.updateFunction(id, { trigger: { type: 'http', enabled: true } });
+    assert.strictEqual(r.status, 200);
 
-  // ...but a name containing '/' can't be enabled as an HTTP trigger route.
-  r = api.updateFunction(id, { name: 'has/slash', trigger: { type: 'http', enabled: true } });
-  assert.strictEqual(r.status, 400);
-  assert.match(r.body.error, /without .\/. characters/);
+    // ...but a name containing '/' can't be enabled as an HTTP trigger route.
+    r = api.updateFunction(id, { name: 'has/slash', trigger: { type: 'http', enabled: true } });
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body.error, /without .\/. characters/);
+  } finally {
+    manager.sync = originalSync;
+  }
 });
 
 test('enabling an HTTP trigger is rejected if another function already has that name', () => {

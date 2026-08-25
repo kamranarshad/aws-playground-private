@@ -102,7 +102,17 @@ async function ensureHttpListenerRunning() {
         invokeFunction: require('../api/invoke').invokeFunction,
         onError: (err) => { httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null }; },
       });
-      httpStatus = { state: 'listening', lastError: null, lastPolledAt: null };
+      if (httpRoutes.size === 0) {
+        // Every function that wanted this listener disabled/deleted its
+        // trigger while the real socket bind was still in flight — the
+        // listener is orphaned the moment it comes up. Tear it down instead
+        // of leaving a live listener with nothing routed to it.
+        httpListener.stop();
+        httpListener = null;
+        httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+      } else {
+        httpStatus = { state: 'listening', lastError: null, lastPolledAt: null };
+      }
     } catch (err) {
       httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null };
     } finally {

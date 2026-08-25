@@ -349,3 +349,24 @@ test('resumeAll starts the shared listener for every function with an enabled ht
     httpTrigger.createListener = originalCreateListener;
   }
 });
+
+test('a function disabling its http trigger while the shared listener is still starting leaves no listener bound', async () => {
+  let stopped = false;
+  let resolveStart;
+  httpTrigger.createListener = () => new Promise((resolve) => {
+    resolveStart = () => resolve({ stop: () => { stopped = true; }, server: { address: () => ({ port: 9500 }) } });
+  });
+  try {
+    const fn = store.create({ name: 'h8', path: '/tmp/h8', runtime: 'node', trigger: { type: 'http', enabled: true } });
+
+    const syncPromise = manager.sync(fn); // don't await yet — createListener is still pending
+    manager.stop(fn.id); // race: disable before the listener finishes starting
+    resolveStart(); // now let the create resolve, with httpRoutes already empty
+    await syncPromise;
+
+    assert.strictEqual(stopped, true, 'the orphaned listener must be stopped once its create resolves');
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
