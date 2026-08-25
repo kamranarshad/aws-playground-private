@@ -1,16 +1,16 @@
-import { useState } from 'react'
-import { CircleCheck, CircleX, Download, Trash2 } from 'lucide-react'
+import { HttpStatusBadge } from '@/components/http-status-badge'
+import { JsonTree } from '@/components/json-tree'
+import { LogViewer } from '@/components/log-viewer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { HttpStatusBadge } from '@/components/http-status-badge'
-import { JsonTree } from '@/components/json-tree'
-import { LogViewer } from '@/components/log-viewer'
 import { useClearHistory, useHistoryQuery } from '@/lib/queries'
-import { cn } from '@/lib/utils'
 import type { HistoryEntry } from '@/lib/types'
+import { cn } from '@/lib/utils'
+import { CircleCheck, CircleX, Download, Trash2 } from 'lucide-react'
+import { useState } from 'react'
 
 const OK_CHIP = 'border-transparent bg-success/15 text-success'
 
@@ -39,7 +39,7 @@ function JsonOrRaw({ value, truncated }: { value: unknown; truncated: boolean })
   }
   return (
     <ScrollArea className="h-full">
-      <JsonTree value={value} />
+      <JsonTree value={value} openDepth={Infinity} />
     </ScrollArea>
   )
 }
@@ -98,7 +98,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
 
       <Dialog open={openEntry !== null} onOpenChange={(open) => { if (!open) setOpenEntry(null) }}>
         {openEntry && (
-          <DialogContent className="flex h-[85vh] w-[90vw] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
+          <DialogContent className="flex h-[65vh] w-[90vw] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
             <DialogHeader className="sr-only">
               <DialogTitle>{openEntry.handler} invoke details</DialogTitle>
             </DialogHeader>
