@@ -2,19 +2,33 @@ const fs = require('fs');
 const path = require('path');
 const services = require('./services');
 
+function parseTrigger(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.type === 'sqs') {
+    return typeof raw.queueName === 'string' && raw.queueName.trim()
+      ? { type: 'sqs', queueName: raw.queueName, enabled: true }
+      : null;
+  }
+  if (raw.type === 'http') return { type: 'http', enabled: true };
+  return null;
+}
+
 // Per-project playground.json. Re-read fresh on every use, like .env.
-// { services: null } means "no file governance" (missing/invalid file);
-// callers then fall back to the function's manual localServices.
+// A null `services`/`trigger` means "no file governance" for that key
+// (missing file, invalid JSON, or an invalid/absent value) — callers then
+// fall back to the function's manual configuration.
 function read(dir) {
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(path.join(dir, 'playground.json'), 'utf8'));
   } catch {
-    return { services: null };
+    return { services: null, trigger: null };
   }
-  if (!Array.isArray(parsed?.services)) return { services: null };
   const known = new Set(services.names());
-  return { services: parsed.services.filter((s) => known.has(s)) };
+  return {
+    services: Array.isArray(parsed?.services) ? parsed.services.filter((s) => known.has(s)) : null,
+    trigger: parseTrigger(parsed?.trigger),
+  };
 }
 
 module.exports = { read };
