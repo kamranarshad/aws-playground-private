@@ -58,16 +58,35 @@ async function waitForTriggerEntry(functionId, attempts = 20) {
   return null;
 }
 
+// updateFunction() fires manager.sync(fn) internally as fire-and-forget (the
+// API stays synchronous by design), which starts ElasticMQ asynchronously.
+// manager.status()'s `state` isn't a usable "confirmed ready" signal here:
+// a freshly-created record defaults to state:'polling' optimistically,
+// before localServices.start() has even been called — so polling for that
+// state returns instantly regardless of whether ElasticMQ is actually up
+// yet. Retrying the real network call directly is the reliable way to wait
+// out the container's startup latency.
+async function retryUntilReachable(action, attempts = 20) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await action();
+    } catch (err) {
+      if (i === attempts - 1) throw err;
+      await sleep(250);
+    }
+  }
+}
+
 test('enabling a trigger invokes the function when a message arrives, deletes it, and tags history',
   { skip: ready ? false : 'docker daemon, elasticmq image, or python3 not available' }, async () => {
   const created = api.createFunction({ name: 'trig-e2e', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
   const fn = api.updateFunction(created.body.id,
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-queue', enabled: true } }).body;
-  await manager.sync(fn);
 
   const client = sqsClient();
-  const { QueueUrl } = await client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-queue' }));
+  const { QueueUrl } = await retryUntilReachable(() =>
+    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-queue' })));
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify({ hello: 'world' }) }));
 
   const entry = await waitForTriggerEntry(fn.id);
@@ -91,14 +110,15 @@ test('disabling a trigger stops consuming — the message is left on the queue',
     runtime: 'python', handler: 'app.handler' });
   let fn = api.updateFunction(created.body.id,
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-disable-queue', enabled: true } }).body;
-  await manager.sync(fn);
+
+  const client = sqsClient();
+  const { QueueUrl } = await retryUntilReachable(() =>
+    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-disable-queue' })));
 
   fn = api.updateFunction(created.body.id,
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-disable-queue', enabled: false } }).body;
   await manager.sync(fn);
 
-  const client = sqsClient();
-  const { QueueUrl } = await client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-disable-queue' }));
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: 'untouched' }));
   await sleep(3000);
 
@@ -116,13 +136,14 @@ test('resumeAll resumes a previously enabled trigger after a simulated restart',
     runtime: 'python', handler: 'app.handler' });
   const fn = api.updateFunction(created.body.id,
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-resume-queue', enabled: true } }).body;
-  await manager.sync(fn);
+
+  const client = sqsClient();
+  const { QueueUrl } = await retryUntilReachable(() =>
+    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-resume-queue' })));
+
   manager.stopAll(); // simulate shutdown
 
   await manager.resumeAll(); // simulate a fresh process reading functions.json
-
-  const client = sqsClient();
-  const { QueueUrl } = await client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-resume-queue' }));
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: 'after-restart' }));
 
   const entry = await waitForTriggerEntry(fn.id);
