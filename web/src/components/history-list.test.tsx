@@ -55,7 +55,7 @@ it('badges a trigger-sourced run but not a manual one', async () => {
   expect(within(rows[1]).getByText('trigger')).toBeInTheDocument()
 })
 
-it('opens a run in a modal on click, showing its event/response/logs, and the list stays visible behind it', async () => {
+it('opens a run in a modal on click, and the list stays visible behind it', async () => {
   vi.mocked(api.listHistory).mockResolvedValue({
     entries: [entry({ id: 'e1', handler: 'app.handler', event: { q: 1 }, response: { ok: true }, logs: 'line one' })],
   })
@@ -64,12 +64,51 @@ it('opens a run in a modal on click, showing its event/response/logs, and the li
 
   await user.click(await screen.findByText('app.handler'))
 
-  const dialog = await screen.findByRole('dialog')
-  expect(within(dialog).getByText(/"q": 1/)).toBeInTheDocument()
-  expect(within(dialog).getByText(/"ok": true/)).toBeInTheDocument()
-  expect(within(dialog).getByText(/line one/)).toBeInTheDocument()
+  await screen.findByRole('dialog')
   // the row list is still in the document, not replaced by the modal
   expect(screen.getByText('1 runs (max 50 kept)')).toBeInTheDocument()
+})
+
+it('shows Request, Response, and Logs tabs, defaulting to Response', async () => {
+  vi.mocked(api.listHistory).mockResolvedValue({
+    entries: [entry({ id: 'e1', event: { q: 1 }, response: { ok: true }, logs: 'line one' })],
+  })
+  const user = userEvent.setup()
+  render(<HistoryList fnId="fn1" onLoadEvent={() => {}} />, { wrapper: makeWrapper() })
+  await user.click(await screen.findByText('app.handler'))
+  await screen.findByRole('dialog')
+
+  expect(screen.getByRole('tab', { name: 'Request' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Response' })).toBeInTheDocument()
+  expect(screen.getByRole('tab', { name: 'Logs' })).toBeInTheDocument()
+
+  // Response tab is active by default, rendering the response's JSON tree.
+  expect(screen.getByText('ok')).toBeInTheDocument()
+  expect(screen.getByText('true')).toBeInTheDocument()
+  expect(screen.queryByText('q')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('tab', { name: 'Request' }))
+  expect(screen.getByText('q')).toBeInTheDocument()
+  expect(screen.queryByText('ok')).not.toBeInTheDocument()
+
+  await user.click(screen.getByRole('tab', { name: 'Logs' }))
+  expect(screen.getByText('line one')).toBeInTheDocument()
+})
+
+it('shows the error on the Response tab when the run failed', async () => {
+  vi.mocked(api.listHistory).mockResolvedValue({
+    entries: [entry({
+      id: 'e1', ok: false, response: undefined,
+      error: { type: 'Handler.Error', message: 'boom', stackTrace: ['at foo.js:1'] },
+    })],
+  })
+  const user = userEvent.setup()
+  render(<HistoryList fnId="fn1" onLoadEvent={() => {}} />, { wrapper: makeWrapper() })
+  await user.click(await screen.findByText('app.handler'))
+  await screen.findByRole('dialog')
+
+  expect(screen.getByText(/Handler\.Error: boom/)).toBeInTheDocument()
+  expect(screen.getByText(/at foo\.js:1/)).toBeInTheDocument()
 })
 
 it('loading the event closes the modal and passes the event text up', async () => {

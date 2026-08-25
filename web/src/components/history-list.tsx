@@ -4,7 +4,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { HttpStatusBadge } from '@/components/http-status-badge'
+import { JsonTree } from '@/components/json-tree'
+import { LogViewer } from '@/components/log-viewer'
 import { useClearHistory, useHistoryQuery } from '@/lib/queries'
 import { cn } from '@/lib/utils'
 import type { HistoryEntry } from '@/lib/types'
@@ -22,6 +25,23 @@ function age(ts: number): string {
 function displayValue(value: unknown, truncated: boolean): string {
   if (truncated && typeof value === 'string') return value
   return JSON.stringify(value, null, 2)
+}
+
+// A truncated field arrives as a raw JSON-string preview (see server/history.js),
+// not the parsed value JsonTree expects — fall back to plain text for that case.
+function JsonOrRaw({ value, truncated }: { value: unknown; truncated: boolean }) {
+  if (truncated && typeof value === 'string') {
+    return (
+      <ScrollArea className="h-full">
+        <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">{value}</pre>
+      </ScrollArea>
+    )
+  }
+  return (
+    <ScrollArea className="h-full">
+      <JsonTree value={value} />
+    </ScrollArea>
+  )
 }
 
 export function HistoryList({ fnId, onLoadEvent }: {
@@ -82,33 +102,49 @@ export function HistoryList({ fnId, onLoadEvent }: {
             <DialogHeader className="sr-only">
               <DialogTitle>{openEntry.handler} invoke details</DialogTitle>
             </DialogHeader>
-            <div className="flex items-center gap-2 border-b px-4 py-2 pr-10">
-              <Badge variant={openEntry.ok ? 'outline' : 'destructive'}
-                className={cn('font-mono text-[10px]', openEntry.ok && OK_CHIP)}>
-                {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
-              </Badge>
-              {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
-              {openEntry.source?.type === 'trigger' && (
-                <Badge variant="outline" className="font-mono text-[10px]">trigger</Badge>
-              )}
-              <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
-                {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
-                {openEntry.truncated ? ' · truncated' : ''}
-              </span>
-              <Button variant="ghost" size="sm" className="ml-auto"
-                onClick={() => loadEvent(openEntry)}>
-                <Download className="size-3.5" /> Load event
-              </Button>
-            </div>
-            <ScrollArea className="min-h-0 flex-1">
-              <pre className="whitespace-pre-wrap break-all p-4 font-mono text-xs tabular-nums">
-                {`EVENT\n${displayValue(openEntry.event, openEntry.eventTruncated)}\n\n` +
-                  (openEntry.ok
-                    ? `RESPONSE\n${displayValue(openEntry.response, openEntry.responseTruncated)}`
-                    : `ERROR\n${openEntry.error?.type}: ${openEntry.error?.message}`) +
-                  `\n\nLOGS\n${openEntry.logs || '(none)'}`}
-              </pre>
-            </ScrollArea>
+            <Tabs defaultValue="response" className="flex min-h-0 flex-1 flex-col gap-0">
+              <div className="flex items-center gap-2 border-b px-4 py-2 pr-10">
+                <TabsList className="h-8">
+                  <TabsTrigger value="request">Request</TabsTrigger>
+                  <TabsTrigger value="response">Response</TabsTrigger>
+                  <TabsTrigger value="logs">Logs</TabsTrigger>
+                </TabsList>
+                <Badge variant={openEntry.ok ? 'outline' : 'destructive'}
+                  className={cn('font-mono text-[10px]', openEntry.ok && OK_CHIP)}>
+                  {openEntry.ok ? 'OK' : openEntry.error?.type ?? 'ERROR'}
+                </Badge>
+                {openEntry.ok && <HttpStatusBadge response={openEntry.response} />}
+                {openEntry.source?.type === 'trigger' && (
+                  <Badge variant="outline" className="font-mono text-[10px]">trigger</Badge>
+                )}
+                <span className="font-mono text-xs uppercase tracking-wide tabular-nums text-muted-foreground">
+                  {age(openEntry.ts)} · {openEntry.durationMs ?? '?'}ms
+                  {openEntry.truncated ? ' · truncated' : ''}
+                </span>
+                <Button variant="ghost" size="sm" className="ml-auto"
+                  onClick={() => loadEvent(openEntry)}>
+                  <Download className="size-3.5" /> Load event
+                </Button>
+              </div>
+              <TabsContent value="request" className="min-h-0">
+                <JsonOrRaw value={openEntry.event} truncated={openEntry.eventTruncated} />
+              </TabsContent>
+              <TabsContent value="response" className="min-h-0">
+                {openEntry.ok
+                  ? <JsonOrRaw value={openEntry.response} truncated={openEntry.responseTruncated} />
+                  : (
+                    <ScrollArea className="h-full">
+                      <pre className="whitespace-pre-wrap break-all p-3 font-mono text-xs tabular-nums">
+                        {`${openEntry.error?.type}: ${openEntry.error?.message}\n\n` +
+                          (openEntry.error?.stackTrace ?? []).join('\n')}
+                      </pre>
+                    </ScrollArea>
+                  )}
+              </TabsContent>
+              <TabsContent value="logs" className="min-h-0">
+                <LogViewer raw={openEntry.logs} />
+              </TabsContent>
+            </Tabs>
           </DialogContent>
         )}
       </Dialog>
