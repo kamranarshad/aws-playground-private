@@ -52,6 +52,13 @@ it('seeds the trigger fields from the function', async () => {
   expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
 })
 
+it('shows the computed URL immediately for a function that already has an http trigger', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />, { wrapper: makeWrapper() })
+  await openPicker()
+  expect(screen.getByLabelText('HTTP trigger URL')).toHaveValue('http://localhost:9500/test/...')
+  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
+})
+
 it('saves an sqs trigger through the patch', async () => {
   render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
   const user = await openPicker()
@@ -63,6 +70,15 @@ it('saves an sqs trigger through the patch', async () => {
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
     trigger: { type: 'sqs', queueName: 'new-queue', enabled: true },
   })
+})
+
+it('clears the trigger when the queue name is left blank', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.clear(screen.getByLabelText('SQS trigger queue'))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
 })
 
 it('saves an http trigger through the patch, computing the URL from the function name', async () => {

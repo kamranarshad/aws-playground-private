@@ -35,6 +35,11 @@ test('valid sqs trigger is returned with enabled stamped true', () => {
     { services: null, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } });
 });
 
+test('a playground.json sqs queueName is trimmed before being stored', () => {
+  const dir = proj(JSON.stringify({ trigger: { type: 'sqs', queueName: '  my-queue  ' } }));
+  assert.deepStrictEqual(read(dir), { services: null, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } });
+});
+
 test('valid http trigger is returned with enabled stamped true', () => {
   const dir = proj(JSON.stringify({ trigger: { type: 'http' } }));
   assert.deepStrictEqual(read(dir), { services: null, trigger: { type: 'http', enabled: true } });

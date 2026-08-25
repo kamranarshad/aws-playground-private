@@ -6,7 +6,7 @@ function parseTrigger(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (raw.type === 'sqs') {
     return typeof raw.queueName === 'string' && raw.queueName.trim()
-      ? { type: 'sqs', queueName: raw.queueName, enabled: true }
+      ? { type: 'sqs', queueName: raw.queueName.trim(), enabled: true }
       : null;
   }
   if (raw.type === 'http') return { type: 'http', enabled: true };

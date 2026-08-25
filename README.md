@@ -98,8 +98,9 @@ reads/writes S3 via the AWS SDK, with a `playground.json` that
 auto-starts MinIO when you select it (`{"action":"put","key":"x",
 "body":"..."}` / `{"action":"get","key":"x"}` / `{"action":"list"}`).
 
-A function can also be invoked automatically instead of manually: open its
-Settings, set an SQS queue name under "SQS trigger queue", and enable it.
+A function can also be invoked automatically instead of manually: click its
+trigger button (the webhook icon in the header) to open the trigger picker,
+set an SQS queue name, and enable it.
 The playground auto-starts ElasticMQ, creates the queue if it doesn't
 exist, and invokes the function for every message that arrives (one
 message per invoke, deleted after every invoke whether it succeeds or
@@ -110,11 +111,12 @@ automatically the next time you start the playground. See
 `fixtures/typescript/sqs-trigger` for a worked example: a TypeScript lambda
 that reads `event.Records` (the same shape a real SQS-triggered Lambda
 gets), with a `playground.json` that auto-starts ElasticMQ when you select
-it — enable the trigger in Settings to see it fire on incoming messages.
+it — enable the trigger from its trigger button to see it fire on incoming messages.
 
 A function can also be reached over plain HTTP from another app, instead of
-only fired by SQS: open its Settings, set the trigger type to "HTTP (API
-Gateway)", and enable it. Every function with an enabled HTTP trigger shares
+only fired by SQS: click its trigger button to open the trigger picker, set
+the trigger type to "HTTP (API Gateway)", and enable it. Every function with
+an enabled HTTP trigger shares
 one listener at `http://localhost:9500`, routed by the function's name —
 `http://localhost:9500/<name>/<...anything>` calls the handler with an API
 Gateway HTTP API (payload v2) event (`rawPath`, `requestContext.http.method`,
