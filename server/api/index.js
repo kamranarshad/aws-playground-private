@@ -3,7 +3,8 @@ const { RUNTIMES, listFunctions, createFunction, updateFunction, deleteFunction,
 const { invokeFunction } = require('./invoke');
 const { listServices, startService, stopService, setSelection } = require('./services');
 const { listHistory, clearHistory } = require('./history');
+const { listTriggerStatus } = require('./triggers');
 
 module.exports = { health, listFunctions, createFunction, updateFunction,
   deleteFunction, detect, invokeFunction, listHistory, clearHistory,
-  listServices, startService, stopService, setSelection, RUNTIMES };
+  listServices, startService, stopService, setSelection, listTriggerStatus, RUNTIMES };

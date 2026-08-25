@@ -27,12 +27,17 @@ export function useDetect<T>(path: string, select: (d: Detection) => T) {
   })
 }
 
+// A trigger-caused invoke happens server-side, with nothing in the web
+// client to invalidate this query the way a manual invoke's mutation does
+// (useInvoke, below) — poll so a background trigger's run shows up without
+// needing to reselect the function or refocus the window.
 export function useHistoryQuery(id: string | null) {
   return useQuery({
     queryKey: ['history', id],
     queryFn: () => api.listHistory(id!),
     enabled: !!id,
     select: (d) => d.entries,
+    refetchInterval: SERVICES_POLL_MS,
   })
 }
 
@@ -92,6 +97,14 @@ export function useServices() {
   return useQuery({
     queryKey: ['services'],
     queryFn: api.listServices,
+    refetchInterval: SERVICES_POLL_MS,
+  })
+}
+
+export function useTriggerStatus() {
+  return useQuery({
+    queryKey: ['triggers'],
+    queryFn: api.listTriggerStatus,
     refetchInterval: SERVICES_POLL_MS,
   })
 }

@@ -3,11 +3,22 @@ const store = require('../store');
 const { detectProject } = require('../detect');
 const history = require('../history');
 const inFlight = require('./in-flight');
+const manager = require('../trigger/manager');
 
 const RUNTIMES = ['python', 'node', 'java', 'provided'];
 
 function listFunctions() {
   return { status: 200, body: { functions: store.list() } };
+}
+
+function triggerError(trigger) {
+  if (trigger === null || trigger === undefined) return null;
+  if (trigger.type !== 'sqs') return `unsupported trigger type '${trigger.type}'`;
+  if (typeof trigger.queueName !== 'string' || !trigger.queueName.trim()) {
+    return 'trigger.queueName is required';
+  }
+  if (typeof trigger.enabled !== 'boolean') return 'trigger.enabled must be a boolean';
+  return null;
 }
 
 // Shared between create (fields always present) and update (fields present
@@ -28,6 +39,10 @@ function fieldError(fields) {
   if ('memoryMb' in fields && !(Number.isFinite(fields.memoryMb) && fields.memoryMb > 0)) {
     return 'memoryMb must be a positive number';
   }
+  if ('trigger' in fields) {
+    const triggerErr = triggerError(fields.trigger);
+    if (triggerErr) return triggerErr;
+  }
   return null;
 }
 
@@ -38,7 +53,9 @@ function createFunction(input) {
   }
   const err = fieldError(input);
   if (err) return { status: 400, body: { error: err } };
-  return { status: 201, body: store.create(input) };
+  const fn = store.create(input);
+  manager.sync(fn);
+  return { status: 201, body: fn };
 }
 
 function updateFunction(id, patch) {
@@ -47,6 +64,7 @@ function updateFunction(id, patch) {
   if (err) return { status: 400, body: { error: err } };
   const fn = store.update(id, p);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
+  manager.sync(fn);
   return { status: 200, body: fn };
 }
 
@@ -54,6 +72,7 @@ function deleteFunction(id) {
   if (inFlight.has(id)) {
     return { status: 409, body: { error: 'an invoke is already in flight for this function' } };
   }
+  manager.stop(id);
   if (!store.remove(id)) return { status: 404, body: { error: 'function not found' } };
   history.clear(id);
   return { status: 204 };

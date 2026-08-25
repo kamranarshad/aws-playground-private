@@ -7,15 +7,19 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SettingsDialog } from '@/components/settings-dialog'
-import { useDeleteFunction } from '@/lib/queries'
+import { TriggerStatusBadge } from '@/components/trigger-status-badge'
+import { useDeleteFunction, useTriggerStatus } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
 export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: () => void }) {
   const del = useDeleteFunction()
+  const { data: triggerStatuses } = useTriggerStatus()
+  const triggerStatus = fn.trigger?.enabled ? triggerStatuses?.[fn.id] : undefined
   return (
     <div className="flex items-center gap-2 border-b px-4 py-2">
       <h2 className="truncate text-sm font-semibold">{fn.name}</h2>
       <Badge variant="secondary" className="font-mono">{fn.runtime}</Badge>
+      {triggerStatus && <TriggerStatusBadge status={triggerStatus} />}
       <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>

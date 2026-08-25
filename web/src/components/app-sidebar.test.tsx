@@ -12,7 +12,7 @@ function makeFn(overrides: Partial<FunctionDef> = {}): FunctionDef {
   return {
     id: `fn-${nextId}`, name: `function-${nextId}`, path: '/tmp/fn', runtime: 'node',
     handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null,
-    env: {}, envFile: '', buildCommand: '', localServices: [], savedEvents: [],
+    env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [],
     ...overrides,
   }
 }

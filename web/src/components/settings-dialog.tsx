@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Settings2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -17,6 +18,8 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
   const [memoryMb, setMemoryMb] = useState(String(fn.memoryMb))
   const [jarPath, setJarPath] = useState(fn.jarPath ?? '')
   const [buildCommand, setBuildCommand] = useState(fn.buildCommand ?? '')
+  const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.queueName ?? '')
+  const [triggerEnabled, setTriggerEnabled] = useState(fn.trigger?.enabled ?? false)
   const update = useUpdateFunction()
 
   useEffect(() => {
@@ -33,6 +36,8 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
     setMemoryMb(String(fn.memoryMb))
     setJarPath(fn.jarPath ?? '')
     setBuildCommand(fn.buildCommand ?? '')
+    setTriggerQueueName(fn.trigger?.queueName ?? '')
+    setTriggerEnabled(fn.trigger?.enabled ?? false)
   }, [open, fn])
 
   function save() {
@@ -51,6 +56,9 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
           memoryMb: Math.max(128, Number.isNaN(m) ? fn.memoryMb : m),
           jarPath: fn.runtime === 'java' ? (jarPath.trim() || null) : fn.jarPath,
           buildCommand: buildCommand.trim(),
+          trigger: triggerQueueName.trim()
+            ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled: triggerEnabled }
+            : null,
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -103,6 +111,20 @@ export function SettingsDialog({ fn }: { fn: FunctionDef }) {
               spellCheck={false} placeholder="e.g. npm run build (empty = none)" />
             <p className="text-xs text-muted-foreground">
               Runs in the project folder before every invoke.
+            </p>
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="s-trigger-queue">SQS trigger queue</Label>
+            <Input id="s-trigger-queue" value={triggerQueueName}
+              onChange={(e) => setTriggerQueueName(e.target.value)}
+              spellCheck={false} placeholder="queue name (empty = no trigger)" />
+            <label className="flex items-center gap-2 text-xs">
+              <Checkbox checked={triggerEnabled} disabled={!triggerQueueName.trim()}
+                onCheckedChange={(v) => setTriggerEnabled(v === true)} />
+              Invoke automatically when a message arrives
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't exist.
             </p>
           </div>
         </div>

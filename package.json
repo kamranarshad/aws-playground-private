@@ -17,7 +17,7 @@
     "build": "node scripts/prepare.js",
     "install:fixtures": "node scripts/install-fixtures.js",
     "test": "npm run test:server && npm run test:web",
-    "test:server": "node --test tests/*.test.js",
+    "test:server": "node --test --test-concurrency=1 tests/*.test.js",
     "test:web": "npm --prefix web run test",
     "lint": "oxlint --react-plugin ."
   },
@@ -30,5 +30,8 @@
   ],
   "devDependencies": {
     "oxlint": "^1.79.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1117.0"
   }
 }

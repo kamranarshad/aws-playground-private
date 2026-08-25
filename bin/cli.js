@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { startWebServer } = require('../server/serve-web');
 const localServices = require('../server/services');
+const triggerManager = require('../server/trigger/manager');
 const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
 
 const args = process.argv.slice(2);
@@ -69,6 +70,7 @@ function installShutdownSweep(server) {
     if (shuttingDown) return;
     shuttingDown = true;
     server.close();
+    triggerManager.stopAll();
     try {
       const stopped = await localServices.stopAutoStarted();
       if (stopped.length) {
@@ -89,6 +91,9 @@ const HOST = '127.0.0.1';
   : startOnFirstAvailablePort(port, HOST))
   .then((server) => {
     installShutdownSweep(server);
+    triggerManager.resumeAll().catch((err) => {
+      console.warn(`aws-playground: could not resume triggers: ${err.message}`);
+    });
     const url = `http://localhost:${server.address().port}`;
     console.log(`aws-playground listening at ${url}`);
     if (!flag('--no-open')) {

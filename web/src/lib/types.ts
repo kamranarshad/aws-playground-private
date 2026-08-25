@@ -5,6 +5,12 @@ export interface SavedEvent {
   event: unknown
 }
 
+export interface FunctionTrigger {
+  type: 'sqs'
+  queueName: string
+  enabled: boolean
+}
+
 export interface FunctionDef {
   id: string
   name: string
@@ -18,6 +24,7 @@ export interface FunctionDef {
   envFile: string
   buildCommand: string
   localServices: string[]
+  trigger: FunctionTrigger | null
   savedEvents: SavedEvent[]
 }
 
@@ -41,6 +48,14 @@ export interface ServicesStatus {
   docker: { available: boolean }
   services: LocalService[]
 }
+
+export interface TriggerStatus {
+  state: 'idle' | 'polling' | 'error'
+  lastError: string | null
+  lastPolledAt: number | null
+}
+
+export type TriggersStatus = Record<string, TriggerStatus>
 
 export interface RuntimeHealth {
   available: boolean
@@ -88,10 +103,13 @@ export interface InvokeResult {
   report: Report
 }
 
+export type InvokeSource = { type: 'manual' } | { type: 'trigger'; messageId: string }
+
 export interface HistoryEntry {
   id: string
   ts: number
   handler: string
+  source: InvokeSource
   event: unknown
   eventTruncated: boolean
   response?: unknown

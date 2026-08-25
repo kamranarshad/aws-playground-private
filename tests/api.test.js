@@ -61,6 +61,72 @@ test('function CRUD with validation', async () => {
   assert.strictEqual(r.status, 404);
 });
 
+test('trigger field validation on create and update', () => {
+  let r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sns', queueName: 'q', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q', enabled: 'yes' } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q', enabled: false } });
+  assert.strictEqual(r.status, 201);
+  const id = r.body.id;
+  assert.deepStrictEqual(r.body.trigger, { type: 'sqs', queueName: 'q', enabled: false });
+
+  r = api.updateFunction(id, { trigger: { type: 'sqs', queueName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.updateFunction(id, { trigger: null });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.trigger, null);
+});
+
+test('updating a function trigger notifies the trigger manager; deleting stops it', () => {
+  const manager = require('../server/trigger/manager');
+  const calls = { sync: [], stop: [] };
+  const originalSync = manager.sync;
+  const originalStop = manager.stop;
+  manager.sync = (fn) => calls.sync.push(fn.id);
+  manager.stop = (id) => calls.stop.push(id);
+  try {
+    const created = api.createFunction({ name: 'trigwire', path: FIXTURES, runtime: 'node' });
+    const id = created.body.id;
+    // createFunction always calls manager.sync so a trigger set at creation
+    // time (via a direct API call) starts a poller immediately; sync() itself
+    // is a no-op when there's no enabled trigger.
+    assert.deepStrictEqual(calls.sync, [id]);
+
+    api.updateFunction(id, { trigger: { type: 'sqs', queueName: 'q', enabled: true } });
+    assert.deepStrictEqual(calls.sync, [id, id]);
+
+    api.deleteFunction(id);
+    assert.deepStrictEqual(calls.stop, [id]);
+  } finally {
+    manager.sync = originalSync;
+    manager.stop = originalStop;
+  }
+});
+
+test('GET /api/triggers reports manager status', () => {
+  const manager = require('../server/trigger/manager');
+  const original = manager.statusAll;
+  manager.statusAll = () => ({ someId: { state: 'polling', lastError: null, lastPolledAt: 123 } });
+  try {
+    const r = api.listTriggerStatus();
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body, { someId: { state: 'polling', lastError: null, lastPolledAt: 123 } });
+  } finally {
+    manager.statusAll = original;
+  }
+});
+
 test('detect endpoint logic', () => {
   let r = api.detect({});
   assert.strictEqual(r.status, 400);
@@ -79,6 +145,17 @@ test('invoke returns result; unknown id 404', { skip: noPy }, async () => {
   assert.ok(r.body.report.requestId);
   const nf = await api.invokeFunction({ functionId: 'missing', event: {} });
   assert.strictEqual(nf.status, 404);
+});
+
+test('invokeFunction tags history with the given source, defaulting to manual', { skip: noPy }, async () => {
+  const created = api.createFunction({ name: 'hello3', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  await api.invokeFunction({ functionId: created.body.id, event: {} });
+  await api.invokeFunction({ functionId: created.body.id, event: {},
+    source: { type: 'trigger', messageId: 'm1' } });
+  const entries = api.listHistory(created.body.id).body.entries;
+  assert.deepStrictEqual(entries[0].source, { type: 'trigger', messageId: 'm1' });
+  assert.deepStrictEqual(entries[1].source, { type: 'manual' });
 });
 
 test('second concurrent invoke of same function -> 409', { skip: noPy }, async () => {
