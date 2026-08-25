@@ -112,6 +112,19 @@ that reads `event.Records` (the same shape a real SQS-triggered Lambda
 gets), with a `playground.json` that auto-starts ElasticMQ when you select
 it — enable the trigger in Settings to see it fire on incoming messages.
 
+A function can also be reached over plain HTTP from another app, instead of
+only fired by SQS: open its Settings, set the trigger type to "HTTP (API
+Gateway)", and enable it. Every function with an enabled HTTP trigger shares
+one listener at `http://localhost:9500`, routed by the function's name —
+`http://localhost:9500/<name>/<...anything>` calls the handler with an API
+Gateway HTTP API (payload v2) event (`rawPath`, `requestContext.http.method`,
+`queryStringParameters`, `body`) and returns whatever `{statusCode, headers,
+body}` it returns as the real HTTP response. Because the route is the
+function's name, names must be unique — the playground now rejects a
+duplicate outright. See `fixtures/typescript/apigw` for a worked example:
+enable the trigger on it and try `curl "localhost:9500/<name>/hello?name=you"`
+or `curl -X POST localhost:9500/<name>/sum -d '[1,2,3]'`.
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you
