@@ -7,14 +7,20 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SettingsDialog } from '@/components/settings-dialog'
+import { TriggerButton } from '@/components/trigger-button'
 import { TriggerStatusBadge } from '@/components/trigger-status-badge'
-import { useDeleteFunction, useTriggerStatus } from '@/lib/queries'
+import { useDeleteFunction, useDetect, useTriggerStatus } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
 export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: () => void }) {
   const del = useDeleteFunction()
   const { data: triggerStatuses } = useTriggerStatus()
-  const triggerStatus = fn.trigger?.enabled ? triggerStatuses?.[fn.id] : undefined
+  // A playground.json-declared trigger never touches fn.trigger, so the
+  // status badge's visibility can't rely on fn.trigger?.enabled alone — it
+  // needs the same signal TriggerButton uses to decide a trigger is active.
+  const { data: projectTrigger } = useDetect(fn.path, (d) => d.projectTrigger ?? null)
+  const triggerActive = projectTrigger != null || fn.trigger?.enabled
+  const triggerStatus = triggerActive ? triggerStatuses?.[fn.id] : undefined
   return (
     <div className="flex items-center gap-2 border-b px-4 py-2">
       <h2 className="truncate text-sm font-semibold">{fn.name}</h2>
@@ -24,6 +30,7 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>
       <div className="ml-auto flex items-center gap-1">
+        <TriggerButton fn={fn} />
         <SettingsDialog fn={fn} />
         <AlertDialog>
           <AlertDialogTrigger asChild>
