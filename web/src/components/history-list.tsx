@@ -98,7 +98,7 @@ export function HistoryList({ fnId, onLoadEvent }: {
 
       <Dialog open={openEntry !== null} onOpenChange={(open) => { if (!open) setOpenEntry(null) }}>
         {openEntry && (
-          <DialogContent className="flex h-[85vh] w-[90vw] max-w-6xl flex-col gap-0 p-0">
+          <DialogContent className="flex h-[85vh] w-[90vw] max-w-6xl flex-col gap-0 p-0 sm:max-w-6xl">
             <DialogHeader className="sr-only">
               <DialogTitle>{openEntry.handler} invoke details</DialogTitle>
             </DialogHeader>
