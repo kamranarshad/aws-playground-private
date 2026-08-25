@@ -58,6 +58,7 @@ test('buildHttpEvent shapes an API Gateway HTTP API v2 event', () => {
   assert.strictEqual(event.requestContext.http.path, '/hello');
   assert.strictEqual(event.body, undefined);
   assert.strictEqual(event.isBase64Encoded, false);
+  assert.strictEqual(event.version, '2.0');
 });
 
 test('buildHttpEvent omits queryStringParameters when there is no query string', () => {
@@ -74,6 +75,18 @@ test('isValidProxyResponse accepts a minimal proxy response and rejects malforme
   assert.strictEqual(isValidProxyResponse({}), false);
   assert.strictEqual(isValidProxyResponse({ statusCode: '200' }), false);
   assert.strictEqual(isValidProxyResponse({ statusCode: 200, body: 123 }), false);
+});
+
+test('isValidProxyResponse rejects a statusCode outside the valid HTTP range', () => {
+  assert.strictEqual(isValidProxyResponse({ statusCode: 99 }), false);
+  assert.strictEqual(isValidProxyResponse({ statusCode: 600 }), false);
+  assert.strictEqual(isValidProxyResponse({ statusCode: 599 }), true);
+  assert.strictEqual(isValidProxyResponse({ statusCode: 100 }), true);
+});
+
+test('isValidProxyResponse rejects non-string header values', () => {
+  assert.strictEqual(isValidProxyResponse({ statusCode: 200, headers: { 'x-a': { nested: true } } }), false);
+  assert.strictEqual(isValidProxyResponse({ statusCode: 200, headers: { 'x-a': 'ok' } }), true);
 });
 
 test('translateInvokeResult converts a 409 in-flight guard into 429', () => {
@@ -97,6 +110,23 @@ test('translateInvokeResult returns 502 when the handler response is not a valid
   const r = translateInvokeResult({ status: 200, body: { ok: true, response: { just: 'an object' } } });
   assert.strictEqual(r.status, 502);
   assert.match(JSON.parse(r.bodyBuffer).error, /malformed/);
+});
+
+test('translateInvokeResult surfaces a string-shaped error (not just {message})', () => {
+  const r = translateInvokeResult({ status: 200, body: { ok: false, error: 'MinIO is not running' } });
+  assert.strictEqual(r.status, 502);
+  assert.deepStrictEqual(JSON.parse(r.bodyBuffer), { error: 'handler error', detail: 'MinIO is not running' });
+});
+
+test('translateInvokeResult strips framing headers a handler tries to set directly', () => {
+  const r = translateInvokeResult({
+    status: 200,
+    body: { ok: true, response: { statusCode: 200, headers: { 'Content-Length': '999', 'x-real': 'kept' }, body: 'hi' } },
+  });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.headers['x-real'], 'kept');
+  assert.strictEqual('Content-Length' in r.headers, false);
+  assert.strictEqual('content-length' in r.headers, false);
 });
 
 test('translateInvokeResult passes through a valid proxy response, decoding base64 bodies', () => {
@@ -181,6 +211,20 @@ test('the listener responds 500 when invokeFunction itself throws', async () => 
     const port = listener.server.address().port;
     const res = await request(port, '/myfn/hello');
     assert.strictEqual(res.status, 500);
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 502 (not 500) when the handler returns an out-of-range status code', async () => {
+  const listener = await createListener({
+    port: 0, resolveFunctionId: () => 'fn-id-1',
+    invokeFunction: async () => ({ status: 200, body: { ok: true, response: { statusCode: 99, body: 'x' } } }),
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await request(port, '/myfn/hello');
+    assert.strictEqual(res.status, 502);
   } finally {
     listener.stop();
   }

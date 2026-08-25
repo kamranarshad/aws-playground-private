@@ -153,6 +153,27 @@ test('enabling an HTTP trigger is rejected if another function already has that 
   assert.match(r.body.error, /already exists/);
 });
 
+test('a name-only rename is rejected if it would break an already-enabled HTTP trigger', () => {
+  // Same reasoning as the manager.sync stub above: enabling a real HTTP
+  // trigger here would bind a real socket that would outlive the test.
+  const manager = require('../server/trigger/manager');
+  const originalSync = manager.sync;
+  manager.sync = () => {};
+  try {
+    const created = api.createFunction({ name: 'rename-guard', path: FIXTURES, runtime: 'node',
+      trigger: { type: 'http', enabled: true } });
+    assert.strictEqual(created.status, 201);
+
+    // Renaming WITHOUT touching `trigger` in the same patch must still be
+    // checked against the currently-enabled http trigger.
+    const r = api.updateFunction(created.body.id, { name: 'has/slash' });
+    assert.strictEqual(r.status, 400);
+    assert.match(r.body.error, /without .\/. characters/);
+  } finally {
+    manager.sync = originalSync;
+  }
+});
+
 test('updating a function trigger notifies the trigger manager; deleting stops it', () => {
   const manager = require('../server/trigger/manager');
   const calls = { sync: [], stop: [] };

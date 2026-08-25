@@ -54,18 +54,24 @@ function fieldError(fields, currentId = null) {
   if ('trigger' in fields) {
     const triggerErr = triggerError(fields.trigger);
     if (triggerErr) return triggerErr;
-    if (fields.trigger?.type === 'http' && fields.trigger.enabled) {
-      // The effective name is whatever this patch leaves in place: the new
-      // name if it's being changed here, otherwise the function's current
-      // stored name.
-      const name = 'name' in fields ? fields.name : (currentId ? store.get(currentId)?.name : undefined);
-      if (typeof name === 'string' && name.includes('/')) {
-        return "an HTTP trigger requires a name without '/' characters";
-      }
-      if (typeof name === 'string'
-        && store.list().some((f) => f.name === name && f.id !== currentId)) {
-        return `a function named '${name}' already exists — rename it before enabling an HTTP trigger`;
-      }
+  }
+  // The effective trigger is whatever this patch leaves in place: the new
+  // trigger if it's being changed here, otherwise the function's current
+  // stored trigger. A name-only rename (no `trigger` in this patch) must
+  // still be checked against an already-enabled http trigger, since it can
+  // just as easily break routing.
+  const effectiveTrigger = 'trigger' in fields ? fields.trigger : (currentId ? store.get(currentId)?.trigger : null);
+  if (effectiveTrigger?.type === 'http' && effectiveTrigger.enabled) {
+    // The effective name is whatever this patch leaves in place: the new
+    // name if it's being changed here, otherwise the function's current
+    // stored name.
+    const name = 'name' in fields ? fields.name : (currentId ? store.get(currentId)?.name : undefined);
+    if (typeof name === 'string' && name.includes('/')) {
+      return "an HTTP trigger requires a name without '/' characters";
+    }
+    if (typeof name === 'string'
+      && store.list().some((f) => f.name === name && f.id !== currentId)) {
+      return `a function named '${name}' already exists — rename it before enabling an HTTP trigger`;
     }
   }
   return null;

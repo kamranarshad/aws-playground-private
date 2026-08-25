@@ -36,6 +36,7 @@ function buildHttpEvent({ method, rawPath, url, headers, bodyBuffer }) {
   const queryStringParameters = {};
   for (const [k, v] of url.searchParams) queryStringParameters[k] = v;
   return {
+    version: '2.0',
     rawPath,
     rawQueryString: url.search ? url.search.slice(1) : '',
     queryStringParameters: Object.keys(queryStringParameters).length ? queryStringParameters : undefined,
@@ -48,9 +49,25 @@ function buildHttpEvent({ method, rawPath, url, headers, bodyBuffer }) {
 
 function isValidProxyResponse(resp) {
   return !!resp && typeof resp === 'object'
-    && Number.isInteger(resp.statusCode)
+    && Number.isInteger(resp.statusCode) && resp.statusCode >= 100 && resp.statusCode <= 599
     && (resp.body === undefined || typeof resp.body === 'string')
-    && (resp.headers === undefined || (typeof resp.headers === 'object' && resp.headers !== null));
+    && (resp.headers === undefined || (typeof resp.headers === 'object' && resp.headers !== null
+      && Object.values(resp.headers).every((v) => typeof v === 'string' || typeof v === 'number')));
+}
+
+// Headers Node computes itself from the response it's sending — a handler
+// setting these directly would either be silently overridden (safe) or, for
+// content-length specifically, corrupt the HTTP response framing if it
+// doesn't match the actual bytes written (not safe), so they're stripped
+// rather than passed through.
+const FRAMING_HEADERS = new Set(['content-length', 'transfer-encoding', 'connection']);
+
+function stripFramingHeaders(headers) {
+  const out = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (!FRAMING_HEADERS.has(k.toLowerCase())) out[k] = v;
+  }
+  return out;
 }
 
 function jsonResult(status, obj) {
@@ -72,7 +89,8 @@ function translateInvokeResult(result) {
   }
   const inv = result.body;
   if (!inv?.ok) {
-    return jsonResult(502, { error: 'handler error', detail: inv?.error?.message ?? 'invoke failed' });
+    const detail = (typeof inv?.error === 'string' ? inv.error : inv?.error?.message) ?? 'invoke failed';
+    return jsonResult(502, { error: 'handler error', detail });
   }
   if (!isValidProxyResponse(inv.response)) {
     return jsonResult(502, {
@@ -84,7 +102,7 @@ function translateInvokeResult(result) {
   const bodyBuffer = resp.isBase64Encoded
     ? Buffer.from(resp.body ?? '', 'base64')
     : Buffer.from(resp.body ?? '', 'utf8');
-  return { status: resp.statusCode, headers: resp.headers ?? {}, bodyBuffer };
+  return { status: resp.statusCode, headers: stripFramingHeaders(resp.headers ?? {}), bodyBuffer };
 }
 
 function sendResult(res, result) {
