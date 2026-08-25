@@ -19,6 +19,10 @@ test('packed tarball boots and serves the API',
   }).toString().trim().split('\n').pop();
   execFileSync('tar', ['xzf', path.join(work, tarball)], { cwd: work });
   const pkgDir = path.join(work, 'package');
+  // The package now has a real runtime dependency (@aws-sdk/client-sqs) —
+  // node_modules isn't shipped in the tarball, so a real install is what an
+  // actual `npm install`/`npx github:...` consumer would get too.
+  execFileSync('npm', ['install', '--omit=dev'], { cwd: pkgDir, timeout: 60000 });
   const child = spawn(process.execPath, [path.join(pkgDir, 'bin', 'cli.js'), '--no-open', '--port', '0'], {
     cwd: pkgDir,
     env: { ...process.env, AWS_PLAYGROUND_DATA_DIR: path.join(work, 'data') },
