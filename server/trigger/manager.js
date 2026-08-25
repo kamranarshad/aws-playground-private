@@ -1,17 +1,32 @@
 const store = require('../store');
 const localServices = require('../services');
 const sqs = require('./sqs');
+const httpTrigger = require('./http');
 
-// functionId -> { queueName, stop, status }
+// functionId -> { queueName, stop, status }  (one SQS poller per function)
 const running = new Map();
 
+// The HTTP trigger is one shared listener across every function that enables
+// it, not one per function like SQS — httpRoutes is read live by the
+// listener on every request, so toggling/renaming a trigger never needs to
+// restart it. httpTriggered tracks each function's currently-registered name
+// so a rename or disable knows which route entry to remove.
+const httpRoutes = new Map(); // name -> functionId
+const httpTriggered = new Map(); // functionId -> name
+let httpListener = null; // { server, stop } | null
+let httpListenerStarting = null; // in-flight start Promise, deduplicates concurrent enables
+let httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+
 function status(functionId) {
-  return running.get(functionId)?.status ?? { state: 'idle', lastError: null, lastPolledAt: null };
+  if (running.has(functionId)) return running.get(functionId).status;
+  if (httpTriggered.has(functionId)) return httpStatus;
+  return { state: 'idle', lastError: null, lastPolledAt: null };
 }
 
 function statusAll() {
   const out = {};
   for (const [id, r] of running) out[id] = r.status;
+  for (const id of httpTriggered.keys()) out[id] = httpStatus;
   return out;
 }
 
@@ -49,23 +64,86 @@ async function startFor(fn) {
   }
 }
 
-function stop(functionId) {
+function stopSqs(functionId) {
   const r = running.get(functionId);
   if (!r) return;
   r.stop();
   running.delete(functionId);
 }
 
+function stopHttpListenerIfIdle() {
+  if (httpRoutes.size === 0 && httpListener) {
+    httpListener.stop();
+    httpListener = null;
+    httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+  }
+}
+
+function stopHttp(functionId) {
+  const name = httpTriggered.get(functionId);
+  if (name === undefined) return;
+  httpRoutes.delete(name);
+  httpTriggered.delete(functionId);
+  stopHttpListenerIfIdle();
+}
+
+function stop(functionId) {
+  stopSqs(functionId);
+  stopHttp(functionId);
+}
+
+async function ensureHttpListenerRunning() {
+  if (httpListener) return;
+  if (httpListenerStarting) return httpListenerStarting;
+  httpListenerStarting = (async () => {
+    try {
+      httpListener = await httpTrigger.createListener({
+        resolveFunctionId: (name) => httpRoutes.get(name) ?? null,
+        invokeFunction: require('../api/invoke').invokeFunction,
+        onError: (err) => { httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null }; },
+      });
+      httpStatus = { state: 'listening', lastError: null, lastPolledAt: null };
+    } catch (err) {
+      httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null };
+    } finally {
+      httpListenerStarting = null;
+    }
+  })();
+  return httpListenerStarting;
+}
+
+async function syncHttp(fn) {
+  const current = httpTriggered.get(fn.id);
+  if (current !== undefined && current !== fn.name) httpRoutes.delete(current);
+  httpRoutes.set(fn.name, fn.id);
+  httpTriggered.set(fn.id, fn.name);
+  await ensureHttpListenerRunning();
+}
+
 async function sync(fn) {
-  const shouldRun = !!(fn.trigger && fn.trigger.enabled);
-  const current = running.get(fn.id);
-  if (!shouldRun) {
-    if (current) stop(fn.id);
+  const trigger = fn.trigger;
+  // Clean up any stale registration under the *other* trigger type first —
+  // covers switching sqs <-> http on the same function.
+  if (trigger?.type !== 'http' && httpTriggered.has(fn.id)) stopHttp(fn.id);
+  if (trigger?.type !== 'sqs' && running.has(fn.id)) stopSqs(fn.id);
+
+  if (trigger?.type === 'sqs') {
+    const shouldRun = !!trigger.enabled;
+    const current = running.get(fn.id);
+    if (!shouldRun) {
+      if (current) stopSqs(fn.id);
+      return;
+    }
+    if (current && current.queueName === trigger.queueName && current.status.state !== 'error') return;
+    if (current) stopSqs(fn.id);
+    await startFor(fn);
     return;
   }
-  if (current && current.queueName === fn.trigger.queueName && current.status.state !== 'error') return;
-  if (current) stop(fn.id);
-  await startFor(fn);
+
+  if (trigger?.type === 'http') {
+    if (!trigger.enabled) { stopHttp(fn.id); return; }
+    await syncHttp(fn);
+  }
 }
 
 async function resumeAll() {
@@ -73,7 +151,8 @@ async function resumeAll() {
 }
 
 function stopAll() {
-  for (const id of running.keys()) stop(id);
+  for (const id of running.keys()) stopSqs(id);
+  for (const id of httpTriggered.keys()) stopHttp(id);
 }
 
 module.exports = { sync, stop, resumeAll, stopAll, status, statusAll };

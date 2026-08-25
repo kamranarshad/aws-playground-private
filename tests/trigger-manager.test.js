@@ -26,6 +26,8 @@ const sqs = require('../server/trigger/sqs');
 const store = require('../server/store');
 const localServices = require('../server/services');
 const manager = require('../server/trigger/manager');
+const httpTrigger = require('../server/trigger/http');
+const originalCreateListener = httpTrigger.createListener;
 
 // Save the original localServices.start so we can restore it between tests
 const originalLocalServicesStart = localServices.start;
@@ -185,5 +187,165 @@ test('resumeAll starts a poller for every function with an enabled trigger; stop
     assert.deepStrictEqual(manager.status(a.id), { state: 'idle', lastError: null, lastPolledAt: null });
   } finally {
     localServices.start = originalLocalServicesStart;
+  }
+});
+
+test('sync registers an HTTP route and starts the shared listener when a trigger is enabled', async () => {
+  let calls = 0;
+  let stopped = false;
+  httpTrigger.createListener = async () => {
+    calls++;
+    return { stop: () => { stopped = true; }, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const fn = store.create({ name: 'h1', path: '/tmp/h1', runtime: 'node',
+      trigger: { type: 'http', enabled: true } });
+
+    await manager.sync(fn);
+
+    assert.strictEqual(calls, 1);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+    assert.strictEqual(stopped, true);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('the shared listener starts once and keeps running for the other function when one of several is disabled', async () => {
+  let calls = 0;
+  httpTrigger.createListener = async () => {
+    calls++;
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const a = store.create({ name: 'h2a', path: '/tmp/h2a', runtime: 'node', trigger: { type: 'http', enabled: true } });
+    const b = store.create({ name: 'h2b', path: '/tmp/h2b', runtime: 'node', trigger: { type: 'http', enabled: true } });
+
+    await manager.sync(a);
+    await manager.sync(b);
+    assert.strictEqual(calls, 1);
+
+    manager.stop(a.id);
+    assert.deepStrictEqual(manager.status(b.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    manager.stop(b.id);
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('two functions enabling their http trigger concurrently only start one listener', async () => {
+  let calls = 0;
+  let resolveStart;
+  httpTrigger.createListener = () => new Promise((resolve) => {
+    calls++;
+    resolveStart = () => resolve({ stop: () => {}, server: { address: () => ({ port: 9500 }) } });
+  });
+  try {
+    const a = store.create({ name: 'h3a', path: '/tmp/h3a', runtime: 'node', trigger: { type: 'http', enabled: true } });
+    const b = store.create({ name: 'h3b', path: '/tmp/h3b', runtime: 'node', trigger: { type: 'http', enabled: true } });
+
+    const p1 = manager.sync(a);
+    const p2 = manager.sync(b);
+    resolveStart();
+    await Promise.all([p1, p2]);
+
+    assert.strictEqual(calls, 1);
+    manager.stop(a.id);
+    manager.stop(b.id);
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('sync moves the route when the function is renamed while the trigger stays enabled', async () => {
+  let calls = 0;
+  const registered = [];
+  httpTrigger.createListener = async ({ resolveFunctionId }) => {
+    calls++;
+    registered.push(resolveFunctionId);
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    let fn = store.create({ name: 'h4', path: '/tmp/h4', runtime: 'node', trigger: { type: 'http', enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id, { name: 'h4-renamed' });
+    await manager.sync(fn);
+
+    assert.strictEqual(calls, 1, 'a rename must not restart the shared listener');
+    const resolve = registered[0];
+    assert.strictEqual(resolve('h4'), null, 'the old name must no longer route');
+    assert.strictEqual(resolve('h4-renamed'), fn.id);
+    manager.stop(fn.id);
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('switching a function from an sqs trigger to an http trigger stops the poller and registers the http route', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let sqsStopped = false;
+  sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { sqsStopped = true; } }; };
+  let httpCalls = 0;
+  httpTrigger.createListener = async () => {
+    httpCalls++;
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    let fn = store.create({ name: 'h5', path: '/tmp/h5', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q5', enabled: true } });
+    await manager.sync(fn);
+
+    fn = store.update(fn.id, { trigger: { type: 'http', enabled: true } });
+    await manager.sync(fn);
+
+    assert.strictEqual(sqsStopped, true);
+    assert.strictEqual(httpCalls, 1);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('a listener start failure is reported as an error status', async () => {
+  httpTrigger.createListener = async () => { throw new Error('EADDRINUSE: address already in use 127.0.0.1:9500'); };
+  try {
+    const fn = store.create({ name: 'h6', path: '/tmp/h6', runtime: 'node', trigger: { type: 'http', enabled: true } });
+    await manager.sync(fn);
+    const st = manager.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /EADDRINUSE/);
+    manager.stop(fn.id);
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('resumeAll starts the shared listener for every function with an enabled http trigger; stopAll tears it down', async () => {
+  let calls = 0;
+  let stopped = false;
+  httpTrigger.createListener = async () => {
+    calls++;
+    return { stop: () => { stopped = true; }, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const a = store.create({ name: 'h7a', path: '/tmp/h7a', runtime: 'node', trigger: { type: 'http', enabled: true } });
+    const b = store.create({ name: 'h7b', path: '/tmp/h7b', runtime: 'node' });
+
+    await manager.resumeAll();
+
+    assert.strictEqual(calls, 1);
+    assert.deepStrictEqual(manager.status(a.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    assert.deepStrictEqual(manager.status(b.id), { state: 'idle', lastError: null, lastPolledAt: null });
+
+    manager.stopAll();
+    assert.strictEqual(stopped, true);
+    assert.deepStrictEqual(manager.status(a.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
   }
 });
