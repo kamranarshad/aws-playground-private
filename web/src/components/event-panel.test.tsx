@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -201,6 +201,77 @@ it('clears the active assertion when the event is hand-edited', async () => {
   await user.keyboard('x')
 
   expect(onLoadSavedEvent).toHaveBeenCalledWith(null)
+})
+
+// The parent owns the event text, so a "load it back, then re-save it" flow
+// only reproduces with the real round trip through onEventTextChange.
+function StatefulPanel({ fn, initialText }: { fn: FunctionDef, initialText: string }) {
+  const [eventText, setEventText] = useState(initialText)
+  return (
+    <EventPanel
+      fn={fn} eventText={eventText} onEventTextChange={setEventText}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
+    />
+  )
+}
+
+// saveEvent() rebuilds the entry from dialog state alone, so an untouched
+// dialog used to re-save "foo" as a script-less event and still toast success.
+it('prefills the script when re-saving an event that was loaded unchanged', async () => {
+  const saved: SavedEvent = {
+    name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+  }
+  const user = userEvent.setup()
+  render(<StatefulPanel fn={makeFn({ savedEvents: [saved] })} initialText={'{}'} />, { wrapper: Wrapper })
+
+  await user.click(screen.getAllByRole('combobox')[1])
+  await user.click(screen.getByRole('option', { name: 'foo' }))
+  await user.click(screen.getByRole('button', { name: /save/i }))
+
+  const scriptEditor = screen.getByRole('dialog').querySelector('.cm-content')
+  expect(scriptEditor).toHaveTextContent('expect(response.statusCode).toBe(200)')
+})
+
+// The mirror image: once the event has been edited it is no longer that saved
+// event, so carrying its script over would attach it to unrelated JSON.
+it('leaves the script blank when the event no longer matches any saved event', async () => {
+  vi.mocked(api.updateFunction).mockResolvedValue(makeFn())
+  const saved: SavedEvent = {
+    name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+  }
+  const user = userEvent.setup()
+  render(
+    <StatefulPanel fn={makeFn({ savedEvents: [saved] })} initialText={'{"a":2}'} />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getByRole('button', { name: /save/i }))
+  // The editor shows its placeholder, which is only rendered for an empty doc.
+  expect(screen.getByRole('dialog').querySelector('.cm-placeholder')).toBeInTheDocument()
+
+  await user.type(screen.getByPlaceholderText('Event name'), 'bar')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(api.updateFunction).toHaveBeenCalledWith('fn-1', {
+    savedEvents: [saved, { name: 'bar', event: { a: 2 } }],
+  })
+})
+
+it('labels the save dialog\'s script editor for assistive tech', async () => {
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getByRole('button', { name: /save/i }))
+
+  expect(screen.getByRole('textbox', { name: 'Assertion script' })).toBeInTheDocument()
 })
 
 it('disables the Run checks button until there is an active assertion and a result', () => {

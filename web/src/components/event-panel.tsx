@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import CodeMirror, { keymap, Prec } from '@uiw/react-codemirror'
+import CodeMirror, { EditorView, keymap, Prec } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { ListChecks, Play, Save } from 'lucide-react'
@@ -16,6 +16,15 @@ import { EVENT_TEMPLATES } from '@/lib/templates'
 import { useUpdateFunction } from '@/lib/queries'
 import { useTheme } from '@/lib/theme'
 import type { FunctionDef, SavedEvent } from '@/lib/types'
+
+// An aria-label prop on <CodeMirror> lands on the wrapper <div>, not on the
+// contenteditable that actually carries role="textbox", so it never becomes
+// the editor's accessible name. contentAttributes is CodeMirror's own hook for
+// putting attributes on that element.
+const SCRIPT_EDITOR_EXTENSIONS = [
+  javascript(),
+  EditorView.contentAttributes.of({ 'aria-label': 'Assertion script' }),
+]
 
 export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onLoadSavedEvent, canRunChecks, onRunChecks }: {
   fn: FunctionDef
@@ -59,6 +68,21 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       return (e as Error).message
     }
   }, [eventText])
+
+  // Re-saving an event under its own name rebuilds it from dialog state alone,
+  // so an untouched dialog would silently drop the script it already had.
+  // Both the "load a saved event" path and this comparison serialize with the
+  // same JSON.stringify, so an unedited load matches exactly; once the user
+  // hand-edits, nothing matches and the field stays blank — correct, because
+  // an edited event is no longer that saved event.
+  function scriptForCurrentEvent(): string {
+    try {
+      const current = JSON.stringify(JSON.parse(eventText))
+      return fn.savedEvents.find((s) => JSON.stringify(s.event) === current)?.assertionScript ?? ''
+    } catch {
+      return ''
+    }
+  }
 
   function saveEvent() {
     const name = saveName.trim()
@@ -112,7 +136,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" disabled={!!jsonError}
-          onClick={() => setSaveOpen(true)}>
+          onClick={() => { setSaveAssertionScript(scriptForCurrentEvent()); setSaveOpen(true) }}>
           <Save className="size-3.5" /> Save
         </Button>
         <Button variant="ghost" size="sm" disabled={!canRunChecks} onClick={onRunChecks}>
@@ -152,7 +176,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
             <div className="cm-host overflow-hidden rounded-md border font-mono text-sm">
               {mounted && (
                 <CodeMirror value={saveAssertionScript} height="96px" theme={theme}
-                  extensions={[javascript()]}
+                  extensions={SCRIPT_EDITOR_EXTENSIONS}
                   placeholder="expect(response.statusCode).toBe(200)"
                   onChange={setSaveAssertionScript} />
               )}

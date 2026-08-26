@@ -146,8 +146,14 @@ function App() {
                       <HistoryList
                         key={selected.id}
                         fnId={selected.id}
-                        onLoadEvent={(text) =>
-                          setDrafts((d) => ({ ...d, [selected.id]: text }))}
+                        // Loading a past run replaces the editor's contents,
+                        // so it clears the active assertion for the same
+                        // reason a hand-edit does: the script belongs to a
+                        // different event now.
+                        onLoadEvent={(text) => {
+                          setDrafts((d) => ({ ...d, [selected.id]: text }))
+                          loadSavedEvent(null)
+                        }}
                       />
                     }
                   />
