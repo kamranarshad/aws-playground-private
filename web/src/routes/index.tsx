@@ -14,8 +14,9 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult } from '@/lib/types'
+import type { InvokeResult, SavedEvent } from '@/lib/types'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -35,6 +36,8 @@ function App() {
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
+  const [activeAssertion, setActiveAssertion] = useState<SavedEvent | null>(null)
+  const [checkResults, setCheckResults] = useState<AssertionRun | null>(null)
   const invoke = useInvoke()
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
@@ -44,6 +47,16 @@ function App() {
   function selectFunction(id: string | null) {
     setPinnedId(id)
     setResult(null)
+    setActiveAssertion(null)
+    setCheckResults(null)
+  }
+
+  // A saved event's script is checked against a specific response — once
+  // either one changes, a stale verdict would be misleading, so both are
+  // cleared together and the button must be pressed again.
+  function loadSavedEvent(saved: SavedEvent | null) {
+    setActiveAssertion(saved)
+    setCheckResults(null)
   }
 
   // Tell the server which function is active so playground.json services
@@ -62,8 +75,22 @@ function App() {
       toast.error('Event is not valid JSON')
       return
     }
-    invoke.mutate({ functionId, event }, { onSuccess: setResult })
+    invoke.mutate({ functionId, event }, {
+      onSuccess: (r) => {
+        setResult(r)
+        setCheckResults(null)
+      },
+    })
   }
+
+  function runChecks() {
+    if (!activeAssertion?.assertionScript || !result) return
+    setCheckResults(runAssertions(activeAssertion.assertionScript, {
+      response: result.response, error: result.error, report: result.report,
+    }))
+  }
+
+  const canRunChecks = !!activeAssertion?.assertionScript && !!result
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -105,13 +132,16 @@ function App() {
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
                     invoking={invoke.isPending}
-                    onLoadSavedEvent={() => {}}
+                    onLoadSavedEvent={loadSavedEvent}
+                    canRunChecks={canRunChecks}
+                    onRunChecks={runChecks}
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <ResultPanel
                     result={result}
+                    checkResults={checkResults}
                     historyTab={
                       <HistoryList
                         key={selected.id}
