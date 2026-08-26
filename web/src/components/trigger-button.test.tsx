@@ -91,6 +91,34 @@ it('clears the trigger when the queue name is left blank', async () => {
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
 })
 
+it('saves a new dynamodb trigger disabled — enabling it is the toggle button\'s job', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'DynamoDB Streams' }))
+  await user.type(screen.getByLabelText('DynamoDB table'), 'my-table')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 'dynamodb', tableName: 'my-table', enabled: false },
+  })
+})
+
+it('seeds the dynamodb table name from the function', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'dynamodb', tableName: 'my-table', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  await openPicker()
+  expect(screen.getByLabelText('DynamoDB table')).toHaveValue('my-table')
+})
+
+it('clears the trigger when the dynamodb table name is left blank', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'dynamodb', tableName: 'my-table', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.clear(screen.getByLabelText('DynamoDB table'))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
+})
+
 it('saves a new http trigger disabled, computing the URL from the function name', async () => {
   render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
   const user = await openPicker()

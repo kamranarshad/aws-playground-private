@@ -130,6 +130,22 @@ duplicate outright. A request to a function that's already mid-invoke gets
 enable the trigger on it and try `curl "localhost:9500/<name>/hello?name=you"`
 or `curl -X POST localhost:9500/<name>/sum -d '[1,2,3]'`.
 
+A function can also be invoked when an item changes in a local DynamoDB
+(Local) table: click its trigger button, set the trigger type to "DynamoDB
+Streams", give it a table name, and enable it. The table itself must
+already exist (the trigger has no key schema to create one from); the
+playground auto-starts DynamoDB Local and enables the table's stream if it
+isn't already on. Like the SQS trigger this is a poller, one per function,
+but unlike SQS it always reads from `LATEST` — only items written after the
+trigger (re)starts, with no replay across a restart — and whatever a single
+poll returns becomes one invoke's `Records` array (real DynamoDB Streams
+batching, not something the playground adds on top). See
+`fixtures/typescript/dynamodb-trigger` for a worked example: a TypeScript
+lambda that reads `event.Records` (the same shape a real DynamoDB
+Streams-triggered Lambda gets), with a `playground.json` that auto-starts
+DynamoDB Local when you select it — create the table, then enable the
+trigger from its trigger button to see it fire on inserts/updates/deletes.
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you
@@ -141,8 +157,9 @@ hand are left alone. Service state is polled, so stopping a container
 from a terminal is reflected in the UI within a few seconds.
 
 A `playground.json` can declare a trigger the same way it declares
-services — `{"trigger": {"type": "http"}}` or `{"trigger": {"type": "sqs",
-"queueName": "my-queue"}}` — and it overrides whatever's set manually for
+services — `{"trigger": {"type": "http"}}`, `{"trigger": {"type": "sqs",
+"queueName": "my-queue"}}`, or `{"trigger": {"type": "dynamodb",
+"tableName": "my-table"}}` — and it overrides whatever's set manually for
 that function, the same "file wins" rule services follow. The trigger
 button in the function header shows this as a read-only label instead of
 the interactive picker when a file declaration is present. Like services,

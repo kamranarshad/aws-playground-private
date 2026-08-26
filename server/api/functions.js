@@ -13,11 +13,14 @@ function listFunctions() {
 
 function triggerError(trigger) {
   if (trigger === null || trigger === undefined) return null;
-  if (trigger.type !== 'sqs' && trigger.type !== 'http') {
+  if (trigger.type !== 'sqs' && trigger.type !== 'http' && trigger.type !== 'dynamodb') {
     return `unsupported trigger type '${trigger.type}'`;
   }
   if (trigger.type === 'sqs' && (typeof trigger.queueName !== 'string' || !trigger.queueName.trim())) {
     return 'trigger.queueName is required';
+  }
+  if (trigger.type === 'dynamodb' && (typeof trigger.tableName !== 'string' || !trigger.tableName.trim())) {
+    return 'trigger.tableName is required';
   }
   if (typeof trigger.enabled !== 'boolean') return 'trigger.enabled must be a boolean';
   return null;

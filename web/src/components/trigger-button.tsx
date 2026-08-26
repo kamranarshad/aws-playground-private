@@ -13,7 +13,7 @@ import { HTTP_TRIGGER_PORT } from '@/lib/http'
 import { useDetect, useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
-type TriggerType = 'none' | 'sqs' | 'http'
+type TriggerType = 'none' | 'sqs' | 'http' | 'dynamodb'
 
 // Trigger configuration for a function — invoked automatically from an SQS
 // queue or an HTTP request instead of only manually. A project
@@ -42,6 +42,7 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
   const [open, setOpen] = useState(false)
   const [triggerType, setTriggerType] = useState<TriggerType>(fn.trigger?.type ?? 'none')
   const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
+  const [triggerTableName, setTriggerTableName] = useState(fn.trigger?.type === 'dynamodb' ? fn.trigger.tableName : '')
   const update = useUpdateFunction()
 
   useEffect(() => {
@@ -53,12 +54,14 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
     if (!open) return
     setTriggerType(fn.trigger?.type ?? 'none')
     setTriggerQueueName(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
+    setTriggerTableName(fn.trigger?.type === 'dynamodb' ? fn.trigger.tableName : '')
   }, [open, fn])
 
   function save() {
-    // This dialog only ever sets type/queue name — enabling/disabling is
-    // TriggerToggle's job, so whatever's currently set is carried through
-    // unchanged (a brand-new trigger starts disabled until armed there).
+    // This dialog only ever sets type/queue/table name — enabling/disabling
+    // is TriggerToggle's job, so whatever's currently set is carried
+    // through unchanged (a brand-new trigger starts disabled until armed
+    // there).
     const enabled = fn.trigger?.enabled ?? false
     update.mutate(
       {
@@ -68,9 +71,13 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
             ? (triggerQueueName.trim()
               ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled }
               : null)
-            : triggerType === 'http'
-              ? { type: 'http', enabled }
-              : null,
+            : triggerType === 'dynamodb'
+              ? (triggerTableName.trim()
+                ? { type: 'dynamodb', tableName: triggerTableName.trim(), enabled }
+                : null)
+              : triggerType === 'http'
+                ? { type: 'http', enabled }
+                : null,
         },
       },
       { onSuccess: () => setOpen(false) },
@@ -99,6 +106,7 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="sqs">SQS queue</SelectItem>
                 <SelectItem value="http">HTTP (API Gateway)</SelectItem>
+                <SelectItem value="dynamodb">DynamoDB Streams</SelectItem>
               </SelectContent>
             </Select>
             {triggerType === 'sqs' && (
@@ -110,6 +118,19 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 <p className="text-xs text-muted-foreground">
                   Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't
                   exist. Use the power button next to Trigger to turn it on.
+                </p>
+              </>
+            )}
+            {triggerType === 'dynamodb' && (
+              <>
+                <Label htmlFor="t-trigger-table">DynamoDB table</Label>
+                <Input id="t-trigger-table" value={triggerTableName}
+                  onChange={(e) => setTriggerTableName(e.target.value)}
+                  spellCheck={false} placeholder="table name (empty = no trigger)" />
+                <p className="text-xs text-muted-foreground">
+                  Auto-starts the local DynamoDB service and enables the table's stream if it
+                  isn't already — the table itself must already exist. Use the power button next
+                  to Trigger to turn it on.
                 </p>
               </>
             )}

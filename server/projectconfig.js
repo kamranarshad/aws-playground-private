@@ -10,6 +10,11 @@ function parseTrigger(raw) {
       : null;
   }
   if (raw.type === 'http') return { type: 'http', enabled: true };
+  if (raw.type === 'dynamodb') {
+    return typeof raw.tableName === 'string' && raw.tableName.trim()
+      ? { type: 'dynamodb', tableName: raw.tableName.trim(), enabled: true }
+      : null;
+  }
   return null;
 }
 

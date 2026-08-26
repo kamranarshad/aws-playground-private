@@ -88,6 +88,29 @@ test('trigger field validation on create and update', () => {
   assert.strictEqual(r.body.trigger, null);
 });
 
+test('trigger.type "dynamodb" requires a non-empty tableName and a boolean enabled', () => {
+  let r = api.createFunction({ name: 'ddb-trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'ddb-trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 't', enabled: 'yes' } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.createFunction({ name: 'ddb-trig', path: FIXTURES, runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 't', enabled: false } });
+  assert.strictEqual(r.status, 201);
+  const id = r.body.id;
+  assert.deepStrictEqual(r.body.trigger, { type: 'dynamodb', tableName: 't', enabled: false });
+
+  r = api.updateFunction(id, { trigger: { type: 'dynamodb', tableName: '', enabled: true } });
+  assert.strictEqual(r.status, 400);
+
+  r = api.updateFunction(id, { trigger: null });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.trigger, null);
+});
+
 test('function names must be globally unique', () => {
   const a = api.createFunction({ name: 'uniq-a', path: FIXTURES, runtime: 'node' });
   assert.strictEqual(a.status, 201);

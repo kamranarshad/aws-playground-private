@@ -9,6 +9,7 @@ export interface SavedEvent {
 export type FunctionTrigger =
   | { type: 'sqs'; queueName: string; enabled: boolean }
   | { type: 'http'; enabled: boolean }
+  | { type: 'dynamodb'; tableName: string; enabled: boolean }
 
 export interface FunctionDef {
   id: string

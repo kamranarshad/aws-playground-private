@@ -2,10 +2,15 @@ const store = require('../store');
 const localServices = require('../services');
 const sqs = require('./sqs');
 const httpTrigger = require('./http');
+const dynamodbTrigger = require('./dynamodb');
 const { effectiveTrigger } = require('./effective');
 
 // functionId -> { queueName, stop, status }  (one SQS poller per function)
 const running = new Map();
+
+// functionId -> { tableName, stop, status }  (one DynamoDB Streams poller
+// per function, same one-poller-per-function shape as SQS above)
+const runningDynamo = new Map();
 
 // The HTTP trigger is one shared listener across every function that enables
 // it, not one per function like SQS — httpRoutes is read live by the
@@ -20,6 +25,7 @@ let httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
 
 function status(functionId) {
   if (running.has(functionId)) return running.get(functionId).status;
+  if (runningDynamo.has(functionId)) return runningDynamo.get(functionId).status;
   if (httpTriggered.has(functionId)) return httpStatus;
   return { state: 'idle', lastError: null, lastPolledAt: null };
 }
@@ -27,6 +33,7 @@ function status(functionId) {
 function statusAll() {
   const out = {};
   for (const [id, r] of running) out[id] = r.status;
+  for (const [id, r] of runningDynamo) out[id] = r.status;
   for (const id of httpTriggered.keys()) out[id] = httpStatus;
   return out;
 }
@@ -72,6 +79,44 @@ function stopSqs(functionId) {
   running.delete(functionId);
 }
 
+async function startForDynamo(fn) {
+  const st = { state: 'polling', lastError: null, lastPolledAt: null };
+  const record = {
+    tableName: fn.trigger.tableName,
+    status: st,
+    cancelled: false,
+    stop: () => { record.cancelled = true; },
+  };
+  runningDynamo.set(fn.id, record);
+  try {
+    const started = await localServices.start('dynamodb', { auto: false });
+    if (record.cancelled) return;
+    if (!store.get(fn.id)) {
+      runningDynamo.delete(fn.id);
+      return;
+    }
+    if (!started.ok) {
+      Object.assign(st, { state: 'error', lastError: started.output || 'DynamoDB Local failed to start' });
+      return;
+    }
+    const handle = dynamodbTrigger.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    if (record.cancelled) {
+      handle.stop();
+      return;
+    }
+    record.stop = handle.stop;
+  } catch (err) {
+    if (!record.cancelled) Object.assign(st, { state: 'error', lastError: err.message });
+  }
+}
+
+function stopDynamo(functionId) {
+  const r = runningDynamo.get(functionId);
+  if (!r) return;
+  r.stop();
+  runningDynamo.delete(functionId);
+}
+
 function stopHttpListenerIfIdle() {
   if (httpRoutes.size === 0 && httpListener) {
     httpListener.stop();
@@ -90,6 +135,7 @@ function stopHttp(functionId) {
 
 function stop(functionId) {
   stopSqs(functionId);
+  stopDynamo(functionId);
   stopHttp(functionId);
 }
 
@@ -133,10 +179,11 @@ async function syncHttp(fn) {
 
 async function sync(fn) {
   const trigger = effectiveTrigger(fn);
-  // Clean up any stale registration under the *other* trigger type first —
-  // covers switching sqs <-> http on the same function.
+  // Clean up any stale registration under the *other* trigger type(s) first —
+  // covers switching sqs <-> http <-> dynamodb on the same function.
   if (trigger?.type !== 'http' && httpTriggered.has(fn.id)) stopHttp(fn.id);
   if (trigger?.type !== 'sqs' && running.has(fn.id)) stopSqs(fn.id);
+  if (trigger?.type !== 'dynamodb' && runningDynamo.has(fn.id)) stopDynamo(fn.id);
 
   if (trigger?.type === 'sqs') {
     const shouldRun = !!trigger.enabled;
@@ -152,6 +199,22 @@ async function sync(fn) {
     // through fn so a playground.json-only sqs trigger (where fn.trigger
     // itself may be null or different) still reaches the right queue.
     await startFor({ ...fn, trigger });
+    return;
+  }
+
+  if (trigger?.type === 'dynamodb') {
+    const shouldRun = !!trigger.enabled;
+    const current = runningDynamo.get(fn.id);
+    if (!shouldRun) {
+      if (current) stopDynamo(fn.id);
+      return;
+    }
+    if (current && current.tableName === trigger.tableName && current.status.state !== 'error') return;
+    if (current) stopDynamo(fn.id);
+    // Same reasoning as the sqs branch above: pass the resolved effective
+    // trigger through fn so startForDynamo reads the right table name
+    // whether it came from playground.json or the manually-stored trigger.
+    await startForDynamo({ ...fn, trigger });
     return;
   }
 
@@ -172,6 +235,7 @@ async function resumeAll() {
 
 function stopAll() {
   for (const id of running.keys()) stopSqs(id);
+  for (const id of runningDynamo.keys()) stopDynamo(id);
   for (const id of httpTriggered.keys()) stopHttp(id);
 }
 
