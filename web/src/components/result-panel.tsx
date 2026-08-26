@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { CircleCheck, CircleX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -28,14 +28,17 @@ function Pane({ children }: { children: ReactNode }) {
 function ChecksSummaryBadge({ run }: { run: AssertionRun }) {
   const total = run.results.length
   const passed = run.results.filter((r) => r.pass).length
-  if (total === 0 && !run.scriptError) {
+  // != null, not truthiness: a script that threw an empty-message Error still
+  // errored, and reading it as "no error" turns a broken run into a calm chip.
+  const errored = run.scriptError != null
+  if (total === 0 && !errored) {
     return (
       <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
         no assertions
       </Badge>
     )
   }
-  const allPass = run.scriptError == null && passed === total
+  const allPass = !errored && passed === total
   return (
     <Badge
       variant="outline"
@@ -45,13 +48,15 @@ function ChecksSummaryBadge({ run }: { run: AssertionRun }) {
           : 'border-transparent bg-destructive/15 text-destructive',
       )}
     >
-      {passed}/{total} passed
+      {/* A script that threw before its first expect() has nothing to count,
+          and "0/0 passed" reads like a no-op rather than a failure. */}
+      {total === 0 && errored ? 'script error' : `${passed}/${total} passed`}
     </Badge>
   )
 }
 
 function ChecksList({ run }: { run: AssertionRun }) {
-  if (run.results.length === 0 && !run.scriptError) {
+  if (run.results.length === 0 && run.scriptError == null) {
     return <Pane>Script had no assertions.</Pane>
   }
   return (
@@ -65,7 +70,7 @@ function ChecksList({ run }: { run: AssertionRun }) {
             <span>{r.matcher}({JSON.stringify(r.expected)}) — actual: {JSON.stringify(r.actual)}</span>
           </li>
         ))}
-        {run.scriptError && (
+        {run.scriptError != null && (
           <li className="flex items-start gap-2 px-3 py-1.5">
             <CircleX role="img" aria-label="Script error" className="mt-0.5 size-3.5 shrink-0 text-destructive" />
             <span className="text-destructive">{run.scriptError}</span>
@@ -81,6 +86,8 @@ export function ResultPanel({ result, checkResults, historyTab }: {
   checkResults?: AssertionRun | null
   historyTab?: ReactNode
 }) {
+  const [activeTab, setActiveTab] = useState('response')
+
   // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
   // the tree already covers reading it here. Memoised because a response can be
   // large and only the copy button needs the flat text.
@@ -92,8 +99,16 @@ export function ResultPanel({ result, checkResults, historyTab }: {
     return json ?? null
   }, [result])
 
+  // Tabs is controlled because the Checks tab only exists while there are
+  // check results: the next invoke (or a function switch) unmounts it, and
+  // Radix would keep "checks" selected against a trigger and content that are
+  // both gone — rendering an entirely blank panel until the user clicks a tab.
   return (
-    <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
+    <Tabs
+      value={activeTab === 'checks' && checkResults == null ? 'response' : activeTab}
+      onValueChange={setActiveTab}
+      className="flex h-full flex-col gap-0"
+    >
       <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
         <TabsList className="h-8 bg-transparent">
           <TabsTrigger value="response" className={TAB}>Response</TabsTrigger>
