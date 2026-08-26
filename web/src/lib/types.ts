@@ -3,7 +3,7 @@ export type Runtime = 'python' | 'node' | 'java' | 'provided'
 export interface SavedEvent {
   name: string
   event: unknown
-  expectedStatus?: number
+  assertionScript?: string
 }
 
 export type FunctionTrigger =

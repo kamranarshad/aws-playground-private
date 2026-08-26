@@ -113,31 +113,3 @@ it('still says there are no logs when the run printed nothing', async () => {
 
   expect(screen.getByText('No logs.')).toBeInTheDocument()
 })
-
-it('shows nothing for the assertion when no saved event is active', () => {
-  render(<ResultPanel result={ok} />)
-
-  expect(screen.queryByLabelText('Assertion passed')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Assertion failed')).not.toBeInTheDocument()
-})
-
-it('marks the assertion as passing when the response status matches', () => {
-  render(<ResultPanel result={ok} expectedStatus={200} />)
-
-  expect(screen.getByLabelText('Assertion passed')).toBeInTheDocument()
-  expect(screen.getByText('Expected 200')).toBeInTheDocument()
-})
-
-it('marks the assertion as failing when the response status does not match', () => {
-  render(<ResultPanel result={ok} expectedStatus={500} />)
-
-  expect(screen.getByLabelText('Assertion failed')).toBeInTheDocument()
-  expect(screen.getByText(/Expected 500.*got 200/)).toBeInTheDocument()
-})
-
-it('fails the assertion when the invoke itself errored', () => {
-  render(<ResultPanel result={failed} expectedStatus={200} />)
-
-  expect(screen.getByLabelText('Assertion failed')).toBeInTheDocument()
-  expect(screen.getByText(/Expected 200.*got no status/)).toBeInTheDocument()
-})

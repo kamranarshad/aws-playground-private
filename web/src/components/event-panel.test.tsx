@@ -85,7 +85,7 @@ it('does not also trigger a window-level Cmd+Enter listener above it', () => {
   }
 })
 
-it('saves an expected status alongside a named event', async () => {
+it('saves an assertion script alongside a named event', async () => {
   vi.mocked(api.updateFunction).mockResolvedValue(makeFn())
   const user = userEvent.setup()
   render(
@@ -98,15 +98,21 @@ it('saves an expected status alongside a named event', async () => {
 
   await user.click(screen.getByRole('button', { name: /save/i }))
   await user.type(screen.getByPlaceholderText('Event name'), 'foo')
-  await user.type(screen.getByLabelText('Expected status'), '200')
+  const dialog = screen.getByRole('dialog')
+  const scriptEditor = dialog.querySelector('.cm-content')
+  if (!scriptEditor) throw new Error('script CodeMirror did not mount')
+  await user.click(scriptEditor)
+  await user.keyboard('expect(response.statusCode).toBe(200)')
   await user.click(screen.getByRole('button', { name: 'Save' }))
 
   expect(api.updateFunction).toHaveBeenCalledWith('fn-1', {
-    savedEvents: [{ name: 'foo', event: { a: 1 }, expectedStatus: 200 }],
+    savedEvents: [{
+      name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+    }],
   })
 })
 
-it('omits expectedStatus when the field is left blank', async () => {
+it('omits assertionScript when the field is left blank', async () => {
   vi.mocked(api.updateFunction).mockResolvedValue(makeFn())
   const user = userEvent.setup()
   render(
@@ -127,7 +133,9 @@ it('omits expectedStatus when the field is left blank', async () => {
 })
 
 it('surfaces a saved event\'s assertion when it is loaded from the dropdown', async () => {
-  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const saved: SavedEvent = {
+    name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+  }
   const onEventTextChange = vi.fn()
   const onLoadSavedEvent = vi.fn()
   const user = userEvent.setup()
@@ -147,7 +155,9 @@ it('surfaces a saved event\'s assertion when it is loaded from the dropdown', as
 })
 
 it('clears the active assertion when a template is loaded instead', async () => {
-  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const saved: SavedEvent = {
+    name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+  }
   const onLoadSavedEvent = vi.fn()
   const user = userEvent.setup()
   render(
@@ -165,7 +175,9 @@ it('clears the active assertion when a template is loaded instead', async () => 
 })
 
 it('clears the active assertion when the event is hand-edited', async () => {
-  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const saved: SavedEvent = {
+    name: 'foo', event: { a: 1 }, assertionScript: 'expect(response.statusCode).toBe(200)',
+  }
   const onLoadSavedEvent = vi.fn()
   const user = userEvent.setup()
   render(

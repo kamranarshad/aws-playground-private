@@ -1,5 +1,4 @@
 import { useMemo, type ReactNode } from 'react'
-import { CircleCheck, CircleX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -7,7 +6,6 @@ import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
 import { LogViewer } from '@/components/log-viewer'
-import { httpStatusOf } from '@/lib/http'
 import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
@@ -25,9 +23,8 @@ function Pane({ children }: { children: ReactNode }) {
   )
 }
 
-export function ResultPanel({ result, expectedStatus, historyTab }: {
+export function ResultPanel({ result, historyTab }: {
   result: InvokeResult | null
-  expectedStatus?: number
   historyTab?: ReactNode
 }) {
   // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
@@ -53,26 +50,6 @@ export function ResultPanel({ result, expectedStatus, historyTab }: {
         {result && (
           <div className="ml-auto flex items-center gap-1.5">
             {result.ok && <HttpStatusBadge response={result.response} />}
-            {expectedStatus != null && (() => {
-              const actualStatus = result.ok ? httpStatusOf(result.response) : null
-              const pass = actualStatus === expectedStatus
-              return (
-                <Badge
-                  variant="outline"
-                  className={cn(
-                    'gap-1 font-mono text-[10px]',
-                    pass ? 'border-transparent bg-success/15 text-success'
-                      : 'border-transparent bg-destructive/15 text-destructive',
-                  )}
-                >
-                  {pass
-                    ? <CircleCheck role="img" aria-label="Assertion passed" className="size-3" />
-                    : <CircleX role="img" aria-label="Assertion failed" className="size-3" />}
-                  Expected {expectedStatus}
-                  {!pass && ` · got ${actualStatus ?? 'no status'}`}
-                </Badge>
-              )
-            })()}
             <Badge
               variant={result.ok ? 'outline' : 'destructive'}
               className={cn(

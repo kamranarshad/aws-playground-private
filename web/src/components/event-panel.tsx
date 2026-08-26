@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import CodeMirror, { keymap, Prec } from '@uiw/react-codemirror'
+import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,7 +9,6 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -29,7 +29,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   const [mounted, setMounted] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
-  const [saveExpectedStatus, setSaveExpectedStatus] = useState('')
+  const [saveAssertionScript, setSaveAssertionScript] = useState('')
   const update = useUpdateFunction()
 
   useEffect(() => setMounted(true), [])
@@ -61,20 +61,20 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   function saveEvent() {
     const name = saveName.trim()
     if (!name) return
-    const expectedStatus = saveExpectedStatus.trim() ? Number(saveExpectedStatus) : undefined
+    const assertionScript = saveAssertionScript.trim() || undefined
     const savedEvents = [
       ...fn.savedEvents.filter((s) => s.name !== name),
       {
         name,
         event: JSON.parse(eventText),
-        ...(expectedStatus !== undefined && { expectedStatus }),
+        ...(assertionScript !== undefined && { assertionScript }),
       },
     ]
     update.mutate({ id: fn.id, patch: { savedEvents } }, {
       onSuccess: () => {
         setSaveOpen(false)
         setSaveName('')
-        setSaveExpectedStatus('')
+        setSaveAssertionScript('')
         toast.success(`Saved event "${name}"`)
       },
     })
@@ -134,20 +134,28 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       </div>
       <Dialog open={saveOpen} onOpenChange={(o) => {
         setSaveOpen(o)
-        if (!o) { setSaveName(''); setSaveExpectedStatus('') }
+        if (!o) { setSaveName(''); setSaveAssertionScript('') }
       }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Save event</DialogTitle></DialogHeader>
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
           <div className="grid gap-2">
-            <Label htmlFor="save-event-expected-status">Expected status</Label>
-            <Input id="save-event-expected-status" type="number" value={saveExpectedStatus}
-              onChange={(e) => setSaveExpectedStatus(e.target.value)}
-              placeholder="e.g. 200 (optional)" />
+            <span className="text-sm font-medium">
+              Assertion script <span className="font-normal text-muted-foreground">(optional)</span>
+            </span>
+            <div className="cm-host overflow-hidden rounded-md border font-mono text-sm">
+              {mounted && (
+                <CodeMirror value={saveAssertionScript} height="96px" theme={theme}
+                  extensions={[javascript()]}
+                  placeholder="expect(response.statusCode).toBe(200)"
+                  onChange={setSaveAssertionScript} />
+              )}
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName(''); setSaveExpectedStatus('') }}>
+            <Button variant="ghost"
+              onClick={() => { setSaveOpen(false); setSaveName(''); setSaveAssertionScript('') }}>
               Cancel
             </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>
