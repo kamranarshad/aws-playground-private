@@ -39,6 +39,7 @@ it('invokes on Cmd+Enter from inside the JSON editor, instead of inserting a bla
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={onEventTextChange}
       onInvoke={onInvoke} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -70,6 +71,7 @@ it('does not also trigger a window-level Cmd+Enter listener above it', () => {
       <EventPanel
         fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
         onInvoke={onInvoke} invoking={false} onLoadSavedEvent={vi.fn()}
+        canRunChecks={false} onRunChecks={vi.fn()}
       />,
       { wrapper: Wrapper },
     )
@@ -92,6 +94,7 @@ it('saves an assertion script alongside a named event', async () => {
     <EventPanel
       fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
       onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -119,6 +122,7 @@ it('omits assertionScript when the field is left blank', async () => {
     <EventPanel
       fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
       onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -143,6 +147,7 @@ it('surfaces a saved event\'s assertion when it is loaded from the dropdown', as
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={onEventTextChange}
       onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -164,6 +169,7 @@ it('clears the active assertion when a template is loaded instead', async () => 
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
       onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -184,6 +190,7 @@ it('clears the active assertion when the event is hand-edited', async () => {
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
       onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+      canRunChecks={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -194,4 +201,34 @@ it('clears the active assertion when the event is hand-edited', async () => {
   await user.keyboard('x')
 
   expect(onLoadSavedEvent).toHaveBeenCalledWith(null)
+})
+
+it('disables the Run checks button until there is an active assertion and a result', () => {
+  render(
+    <EventPanel
+      fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={false} onRunChecks={vi.fn()}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  expect(screen.getByRole('button', { name: /run checks/i })).toBeDisabled()
+})
+
+it('runs checks when the button is pressed', async () => {
+  const onRunChecks = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+      canRunChecks={true} onRunChecks={onRunChecks}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getByRole('button', { name: /run checks/i }))
+
+  expect(onRunChecks).toHaveBeenCalledTimes(1)
 })

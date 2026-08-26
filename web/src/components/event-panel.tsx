@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import CodeMirror, { keymap, Prec } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
-import { Play, Save } from 'lucide-react'
+import { ListChecks, Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,13 +17,15 @@ import { useUpdateFunction } from '@/lib/queries'
 import { useTheme } from '@/lib/theme'
 import type { FunctionDef, SavedEvent } from '@/lib/types'
 
-export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onLoadSavedEvent }: {
+export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onLoadSavedEvent, canRunChecks, onRunChecks }: {
   fn: FunctionDef
   eventText: string
   onEventTextChange: (text: string) => void
   onInvoke: () => void
   invoking: boolean
   onLoadSavedEvent: (saved: SavedEvent | null) => void
+  canRunChecks: boolean
+  onRunChecks: () => void
 }) {
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
@@ -112,6 +114,9 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
         <Button variant="ghost" size="sm" disabled={!!jsonError}
           onClick={() => setSaveOpen(true)}>
           <Save className="size-3.5" /> Save
+        </Button>
+        <Button variant="ghost" size="sm" disabled={!canRunChecks} onClick={onRunChecks}>
+          <ListChecks className="size-3.5" /> Run checks
         </Button>
         <div className="ml-auto flex items-center gap-2">
           {jsonError && (
