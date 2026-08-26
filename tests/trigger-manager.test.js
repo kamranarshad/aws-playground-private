@@ -453,10 +453,14 @@ test('sync registers an s3 route, starts MinIO, and configures the bucket when a
     assert.deepStrictEqual(calls, [{ bucket: 'my-bucket', hasWatchers: true }]);
     assert.deepStrictEqual(manager.status(fn.id), { state: 'listening', lastError: null, lastPolledAt: null });
     assert.deepStrictEqual(manager.s3RoutesFor('my-bucket'),
-      [{ events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
+      [{ functionId: fn.id, events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
 
     manager.stop(fn.id);
     assert.deepStrictEqual(manager.s3RoutesFor('my-bucket'), []);
+    // removeS3Route fires the hasWatchers:false ensureBucketConfig call through the
+    // per-bucket queue (a .then() hop), fire-and-forget — flush one microtask so it
+    // has actually run before asserting on `calls`.
+    await Promise.resolve();
     assert.deepStrictEqual(calls[1], { bucket: 'my-bucket', hasWatchers: false });
   } finally {
     localServices.start = originalLocalServicesStart;
@@ -495,7 +499,7 @@ test('sync reconfigures when the events, prefix, or suffix change', async () => 
 
     assert.strictEqual(calls, 2);
     assert.deepStrictEqual(manager.s3RoutesFor('b3'),
-      [{ events: ['ObjectCreated', 'ObjectRemoved'], prefix: undefined, suffix: undefined }]);
+      [{ functionId: fn.id, events: ['ObjectCreated', 'ObjectRemoved'], prefix: undefined, suffix: undefined }]);
     manager.stop(fn.id);
   } finally {
     localServices.start = originalLocalServicesStart;
@@ -536,11 +540,14 @@ test('the bucket config is only cleared once the last function watching it is re
     await manager.sync(b);
 
     manager.stop(a.id);
-    assert.deepStrictEqual(manager.s3RoutesFor('shared'), [{ events: ['ObjectRemoved'], prefix: undefined, suffix: undefined }]);
+    assert.deepStrictEqual(manager.s3RoutesFor('shared'),
+      [{ functionId: b.id, events: ['ObjectRemoved'], prefix: undefined, suffix: undefined }]);
     assert.strictEqual(calls.filter((c) => c.hasWatchers === false).length, 0);
 
     manager.stop(b.id);
     assert.deepStrictEqual(manager.s3RoutesFor('shared'), []);
+    // Same fire-and-forget queued call as above — flush one microtask before asserting.
+    await Promise.resolve();
     assert.strictEqual(calls.filter((c) => c.hasWatchers === false).length, 1);
   } finally {
     localServices.start = originalLocalServicesStart;
@@ -634,7 +641,52 @@ test('sync resolves an s3 trigger declared only in playground.json (fn.trigger s
     await manager.sync(fn);
 
     assert.deepStrictEqual(manager.s3RoutesFor('from-file'),
-      [{ events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
+      [{ functionId: fn.id, events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('disabling then immediately re-enabling an s3 trigger on the same bucket keeps ensureBucketConfig calls strictly ordered', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const calls = [];
+  let releaseDisableCall;
+  const disableGate = new Promise((resolve) => { releaseDisableCall = resolve; });
+  // Only the disable call (hasWatchers: false) is delayed — this simulates the
+  // disable's real network call being slow (e.g. SDK retry/backoff) while the
+  // re-enable races ahead with more synchronous work of its own (starting MinIO).
+  // If ensureBucketConfig calls for the same bucket weren't serialized, the
+  // re-enable's call could resolve first and then be clobbered when the slow
+  // disable call finally lands, leaving the bucket's live config empty.
+  s3Trigger.ensureBucketConfig = async (bucket, hasWatchers) => {
+    if (hasWatchers === false) await disableGate;
+    calls.push({ bucket, hasWatchers });
+  };
+  try {
+    let fn = store.create({ name: 's10', path: '/tmp/s10', runtime: 'node',
+      trigger: { type: 's3', bucket: 'race-bucket', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+
+    fn = store.update(fn.id,
+      { trigger: { type: 's3', bucket: 'race-bucket', events: ['ObjectCreated'], enabled: false } });
+    const disableSync = manager.sync(fn); // fires the (delayed) hasWatchers:false call, fire-and-forget
+
+    fn = store.update(fn.id,
+      { trigger: { type: 's3', bucket: 'race-bucket', events: ['ObjectCreated'], enabled: true } });
+    const enableSync = manager.sync(fn); // must queue its hasWatchers:true call behind the pending disable call
+
+    releaseDisableCall();
+    await Promise.all([disableSync, enableSync]);
+
+    assert.deepStrictEqual(calls, [
+      { bucket: 'race-bucket', hasWatchers: true },
+      { bucket: 'race-bucket', hasWatchers: false },
+      { bucket: 'race-bucket', hasWatchers: true },
+    ]);
+    assert.deepStrictEqual(manager.s3RoutesFor('race-bucket'),
+      [{ functionId: fn.id, events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
     manager.stop(fn.id);
   } finally {
     localServices.start = originalLocalServicesStart;

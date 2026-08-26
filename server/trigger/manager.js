@@ -30,7 +30,22 @@ const s3Status = new Map(); // functionId -> { state, lastError, lastPolledAt }
 
 function s3RoutesFor(bucket) {
   const m = s3Routes.get(bucket);
-  return m ? [...m.values()] : [];
+  return m ? [...m].map(([functionId, r]) => ({ functionId, ...r })) : [];
+}
+
+// ensureBucketConfig hits a real network call (PutBucketNotificationConfigurationCommand)
+// with no ordering guarantee between concurrent calls. A fast disable-then-re-enable
+// (or two functions racing on the same bucket) could otherwise complete out of order
+// and leave the bucket's live notification config not matching the current route table.
+// Chaining every call for a given bucket onto the same promise makes calls for that
+// bucket strictly sequential, in the order they were issued.
+const bucketConfigQueue = new Map(); // bucket -> Promise (tail of the pending chain)
+
+function queueBucketConfig(bucket, hasWatchers) {
+  const prev = bucketConfigQueue.get(bucket) ?? Promise.resolve();
+  const next = prev.then(() => s3Trigger.ensureBucketConfig(bucket, hasWatchers));
+  bucketConfigQueue.set(bucket, next.catch(() => {})); // keep the chain alive past a rejection
+  return next;
 }
 
 function status(functionId) {
@@ -133,7 +148,7 @@ async function syncS3(functionId, trigger) {
       s3Status.set(functionId, { state: 'error', lastError: started.output || 'MinIO failed to start', lastPolledAt: null });
       return;
     }
-    await s3Trigger.ensureBucketConfig(trigger.bucket, true);
+    await queueBucketConfig(trigger.bucket, true);
     if (s3Triggered.get(functionId) !== trigger.bucket) return;
     s3Status.set(functionId, { state: 'listening', lastError: null, lastPolledAt: null });
   } catch (err) {
@@ -149,7 +164,7 @@ function removeS3Route(functionId, bucket) {
     bucketRoutes.delete(functionId);
     if (bucketRoutes.size === 0) {
       s3Routes.delete(bucket);
-      s3Trigger.ensureBucketConfig(bucket, false).catch(() => {});
+      queueBucketConfig(bucket, false).catch(() => {});
     }
   }
   s3Triggered.delete(functionId);
