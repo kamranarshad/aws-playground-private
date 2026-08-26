@@ -1,4 +1,4 @@
-const { test } = require('node:test');
+const { test, after } = require('node:test');
 const assert = require('node:assert');
 const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -8,6 +8,8 @@ const { hasRuntime } = require('./helpers');
 const {
   SQSClient, CreateQueueCommand, SendMessageCommand, GetQueueAttributesCommand,
 } = require('@aws-sdk/client-sqs');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3Trigger = require('../server/trigger/s3');
 
 function imagePresent(image) {
   try {
@@ -28,6 +30,38 @@ const daemonUp = (() => {
 })();
 
 const ready = daemonUp && imagePresent('softwaremill/elasticmq-native') && hasRuntime('python3');
+const s3Ready = daemonUp && imagePresent('minio/minio');
+
+let s3ListenerPromise;
+function ensureS3Listener() {
+  if (!s3ListenerPromise) {
+    s3ListenerPromise = s3Trigger.createListener({
+      port: 9501,
+      routesFor: manager.s3RoutesFor,
+      invokeFunction: require('../server/api/invoke').invokeFunction,
+    });
+  }
+  return s3ListenerPromise;
+}
+
+function s3Client() {
+  return new S3Client({
+    endpoint: 'http://127.0.0.1:9400',
+    region: 'us-east-1',
+    forcePathStyle: true,
+    credentials: { accessKeyId: 'playground', secretAccessKey: 'playground123' },
+  });
+}
+
+// Unlike production (where the S3 webhook listener is process-lifetime,
+// started once from bin/cli.js), this file starts it directly to exercise
+// the real webhook path — close it once every test here has run so the
+// open port doesn't keep this test file's process alive indefinitely.
+after(async () => {
+  if (!s3ListenerPromise) return;
+  const listener = await s3ListenerPromise;
+  listener.stop();
+});
 
 delete process.env.AWS_PLAYGROUND_DOCKER; // real docker, not a shim
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-e2e-'));
@@ -150,4 +184,51 @@ test('resumeAll resumes a previously enabled trigger after a simulated restart',
   assert.ok(entry, 'expected the resumed trigger to pick up the message');
 
   manager.stopAll();
+});
+
+test('enabling an S3 trigger invokes the function when an object is created, and tags history',
+  { skip: s3Ready ? false : 'docker daemon or minio image not available' }, async () => {
+  await ensureS3Listener();
+  const created = api.createFunction({ name: 's3-trig-e2e', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const fn = api.updateFunction(created.body.id,
+    { trigger: { type: 's3', bucket: 's3-trigger-e2e-bucket', events: ['ObjectCreated'], enabled: true } }).body;
+
+  await retryUntilReachable(() => fetch('http://127.0.0.1:9400/minio/health/live'));
+  await sleep(1000); // let manager.sync's ensureBucketConfig create the bucket + webhook config
+
+  const client = s3Client();
+  await client.send(new PutObjectCommand({ Bucket: 's3-trigger-e2e-bucket', Key: 'hello.txt', Body: 'hi' }));
+
+  const entry = await waitForTriggerEntry(fn.id);
+  assert.ok(entry, 'expected a trigger-sourced history entry');
+  assert.strictEqual(entry.source.bucket, 's3-trigger-e2e-bucket');
+  assert.strictEqual(entry.source.key, 'hello.txt');
+  assert.strictEqual(entry.event.Records[0].eventSource, 'aws:s3');
+  assert.strictEqual(entry.ok, true);
+
+  manager.stop(fn.id);
+});
+
+test('a prefix filter only matches keys under that prefix',
+  { skip: s3Ready ? false : 'docker daemon or minio image not available' }, async () => {
+  await ensureS3Listener();
+  const created = api.createFunction({ name: 's3-trig-e2e-prefix', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const fn = api.updateFunction(created.body.id,
+    { trigger: { type: 's3', bucket: 's3-trigger-e2e-bucket', events: ['ObjectCreated'],
+      prefix: 'images/', enabled: true } }).body;
+
+  await retryUntilReachable(() => fetch('http://127.0.0.1:9400/minio/health/live'));
+  await sleep(1000);
+
+  const client = s3Client();
+  await client.send(new PutObjectCommand({ Bucket: 's3-trigger-e2e-bucket', Key: 'not-matching.txt', Body: 'x' }));
+  await client.send(new PutObjectCommand({ Bucket: 's3-trigger-e2e-bucket', Key: 'images/pic.png', Body: 'x' }));
+
+  const entry = await waitForTriggerEntry(fn.id);
+  assert.ok(entry);
+  assert.strictEqual(entry.source.key, 'images/pic.png');
+
+  manager.stop(fn.id);
 });

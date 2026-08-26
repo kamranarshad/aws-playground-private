@@ -130,6 +130,20 @@ duplicate outright. A request to a function that's already mid-invoke gets
 enable the trigger on it and try `curl "localhost:9500/<name>/hello?name=you"`
 or `curl -X POST localhost:9500/<name>/sum -d '[1,2,3]'`.
 
+A function can also be invoked when an object is created or removed in a
+local MinIO bucket: click its trigger button, set the trigger type to "S3
+bucket", pick a bucket name and one or both event types (Object Created /
+Object Removed), and optionally a key prefix/suffix filter, then enable it.
+The playground auto-starts MinIO, creates the bucket if it doesn't exist,
+and configures a real MinIO webhook notification that POSTs to a shared
+listener at `http://localhost:9501` — the event the function receives is a
+real S3 event notification (`event.Records[0].eventName`, `.s3.bucket.name`,
+`.s3.object.key`), the same shape a real S3-triggered Lambda gets.
+Trigger-caused runs are tagged in the History tab the same way SQS- and
+HTTP-triggered ones are. See `fixtures/typescript/node-s3` for a worked
+example: enable the S3 trigger on it and `PutObject` into its bucket to see
+it fire.
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you
