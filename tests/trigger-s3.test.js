@@ -62,3 +62,52 @@ test('dispatch never throws when invokeFunction rejects', () => {
     invokeFunction: async () => { throw new Error('boom'); },
   }));
 });
+
+const {
+  CreateBucketCommand, PutBucketNotificationConfigurationCommand,
+} = require('@aws-sdk/client-s3');
+const { ensureBucket, syncBucketNotification } = require('../server/trigger/s3');
+
+function fakeClient() {
+  const calls = [];
+  return { calls, send: async (cmd) => { calls.push(cmd); return {}; } };
+}
+
+test('ensureBucket sends a CreateBucketCommand for the given bucket', async () => {
+  const client = fakeClient();
+  await ensureBucket(client, 'my-bucket');
+  assert.strictEqual(client.calls.length, 1);
+  assert.ok(client.calls[0] instanceof CreateBucketCommand);
+  assert.strictEqual(client.calls[0].input.Bucket, 'my-bucket');
+});
+
+test('ensureBucket swallows a BucketAlreadyOwnedByYou/BucketAlreadyExists error', async () => {
+  for (const name of ['BucketAlreadyOwnedByYou', 'BucketAlreadyExists']) {
+    const client = { send: async () => { const e = new Error('x'); e.name = name; throw e; } };
+    await assert.doesNotReject(() => ensureBucket(client, 'my-bucket'));
+  }
+});
+
+test('ensureBucket rethrows any other error', async () => {
+  const client = { send: async () => { throw new Error('boom'); } };
+  await assert.rejects(() => ensureBucket(client, 'my-bucket'), /boom/);
+});
+
+test('syncBucketNotification puts a catch-all config for both event types when hasWatchers is true', async () => {
+  const client = fakeClient();
+  await syncBucketNotification(client, 'my-bucket', true);
+  assert.strictEqual(client.calls.length, 1);
+  const cmd = client.calls[0];
+  assert.ok(cmd instanceof PutBucketNotificationConfigurationCommand);
+  assert.strictEqual(cmd.input.Bucket, 'my-bucket');
+  const queueConfigs = cmd.input.NotificationConfiguration.QueueConfigurations;
+  assert.strictEqual(queueConfigs.length, 1);
+  assert.strictEqual(queueConfigs[0].QueueArn, 'arn:minio:sqs::PLAYGROUND:webhook');
+  assert.deepStrictEqual(queueConfigs[0].Events, ['s3:ObjectCreated:*', 's3:ObjectRemoved:*']);
+});
+
+test('syncBucketNotification clears the config when hasWatchers is false', async () => {
+  const client = fakeClient();
+  await syncBucketNotification(client, 'my-bucket', false);
+  assert.deepStrictEqual(client.calls[0].input.NotificationConfiguration.QueueConfigurations, []);
+});
