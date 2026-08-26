@@ -4,6 +4,7 @@ import { json } from '@codemirror/lang-json'
 import { Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { CopyIcon } from '@/components/copy-icon'
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -11,8 +12,10 @@ import { Input } from '@/components/ui/input'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { buildCurlCommand } from '@/lib/http'
 import { EVENT_TEMPLATES } from '@/lib/templates'
-import { useUpdateFunction } from '@/lib/queries'
+import { useDetect, useUpdateFunction } from '@/lib/queries'
+import { useCopy } from '@/lib/use-copy'
 import { useTheme } from '@/lib/theme'
 import type { FunctionDef } from '@/lib/types'
 
@@ -28,6 +31,14 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const update = useUpdateFunction()
+  // Same "is this trigger actually reachable" check FunctionHeader uses for
+  // its status badge — a playground.json trigger is always on, a manual one
+  // only when its own enabled flag is set. Only then does
+  // http://localhost:9500/<name> exist for a curl command to hit.
+  const { data: projectTrigger } = useDetect(fn.path, (d) => d.projectTrigger ?? null)
+  const httpTriggerActive = projectTrigger?.type === 'http'
+    || (fn.trigger?.type === 'http' && fn.trigger.enabled)
+  const { copied: curlCopied, copy: copyCurl } = useCopy()
 
   useEffect(() => setMounted(true), [])
 
@@ -100,6 +111,12 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           onClick={() => setSaveOpen(true)}>
           <Save className="size-3.5" /> Save
         </Button>
+        {httpTriggerActive && (
+          <Button variant="ghost" size="sm"
+            onClick={() => copyCurl(buildCurlCommand(fn, eventText))}>
+            <CopyIcon copied={curlCopied} className="size-3.5" /> Copy as curl
+          </Button>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {jsonError && (
             <span className="whitespace-nowrap text-xs text-destructive" title={jsonError}>
