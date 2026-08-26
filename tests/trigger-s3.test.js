@@ -111,3 +111,74 @@ test('syncBucketNotification clears the config when hasWatchers is false', async
   await syncBucketNotification(client, 'my-bucket', false);
   assert.deepStrictEqual(client.calls[0].input.NotificationConfiguration.QueueConfigurations, []);
 });
+
+const http = require('node:http');
+const { createListener, PORT, HOST } = require('../server/trigger/s3');
+
+function post(port, body) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ port, host: '127.0.0.1', method: 'POST', path: '/' }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('PORT and HOST match the fixed values MinIO is configured to reach', () => {
+  assert.strictEqual(PORT, 9501);
+  assert.strictEqual(HOST, '127.0.0.1');
+});
+
+test('the listener parses a MinIO webhook payload and invokes every matching route', async () => {
+  const invoked = [];
+  const listener = await createListener({
+    port: 0,
+    routesFor: (bucket) => (bucket === 'my-bucket' ? [{ functionId: 'f1', events: ['ObjectCreated'] }] : []),
+    invokeFunction: async (input) => { invoked.push(input); return { status: 200 }; },
+  });
+  try {
+    const port = listener.server.address().port;
+    const body = JSON.stringify({
+      Records: [{ eventName: 's3:ObjectCreated:Put', s3: { bucket: { name: 'my-bucket' }, object: { key: 'hello.txt' } } }],
+    });
+    const res = await post(port, body);
+    assert.strictEqual(res.status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(invoked.length, 1);
+    assert.strictEqual(invoked[0].functionId, 'f1');
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 200 for a malformed body and invokes nothing', async () => {
+  let called = false;
+  const listener = await createListener({
+    port: 0,
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'] }],
+    invokeFunction: async () => { called = true; },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await post(port, 'not json');
+    assert.strictEqual(res.status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(called, false);
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 200 for a payload with no Records', async () => {
+  const listener = await createListener({ port: 0, routesFor: () => [], invokeFunction: async () => {} });
+  try {
+    const port = listener.server.address().port;
+    const res = await post(port, JSON.stringify({}));
+    assert.strictEqual(res.status, 200);
+  } finally {
+    listener.stop();
+  }
+});

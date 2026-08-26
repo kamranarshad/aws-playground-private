@@ -1,5 +1,9 @@
+const http = require('http');
 const { S3Client, CreateBucketCommand, PutBucketNotificationConfigurationCommand } = require('@aws-sdk/client-s3');
 const { entry, AWS_DUMMY_CREDS } = require('../services/registry');
+
+const PORT = 9501;
+const HOST = '127.0.0.1';
 
 const NOTIFICATION_ID = 'PLAYGROUND';
 const NOTIFICATION_ARN = `arn:minio:sqs::${NOTIFICATION_ID}:webhook`;
@@ -89,8 +93,51 @@ async function ensureBucketConfig(bucket, hasWatchers) {
   await syncBucketNotification(client, bucket, hasWatchers);
 }
 
+function createRequestHandler({ routesFor, invokeFunction }) {
+  return async function handleRequest(req, res) {
+    const chunks = [];
+    try {
+      for await (const chunk of req) chunks.push(chunk);
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    // Always 200 once the body is read — MinIO doesn't wait on the actual
+    // invoke outcome (see dispatch's fire-and-forget invokeFunction call),
+    // and a malformed body is our problem to log, not MinIO's to retry.
+    res.writeHead(200);
+    res.end();
+    let payload;
+    try {
+      payload = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+    } catch {
+      return;
+    }
+    for (const record of payload.Records ?? []) {
+      dispatch(record, { routesFor, invokeFunction });
+    }
+  };
+}
+
+// Stateless factory — one shared instance is started once from bin/cli.js
+// for the life of the process (unlike server/trigger/http.js's listener,
+// which the trigger manager starts/stops based on trigger state), so it
+// needs no singleton bookkeeping here.
+function createListener({ routesFor, invokeFunction, port = PORT, host = HOST } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(createRequestHandler({ routesFor, invokeFunction }));
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.removeListener('error', reject);
+      resolve({ server, stop: () => server.close() });
+    });
+  });
+}
+
 module.exports = {
   categoryFor, normalizeRecord, dispatch,
   buildClient, ensureBucket, syncBucketNotification, ensureBucketConfig,
   NOTIFICATION_ID, NOTIFICATION_ARN,
+  PORT, HOST, createRequestHandler, createListener,
 };
