@@ -88,6 +88,42 @@ test('trigger field validation on create and update', () => {
   assert.strictEqual(r.body.trigger, null);
 });
 
+test('trigger.type "s3" requires a non-empty bucket and a non-empty valid events array', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-api-s3-'));
+  let r = api.createFunction({ name: 's3-val-1', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: '', events: ['ObjectCreated'], enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /bucket/);
+
+  r = api.createFunction({ name: 's3-val-2', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: 'b', events: [], enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /events/);
+
+  r = api.createFunction({ name: 's3-val-3', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectTagging'], enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /events/);
+
+  r = api.createFunction({ name: 's3-val-4', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated'], prefix: 1, enabled: true } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /prefix/);
+
+  r = api.createFunction({ name: 's3-val-5', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated'], enabled: 'yes' } });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body.error, /enabled/);
+
+  r = api.createFunction({ name: 's3-val-6', path: dir, runtime: 'node',
+    trigger: { type: 's3', bucket: ' b ', events: ['ObjectCreated', 'ObjectRemoved'],
+      prefix: 'images/', suffix: '.png', enabled: false } });
+  assert.strictEqual(r.status, 201);
+  assert.deepStrictEqual(r.body.trigger,
+    { type: 's3', bucket: ' b ', events: ['ObjectCreated', 'ObjectRemoved'],
+      prefix: 'images/', suffix: '.png', enabled: false });
+});
+
 test('function names must be globally unique', () => {
   const a = api.createFunction({ name: 'uniq-a', path: FIXTURES, runtime: 'node' });
   assert.strictEqual(a.status, 201);

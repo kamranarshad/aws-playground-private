@@ -13,11 +13,20 @@ function listFunctions() {
 
 function triggerError(trigger) {
   if (trigger === null || trigger === undefined) return null;
-  if (trigger.type !== 'sqs' && trigger.type !== 'http') {
+  if (trigger.type !== 'sqs' && trigger.type !== 'http' && trigger.type !== 's3') {
     return `unsupported trigger type '${trigger.type}'`;
   }
   if (trigger.type === 'sqs' && (typeof trigger.queueName !== 'string' || !trigger.queueName.trim())) {
     return 'trigger.queueName is required';
+  }
+  if (trigger.type === 's3') {
+    if (typeof trigger.bucket !== 'string' || !trigger.bucket.trim()) return 'trigger.bucket is required';
+    if (!Array.isArray(trigger.events) || trigger.events.length === 0
+      || !trigger.events.every((e) => e === 'ObjectCreated' || e === 'ObjectRemoved')) {
+      return "trigger.events must be a non-empty array of 'ObjectCreated'/'ObjectRemoved'";
+    }
+    if (trigger.prefix !== undefined && typeof trigger.prefix !== 'string') return 'trigger.prefix must be a string';
+    if (trigger.suffix !== undefined && typeof trigger.suffix !== 'string') return 'trigger.suffix must be a string';
   }
   if (typeof trigger.enabled !== 'boolean') return 'trigger.enabled must be a boolean';
   return null;

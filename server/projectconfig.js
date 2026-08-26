@@ -10,6 +10,17 @@ function parseTrigger(raw) {
       : null;
   }
   if (raw.type === 'http') return { type: 'http', enabled: true };
+  if (raw.type === 's3') {
+    if (typeof raw.bucket !== 'string' || !raw.bucket.trim()) return null;
+    const events = Array.isArray(raw.events)
+      ? raw.events.filter((e) => e === 'ObjectCreated' || e === 'ObjectRemoved')
+      : [];
+    if (events.length === 0) return null;
+    const trigger = { type: 's3', bucket: raw.bucket.trim(), events, enabled: true };
+    if (typeof raw.prefix === 'string' && raw.prefix.trim()) trigger.prefix = raw.prefix.trim();
+    if (typeof raw.suffix === 'string' && raw.suffix.trim()) trigger.suffix = raw.suffix.trim();
+    return trigger;
+  }
   return null;
 }
 
