@@ -24,6 +24,20 @@ it('fails toEqual for objects that differ', () => {
   expect(results[0].pass).toBe(false)
 })
 
+// NaN !== NaN, so the naive === would report a NaN field as unequal to itself.
+it('passes toEqual for NaN against NaN', () => {
+  const { results, scriptError } = runAssertions('expect(NaN).toEqual(NaN)', ctx)
+  expect(scriptError).toBeNull()
+  expect(results[0].pass).toBe(true)
+})
+
+// An array and an object can share every enumerable key and still not be the
+// same value; comparing keys alone would call these equal.
+it('fails toEqual for an array against an object with the same index keys', () => {
+  const { results } = runAssertions('expect([1, 2]).toEqual({ 0: 1, 1: 2 })', ctx)
+  expect(results[0].pass).toBe(false)
+})
+
 it('passes toContain for a substring', () => {
   const { results } = runAssertions('expect("hello world").toContain("world")', ctx)
   expect(results[0].pass).toBe(true)
@@ -41,9 +55,25 @@ it('fails toContain gracefully when actual is neither a string nor an array', ()
   })
 })
 
+// The "requires a string or array" message is about `actual`, so a string body
+// searched for a number is a substring search, not a type complaint.
+it('coerces a non-string needle when actual is a string', () => {
+  const { results } = runAssertions('expect("order-123").toContain(123)', ctx)
+  expect(results[0]).toEqual({ matcher: 'toContain', actual: 'order-123', expected: 123, pass: true })
+})
+
 it('passes toMatch against a regex', () => {
   const { results } = runAssertions('expect("order-123").toMatch(/^order-\\d+$/)', ctx)
   expect(results[0].pass).toBe(true)
+})
+
+// JSON.stringify(/x/) is "{}", so storing the object itself made a failing row
+// read `toMatch({}) — actual: "nope"` in the Checks list.
+it('records a regex pattern in readable string form', () => {
+  const { results } = runAssertions('expect("nope").toMatch(/^order-\\d+$/)', ctx)
+  expect(results[0].pass).toBe(false)
+  expect(results[0].expected).toBe('/^order-\\d+$/')
+  expect(results[0].expected).not.toBeInstanceOf(RegExp)
 })
 
 it('passes toMatch against a string pattern', () => {
@@ -63,6 +93,25 @@ it('keeps results recorded before a thrown error, and reports the error message'
   )
   expect(results).toEqual([{ matcher: 'toBe', actual: 1, expected: 1, pass: true }])
   expect(scriptError).toMatch(/nonexistent/)
+})
+
+// `(e as Error).message` on a thrown string is undefined — falsy, so the panel
+// rendered a script that threw as a calm "no assertions" run.
+it('reports a thrown non-Error value as scriptError', () => {
+  const { scriptError } = runAssertions('throw "plain string"', ctx)
+  expect(scriptError).toBe('plain string')
+})
+
+it('reports a thrown Error with an empty message as a non-empty scriptError', () => {
+  const { scriptError } = runAssertions('throw new Error("")', ctx)
+  expect(scriptError).toBe('(no message)')
+})
+
+// Strict mode: an accidental `x = 1` should throw rather than quietly creating
+// a global on window.
+it('reports an undeclared assignment as a script error', () => {
+  const { scriptError } = runAssertions('someUndeclared = 1', ctx)
+  expect(scriptError).toMatch(/someUndeclared/)
 })
 
 it('reports a syntax error as scriptError with no results', () => {
