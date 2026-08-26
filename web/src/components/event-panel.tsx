@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import CodeMirror, { EditorView, keymap, Prec } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
-import { ListChecks, Play, Save } from 'lucide-react'
+import { GripHorizontal, ListChecks, Play, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -15,7 +15,7 @@ import {
 import { EVENT_TEMPLATES } from '@/lib/templates'
 import { useUpdateFunction } from '@/lib/queries'
 import { useTheme } from '@/lib/theme'
-import type { FunctionDef, SavedEvent } from '@/lib/types'
+import type { FunctionDef } from '@/lib/types'
 
 // An aria-label prop on <CodeMirror> lands on the wrapper <div>, not on the
 // contenteditable that actually carries role="textbox", so it never becomes
@@ -26,22 +26,46 @@ const SCRIPT_EDITOR_EXTENSIONS = [
   EditorView.contentAttributes.of({ 'aria-label': 'Assertion script' }),
 ]
 
-export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onLoadSavedEvent, canRunChecks, onRunChecks }: {
+const DEFAULT_SCRIPT_PANEL_HEIGHT = 96
+const MIN_SCRIPT_PANEL_HEIGHT = 48
+const MAX_SCRIPT_PANEL_HEIGHT = 400
+
+export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onScriptChange, hasResult, onRunChecks }: {
   fn: FunctionDef
   eventText: string
   onEventTextChange: (text: string) => void
   onInvoke: () => void
   invoking: boolean
-  onLoadSavedEvent: (saved: SavedEvent | null) => void
-  canRunChecks: boolean
-  onRunChecks: () => void
+  onScriptChange: (script: string) => void
+  hasResult: boolean
+  onRunChecks: (script: string) => void
 }) {
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
-  const [saveAssertionScript, setSaveAssertionScript] = useState('')
+  const [scriptDraft, setScriptDraft] = useState('')
+  const [scriptPanelHeight, setScriptPanelHeight] = useState(DEFAULT_SCRIPT_PANEL_HEIGHT)
   const update = useUpdateFunction()
+
+  // Dragging the handle up should grow the script panel below it, so a
+  // smaller clientY (moved up) must map to a larger height — hence the
+  // subtraction rather than an addition.
+  function startResizingScriptPanel(e: ReactPointerEvent) {
+    e.preventDefault()
+    const startY = e.clientY
+    const startHeight = scriptPanelHeight
+    function onMove(ev: PointerEvent) {
+      const next = startHeight - (ev.clientY - startY)
+      setScriptPanelHeight(Math.min(MAX_SCRIPT_PANEL_HEIGHT, Math.max(MIN_SCRIPT_PANEL_HEIGHT, next)))
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   useEffect(() => setMounted(true), [])
 
@@ -69,25 +93,15 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
     }
   }, [eventText])
 
-  // Re-saving an event under its own name rebuilds it from dialog state alone,
-  // so an untouched dialog would silently drop the script it already had.
-  // Both the "load a saved event" path and this comparison serialize with the
-  // same JSON.stringify, so an unedited load matches exactly; once the user
-  // hand-edits, nothing matches and the field stays blank — correct, because
-  // an edited event is no longer that saved event.
-  function scriptForCurrentEvent(): string {
-    try {
-      const current = JSON.stringify(JSON.parse(eventText))
-      return fn.savedEvents.find((s) => JSON.stringify(s.event) === current)?.assertionScript ?? ''
-    } catch {
-      return ''
-    }
+  function changeScript(text: string) {
+    setScriptDraft(text)
+    onScriptChange(text)
   }
 
   function saveEvent() {
     const name = saveName.trim()
     if (!name) return
-    const assertionScript = saveAssertionScript.trim() || undefined
+    const assertionScript = scriptDraft.trim() || undefined
     const savedEvents = [
       ...fn.savedEvents.filter((s) => s.name !== name),
       {
@@ -100,7 +114,6 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       onSuccess: () => {
         setSaveOpen(false)
         setSaveName('')
-        setSaveAssertionScript('')
         toast.success(`Saved event "${name}"`)
       },
     })
@@ -111,7 +124,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       <div className="m-1.5 flex items-center gap-1.5 rounded-lg bg-surface-strip px-2.5 py-1.5">
         <Select value="" onValueChange={(name) => {
           onEventTextChange(JSON.stringify(EVENT_TEMPLATES[name], null, 2))
-          onLoadSavedEvent(null)
+          changeScript('')
         }}>
           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Template…" /></SelectTrigger>
           <SelectContent>
@@ -124,7 +137,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           const saved = fn.savedEvents.find((s) => s.name === name)
           if (!saved) return
           onEventTextChange(JSON.stringify(saved.event, null, 2))
-          onLoadSavedEvent(saved)
+          changeScript(saved.assertionScript ?? '')
         }}>
           <SelectTrigger className="h-8 w-40 text-xs" disabled={fn.savedEvents.length === 0}>
             <SelectValue placeholder="Saved events…" />
@@ -136,11 +149,8 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           </SelectContent>
         </Select>
         <Button variant="ghost" size="sm" disabled={!!jsonError}
-          onClick={() => { setSaveAssertionScript(scriptForCurrentEvent()); setSaveOpen(true) }}>
+          onClick={() => setSaveOpen(true)}>
           <Save className="size-3.5" /> Save
-        </Button>
-        <Button variant="ghost" size="sm" disabled={!canRunChecks} onClick={onRunChecks}>
-          <ListChecks className="size-3.5" /> Run checks
         </Button>
         <div className="ml-auto flex items-center gap-2">
           {jsonError && (
@@ -158,33 +168,43 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
         {mounted && (
           <CodeMirror value={eventText} height="100%" theme={theme}
             extensions={extensions}
-            onChange={(text) => { onEventTextChange(text); onLoadSavedEvent(null) }} />
+            onChange={onEventTextChange} />
         )}
+      </div>
+      <div
+        role="separator" aria-orientation="horizontal" aria-label="Resize the assertion script panel"
+        tabIndex={0}
+        className="relative flex h-px shrink-0 cursor-row-resize touch-none items-center justify-center bg-border after:absolute after:inset-x-0 after:-top-1.5 after:-bottom-1.5 focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-hidden"
+        onPointerDown={startResizingScriptPanel}
+      >
+        <div className="z-10 flex h-3 w-4 items-center justify-center rounded-xs border bg-border">
+          <GripHorizontal className="size-2.5" />
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5 p-1.5" style={{ height: scriptPanelHeight }}>
+        <div className="cm-host h-full min-w-0 flex-1 overflow-auto rounded-md border font-mono text-sm">
+          {mounted && (
+            <CodeMirror value={scriptDraft} height="100%" theme={theme}
+              extensions={SCRIPT_EDITOR_EXTENSIONS}
+              placeholder="expect(response.statusCode).toBe(200)"
+              onChange={changeScript} />
+          )}
+        </div>
+        <Button size="sm" disabled={!scriptDraft.trim() || !hasResult}
+          onClick={() => onRunChecks(scriptDraft)}>
+          <ListChecks className="size-3.5" /> Run checks
+        </Button>
       </div>
       <Dialog open={saveOpen} onOpenChange={(o) => {
         setSaveOpen(o)
-        if (!o) { setSaveName(''); setSaveAssertionScript('') }
+        if (!o) setSaveName('')
       }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Save event</DialogTitle></DialogHeader>
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
-          <div className="grid gap-2">
-            <span className="text-sm font-medium">
-              Assertion script <span className="font-normal text-muted-foreground">(optional)</span>
-            </span>
-            <div className="cm-host overflow-hidden rounded-md border font-mono text-sm">
-              {mounted && (
-                <CodeMirror value={saveAssertionScript} height="96px" theme={theme}
-                  extensions={SCRIPT_EDITOR_EXTENSIONS}
-                  placeholder="expect(response.statusCode).toBe(200)"
-                  onChange={setSaveAssertionScript} />
-              )}
-            </div>
-          </div>
           <DialogFooter>
-            <Button variant="ghost"
-              onClick={() => { setSaveOpen(false); setSaveName(''); setSaveAssertionScript('') }}>
+            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName('') }}>
               Cancel
             </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>

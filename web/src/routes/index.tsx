@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/resizable'
 import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult, SavedEvent } from '@/lib/types'
+import type { InvokeResult } from '@/lib/types'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -36,8 +36,11 @@ function App() {
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
-  const [activeAssertion, setActiveAssertion] = useState<SavedEvent | null>(null)
   const [checkResults, setCheckResults] = useState<AssertionRun | null>(null)
+  // Mirrors EventPanel's own local script draft, so an invoke triggered from
+  // outside EventPanel (the window-level Cmd+Enter shortcut below) still
+  // knows whether a script is active and what it says.
+  const [currentScript, setCurrentScript] = useState('')
   const invoke = useInvoke()
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
@@ -47,15 +50,15 @@ function App() {
   function selectFunction(id: string | null) {
     setPinnedId(id)
     setResult(null)
-    setActiveAssertion(null)
     setCheckResults(null)
+    setCurrentScript('')
   }
 
-  // A saved event's script is checked against a specific response — once
-  // either one changes, a stale verdict would be misleading, so both are
-  // cleared together and the button must be pressed again.
-  function loadSavedEvent(saved: SavedEvent | null) {
-    setActiveAssertion(saved)
+  // The script is checked against a specific response — once either one
+  // changes, a stale verdict would be misleading, so results are cleared
+  // and the button must be pressed again.
+  function onScriptChange(script: string) {
+    setCurrentScript(script)
     setCheckResults(null)
   }
 
@@ -78,19 +81,21 @@ function App() {
     invoke.mutate({ functionId, event }, {
       onSuccess: (r) => {
         setResult(r)
-        setCheckResults(null)
+        // A script already in the box gets checked automatically against
+        // this fresh response — no separate "Run checks" press needed.
+        setCheckResults(currentScript.trim() ? runAssertions(currentScript, {
+          response: r.response, error: r.error, report: r.report,
+        }) : null)
       },
     })
   }
 
-  function runChecks() {
-    if (!activeAssertion?.assertionScript || !result) return
-    setCheckResults(runAssertions(activeAssertion.assertionScript, {
+  function runChecks(script: string) {
+    if (!result) return
+    setCheckResults(runAssertions(script, {
       response: result.response, error: result.error, report: result.report,
     }))
   }
-
-  const canRunChecks = !!activeAssertion?.assertionScript && !!result
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -126,14 +131,19 @@ function App() {
               <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <EventPanel
+                    // Function switches reset the inline script draft along
+                    // with everything else EventPanel owns locally — a check
+                    // written against one function's response shape rarely
+                    // applies to another's.
+                    key={selected.id}
                     fn={selected}
                     eventText={drafts[selected.id] ?? '{}'}
                     onEventTextChange={(text) =>
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
                     invoking={invoke.isPending}
-                    onLoadSavedEvent={loadSavedEvent}
-                    canRunChecks={canRunChecks}
+                    onScriptChange={onScriptChange}
+                    hasResult={!!result}
                     onRunChecks={runChecks}
                   />
                 </ResizablePanel>
@@ -146,14 +156,8 @@ function App() {
                       <HistoryList
                         key={selected.id}
                         fnId={selected.id}
-                        // Loading a past run replaces the editor's contents,
-                        // so it clears the active assertion for the same
-                        // reason a hand-edit does: the script belongs to a
-                        // different event now.
-                        onLoadEvent={(text) => {
-                          setDrafts((d) => ({ ...d, [selected.id]: text }))
-                          loadSavedEvent(null)
-                        }}
+                        onLoadEvent={(text) =>
+                          setDrafts((d) => ({ ...d, [selected.id]: text }))}
                       />
                     }
                   />
