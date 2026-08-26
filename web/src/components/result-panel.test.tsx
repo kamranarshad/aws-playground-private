@@ -113,3 +113,62 @@ it('still says there are no logs when the run printed nothing', async () => {
 
   expect(screen.getByText('No logs.')).toBeInTheDocument()
 })
+
+const mixedChecks = {
+  results: [
+    { matcher: 'toBe' as const, actual: 200, expected: 200, pass: true },
+    { matcher: 'toContain' as const, actual: 'hi', expected: 'ok', pass: false },
+  ],
+  scriptError: null,
+}
+
+it('shows neither the Checks tab nor a summary chip when no checks have run', () => {
+  render(<ResultPanel result={ok} />)
+
+  expect(screen.queryByRole('tab', { name: 'Checks' })).not.toBeInTheDocument()
+  expect(screen.queryByText(/passed/)).not.toBeInTheDocument()
+})
+
+it('summarizes how many checks passed', () => {
+  render(<ResultPanel result={ok} checkResults={mixedChecks} />)
+
+  expect(screen.getByText('1/2 passed')).toBeInTheDocument()
+})
+
+it('lists each check with its matcher, expected, and actual value', async () => {
+  render(<ResultPanel result={ok} checkResults={mixedChecks} />)
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Checks' }))
+
+  expect(screen.getByText('toBe(200) — actual: 200')).toBeInTheDocument()
+  expect(screen.getByText('toContain("ok") — actual: "hi"')).toBeInTheDocument()
+  expect(screen.getByLabelText('Check passed')).toBeInTheDocument()
+  expect(screen.getByLabelText('Check failed')).toBeInTheDocument()
+})
+
+it('shows a script-error row alongside any results gathered before it threw', async () => {
+  render(
+    <ResultPanel
+      result={ok}
+      checkResults={{
+        results: [{ matcher: 'toBe' as const, actual: 200, expected: 200, pass: true }],
+        scriptError: 'response.body.nope is not a function',
+      }}
+    />,
+  )
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Checks' }))
+
+  expect(screen.getByText('response.body.nope is not a function')).toBeInTheDocument()
+  expect(screen.getByLabelText('Script error')).toBeInTheDocument()
+})
+
+it('says a script had no assertions rather than showing an empty list', async () => {
+  render(<ResultPanel result={ok} checkResults={{ results: [], scriptError: null }} />)
+
+  expect(screen.getByText('no assertions')).toBeInTheDocument()
+
+  await userEvent.click(screen.getByRole('tab', { name: 'Checks' }))
+
+  expect(screen.getByText('Script had no assertions.')).toBeInTheDocument()
+})
