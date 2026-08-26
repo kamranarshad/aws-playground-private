@@ -130,3 +130,56 @@ it('shows a read-only label instead of the picker when playground.json declares 
     .toHaveTextContent('http')
   expect(screen.queryByRole('button', { name: 'Configure trigger' })).not.toBeInTheDocument()
 })
+
+it('shows s3 fields seeded from the function', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 's3', bucket: 'my-bucket', events: ['ObjectCreated'], enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  await openPicker()
+  expect(screen.getByLabelText('S3 bucket')).toHaveValue('my-bucket')
+  expect(screen.getByRole('checkbox', { name: 'Object Created' })).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: 'Object Removed' })).not.toBeChecked()
+})
+
+it('saves a new s3 trigger disabled, with the selected bucket and event', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'S3 bucket' }))
+  await user.type(screen.getByLabelText('S3 bucket'), 'uploads')
+  await user.click(screen.getByRole('checkbox', { name: 'Object Created' }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], enabled: false },
+  })
+})
+
+it('includes prefix and suffix filters when set', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.type(screen.getByLabelText('Key prefix (optional)'), 'images/')
+  await user.type(screen.getByLabelText('Key suffix (optional)'), '.png')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], prefix: 'images/', suffix: '.png', enabled: true },
+  })
+})
+
+it('clears the s3 trigger when the bucket is left blank', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.clear(screen.getByLabelText('S3 bucket'))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
+})
+
+it('clears the s3 trigger when no event type is selected', async () => {
+  render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
+  await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
+  await user.click(await screen.findByRole('option', { name: 'S3 bucket' }))
+  await user.type(screen.getByLabelText('S3 bucket'), 'uploads')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
+})

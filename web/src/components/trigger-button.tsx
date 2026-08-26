@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -14,7 +15,7 @@ import type { FunctionDef } from '@/lib/types'
 
 const HTTP_TRIGGER_PORT = 9500 // must match server/trigger/http.js's PORT
 
-type TriggerType = 'none' | 'sqs' | 'http'
+type TriggerType = 'none' | 'sqs' | 'http' | 's3'
 
 // Trigger configuration for a function — invoked automatically from an SQS
 // queue or an HTTP request instead of only manually. A project
@@ -43,7 +44,17 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
   const [open, setOpen] = useState(false)
   const [triggerType, setTriggerType] = useState<TriggerType>(fn.trigger?.type ?? 'none')
   const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
+  const [triggerBucket, setTriggerBucket] = useState(fn.trigger?.type === 's3' ? fn.trigger.bucket : '')
+  const [triggerEvents, setTriggerEvents] = useState<('ObjectCreated' | 'ObjectRemoved')[]>(
+    fn.trigger?.type === 's3' ? fn.trigger.events : [],
+  )
+  const [triggerPrefix, setTriggerPrefix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.prefix ?? '') : '')
+  const [triggerSuffix, setTriggerSuffix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.suffix ?? '') : '')
   const update = useUpdateFunction()
+
+  function toggleEvent(event: 'ObjectCreated' | 'ObjectRemoved') {
+    setTriggerEvents((prev) => (prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]))
+  }
 
   useEffect(() => {
     // Re-seed from `fn` whenever the dialog opens — same reason
@@ -54,6 +65,10 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
     if (!open) return
     setTriggerType(fn.trigger?.type ?? 'none')
     setTriggerQueueName(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
+    setTriggerBucket(fn.trigger?.type === 's3' ? fn.trigger.bucket : '')
+    setTriggerEvents(fn.trigger?.type === 's3' ? fn.trigger.events : [])
+    setTriggerPrefix(fn.trigger?.type === 's3' ? (fn.trigger.prefix ?? '') : '')
+    setTriggerSuffix(fn.trigger?.type === 's3' ? (fn.trigger.suffix ?? '') : '')
   }, [open, fn])
 
   function save() {
@@ -61,21 +76,23 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
     // TriggerToggle's job, so whatever's currently set is carried through
     // unchanged (a brand-new trigger starts disabled until armed there).
     const enabled = fn.trigger?.enabled ?? false
-    update.mutate(
-      {
-        id: fn.id,
-        patch: {
-          trigger: triggerType === 'sqs'
-            ? (triggerQueueName.trim()
-              ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled }
-              : null)
-            : triggerType === 'http'
-              ? { type: 'http', enabled }
-              : null,
-        },
-      },
-      { onSuccess: () => setOpen(false) },
-    )
+    const trigger: FunctionDef['trigger'] = triggerType === 'sqs'
+      ? (triggerQueueName.trim() ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled } : null)
+      : triggerType === 'http'
+        ? { type: 'http', enabled }
+        : triggerType === 's3'
+          ? (triggerBucket.trim() && triggerEvents.length > 0
+            ? {
+                type: 's3',
+                bucket: triggerBucket.trim(),
+                events: triggerEvents,
+                ...(triggerPrefix.trim() ? { prefix: triggerPrefix.trim() } : {}),
+                ...(triggerSuffix.trim() ? { suffix: triggerSuffix.trim() } : {}),
+                enabled,
+              }
+            : null)
+          : null
+    update.mutate({ id: fn.id, patch: { trigger } }, { onSuccess: () => setOpen(false) })
   }
 
   return (
@@ -100,6 +117,7 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 <SelectItem value="none">None</SelectItem>
                 <SelectItem value="sqs">SQS queue</SelectItem>
                 <SelectItem value="http">HTTP (API Gateway)</SelectItem>
+                <SelectItem value="s3">S3 bucket</SelectItem>
               </SelectContent>
             </Select>
             {triggerType === 'sqs' && (
@@ -124,6 +142,36 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                   Shares one listener on port {HTTP_TRIGGER_PORT} across every function with an
                   HTTP trigger enabled, routed by name — names must be unique. Use the power
                   button next to Trigger to turn it on.
+                </p>
+              </>
+            )}
+            {triggerType === 's3' && (
+              <>
+                <Label htmlFor="t-trigger-bucket">S3 bucket</Label>
+                <Input id="t-trigger-bucket" value={triggerBucket}
+                  onChange={(e) => setTriggerBucket(e.target.value)}
+                  spellCheck={false} placeholder="bucket name (empty = no trigger)" />
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="t-trigger-created" checked={triggerEvents.includes('ObjectCreated')}
+                      onCheckedChange={() => toggleEvent('ObjectCreated')} />
+                    <Label htmlFor="t-trigger-created" className="text-sm font-normal">Object Created</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Checkbox id="t-trigger-removed" checked={triggerEvents.includes('ObjectRemoved')}
+                      onCheckedChange={() => toggleEvent('ObjectRemoved')} />
+                    <Label htmlFor="t-trigger-removed" className="text-sm font-normal">Object Removed</Label>
+                  </div>
+                </div>
+                <Label htmlFor="t-trigger-prefix">Key prefix (optional)</Label>
+                <Input id="t-trigger-prefix" value={triggerPrefix}
+                  onChange={(e) => setTriggerPrefix(e.target.value)} spellCheck={false} placeholder="e.g. images/" />
+                <Label htmlFor="t-trigger-suffix">Key suffix (optional)</Label>
+                <Input id="t-trigger-suffix" value={triggerSuffix}
+                  onChange={(e) => setTriggerSuffix(e.target.value)} spellCheck={false} placeholder="e.g. .png" />
+                <p className="text-xs text-muted-foreground">
+                  Auto-creates the bucket if it doesn't exist and wires up a MinIO webhook to a shared
+                  listener. Use the power button next to Trigger to turn it on.
                 </p>
               </>
             )}
