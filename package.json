@@ -32,6 +32,8 @@
     "oxlint": "^1.79.0"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1118.0",
+    "@aws-sdk/client-dynamodb-streams": "^3.1118.0",
     "@aws-sdk/client-sqs": "^3.1117.0"
   }
 }

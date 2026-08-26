@@ -27,6 +27,7 @@ const store = require('../server/store');
 const localServices = require('../server/services');
 const manager = require('../server/trigger/manager');
 const httpTrigger = require('../server/trigger/http');
+const dynamodbTrigger = require('../server/trigger/dynamodb');
 const originalCreateListener = httpTrigger.createListener;
 
 // Save the original localServices.start so we can restore it between tests
@@ -188,6 +189,179 @@ test('resumeAll starts a poller for every function with an enabled trigger; stop
   } finally {
     localServices.start = originalLocalServicesStart;
   }
+});
+
+// The docker shim's "inspect" scenario key is container-agnostic (see
+// writeDockerShim in helpers.js), so elasticmqAlreadyRunning()'s scenario
+// setup works unchanged for the dynamodb-local container too.
+//
+// Every test below removes the function it created from the store once
+// it's done (in addition to manager.stop) — an enabled trigger left behind
+// in the shared in-process store would get resynced by a later
+// resumeAll() call (the http tests further down make one), which would
+// call the real localServices.start for 'dynamodb' if it happens to no
+// longer be mocked by then. Real localServices.start really does block
+// for its full ~30s waitReady timeout against a dynamodb-local endpoint
+// nothing is listening on in this test process, so a leftover enabled
+// function here would silently make an unrelated later test very slow.
+
+test('sync starts dynamodb-local and the poll loop when a trigger is enabled', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const stop = () => { stop.called = true; };
+  dynamodbTrigger.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop }; };
+  const fn = store.create({ name: 'd1', path: '/tmp/d1', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl1', enabled: true } });
+
+  await manager.sync(fn);
+
+  assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+  manager.stop(fn.id);
+  assert.strictEqual(stop.called, true);
+  store.remove(fn.id);
+});
+
+test('sync is a no-op when the dynamodb trigger is already running against the same table', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let starts = 0;
+  dynamodbTrigger.start = (fn, { onStatus }) => { starts++; onStatus({ state: 'polling', lastError: null }); return { stop: () => {} }; };
+  const fn = store.create({ name: 'd2', path: '/tmp/d2', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl2', enabled: true } });
+
+  await manager.sync(fn);
+  await manager.sync(fn);
+
+  assert.strictEqual(starts, 1);
+  manager.stop(fn.id);
+  store.remove(fn.id);
+});
+
+test('sync restarts the dynamodb poller when the table name changes', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const stopped = [];
+  let n = 0;
+  dynamodbTrigger.start = (fn, { onStatus }) => {
+    n++;
+    const id = n;
+    onStatus({ state: 'polling', lastError: null });
+    return { stop: () => stopped.push(id) };
+  };
+  let fn = store.create({ name: 'd3', path: '/tmp/d3', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl3', enabled: true } });
+  await manager.sync(fn);
+  fn = store.update(fn.id, { trigger: { type: 'dynamodb', tableName: 'tbl3-renamed', enabled: true } });
+  await manager.sync(fn);
+
+  assert.deepStrictEqual(stopped, [1]);
+  assert.strictEqual(n, 2);
+  manager.stop(fn.id);
+  store.remove(fn.id);
+});
+
+test('sync stops the dynamodb poller when the trigger is disabled', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let stopped = false;
+  dynamodbTrigger.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { stopped = true; } }; };
+  let fn = store.create({ name: 'd4', path: '/tmp/d4', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl4', enabled: true } });
+  await manager.sync(fn);
+  fn = store.update(fn.id, { trigger: { type: 'dynamodb', tableName: 'tbl4', enabled: false } });
+  await manager.sync(fn);
+
+  assert.strictEqual(stopped, true);
+  assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  store.remove(fn.id);
+});
+
+test('a dynamodb-local start failure is reported as an error status, not thrown', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 125, stdout: 'port is already allocated' } });
+  // Restore the real localServices.start to exercise the real docker-shim
+  // failure path (the docker run command fails before ever reaching
+  // waitReady, so this is fast — the next test re-mocks it immediately).
+  localServices.start = originalLocalServicesStart;
+  const fn = store.create({ name: 'd5', path: '/tmp/d5', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl5', enabled: true } });
+
+  await manager.sync(fn);
+
+  const st = manager.status(fn.id);
+  assert.strictEqual(st.state, 'error');
+  assert.match(st.lastError, /port is already allocated/);
+  manager.stop(fn.id);
+  store.remove(fn.id);
+});
+
+test('resumeAll starts a dynamodb poller for every function with an enabled trigger; stopAll tears them all down', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const started = [];
+  dynamodbTrigger.start = (fn, { onStatus }) => {
+    started.push(fn.id);
+    onStatus({ state: 'polling', lastError: null });
+    return { stop: () => {} };
+  };
+  const a = store.create({ name: 'da', path: '/tmp/da', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbla', enabled: true } });
+  const b = store.create({ name: 'db', path: '/tmp/db', runtime: 'node' });
+
+  await manager.resumeAll();
+
+  assert.ok(started.includes(a.id));
+  assert.ok(!started.includes(b.id));
+  manager.stopAll();
+  assert.deepStrictEqual(manager.status(a.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  store.remove(a.id);
+  store.remove(b.id);
+});
+
+test('switching a function from an sqs trigger to a dynamodb trigger stops the sqs poller and starts the dynamodb one', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let sqsStopped = false;
+  sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { sqsStopped = true; } }; };
+  let dynamoCalls = 0;
+  dynamodbTrigger.start = (fn, { onStatus }) => {
+    dynamoCalls++;
+    onStatus({ state: 'polling', lastError: null });
+    return { stop: () => {} };
+  };
+  let fn = store.create({ name: 'd6', path: '/tmp/d6', runtime: 'node',
+    trigger: { type: 'sqs', queueName: 'q6', enabled: true } });
+  await manager.sync(fn);
+
+  fn = store.update(fn.id, { trigger: { type: 'dynamodb', tableName: 'tbl6', enabled: true } });
+  await manager.sync(fn);
+
+  assert.strictEqual(sqsStopped, true);
+  assert.strictEqual(dynamoCalls, 1);
+  assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+  manager.stop(fn.id);
+  store.remove(fn.id);
+});
+
+test('sync resolves a dynamodb trigger declared only in playground.json (fn.trigger stays null)', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-eff-ddb-'));
+  fs.writeFileSync(path.join(dir, 'playground.json'),
+    JSON.stringify({ trigger: { type: 'dynamodb', tableName: 'from-file' } }));
+  let startedTableName;
+  dynamodbTrigger.start = (fn, { onStatus }) => {
+    startedTableName = fn.trigger.tableName;
+    onStatus({ state: 'polling', lastError: null });
+    return { stop: () => {} };
+  };
+  const fn = store.create({ name: 'eff-ddb', path: dir, runtime: 'node' }); // no manual trigger
+
+  await manager.sync(fn);
+
+  assert.strictEqual(startedTableName, 'from-file');
+  assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+  manager.stop(fn.id);
+  store.remove(fn.id);
 });
 
 test('sync registers an HTTP route and starts the shared listener when a trigger is enabled', async () => {

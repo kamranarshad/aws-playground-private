@@ -35,3 +35,15 @@ test('an invalid playground.json trigger falls back to the manual one, not null'
   const fn = { path: dir, trigger: { type: 'http', enabled: true } };
   assert.deepStrictEqual(effectiveTrigger(fn), { type: 'http', enabled: true });
 });
+
+test('a playground.json dynamodb trigger wins over the manually-stored one', () => {
+  const dir = proj(JSON.stringify({ trigger: { type: 'dynamodb', tableName: 'from-file' } }));
+  const fn = { path: dir, trigger: { type: 'sqs', queueName: 'manual-queue', enabled: true } };
+  assert.deepStrictEqual(effectiveTrigger(fn), { type: 'dynamodb', tableName: 'from-file', enabled: true });
+});
+
+test('an invalid playground.json dynamodb trigger (missing tableName) falls back to the manual one', () => {
+  const dir = proj(JSON.stringify({ trigger: { type: 'dynamodb' } }));
+  const fn = { path: dir, trigger: { type: 'http', enabled: true } };
+  assert.deepStrictEqual(effectiveTrigger(fn), { type: 'http', enabled: true });
+});
