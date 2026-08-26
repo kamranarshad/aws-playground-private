@@ -28,6 +28,8 @@ const localServices = require('../server/services');
 const manager = require('../server/trigger/manager');
 const httpTrigger = require('../server/trigger/http');
 const originalCreateListener = httpTrigger.createListener;
+const s3Trigger = require('../server/trigger/s3');
+const originalEnsureBucketConfig = s3Trigger.ensureBucketConfig;
 
 // Save the original localServices.start so we can restore it between tests
 const originalLocalServicesStart = localServices.start;
@@ -435,5 +437,207 @@ test('a name containing "/" is never registered as an http route, even via playg
     assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
   } finally {
     httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('sync registers an s3 route, starts MinIO, and configures the bucket when a trigger is enabled', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const calls = [];
+  s3Trigger.ensureBucketConfig = async (bucket, hasWatchers) => { calls.push({ bucket, hasWatchers }); };
+  try {
+    const fn = store.create({ name: 's1', path: '/tmp/s1', runtime: 'node',
+      trigger: { type: 's3', bucket: 'my-bucket', events: ['ObjectCreated'], enabled: true } });
+
+    await manager.sync(fn);
+
+    assert.deepStrictEqual(calls, [{ bucket: 'my-bucket', hasWatchers: true }]);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    assert.deepStrictEqual(manager.s3RoutesFor('my-bucket'),
+      [{ events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
+
+    manager.stop(fn.id);
+    assert.deepStrictEqual(manager.s3RoutesFor('my-bucket'), []);
+    assert.deepStrictEqual(calls[1], { bucket: 'my-bucket', hasWatchers: false });
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('sync is a no-op when the s3 trigger is unchanged', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let calls = 0;
+  s3Trigger.ensureBucketConfig = async () => { calls++; };
+  try {
+    const fn = store.create({ name: 's2', path: '/tmp/s2', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b2', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    await manager.sync(fn);
+    assert.strictEqual(calls, 1);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('sync reconfigures when the events, prefix, or suffix change', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  let calls = 0;
+  s3Trigger.ensureBucketConfig = async () => { calls++; };
+  try {
+    let fn = store.create({ name: 's3fn', path: '/tmp/s3fn', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b3', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id,
+      { trigger: { type: 's3', bucket: 'b3', events: ['ObjectCreated', 'ObjectRemoved'], enabled: true } });
+    await manager.sync(fn);
+
+    assert.strictEqual(calls, 2);
+    assert.deepStrictEqual(manager.s3RoutesFor('b3'),
+      [{ events: ['ObjectCreated', 'ObjectRemoved'], prefix: undefined, suffix: undefined }]);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('sync stops the route and clears the bucket config when the trigger is disabled', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const calls = [];
+  s3Trigger.ensureBucketConfig = async (bucket, hasWatchers) => { calls.push({ bucket, hasWatchers }); };
+  try {
+    let fn = store.create({ name: 's4', path: '/tmp/s4', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b4', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id, { trigger: { type: 's3', bucket: 'b4', events: ['ObjectCreated'], enabled: false } });
+    await manager.sync(fn);
+
+    assert.deepStrictEqual(manager.s3RoutesFor('b4'), []);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+    assert.deepStrictEqual(calls[calls.length - 1], { bucket: 'b4', hasWatchers: false });
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('the bucket config is only cleared once the last function watching it is removed', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const calls = [];
+  s3Trigger.ensureBucketConfig = async (bucket, hasWatchers) => { calls.push({ bucket, hasWatchers }); };
+  try {
+    const a = store.create({ name: 's5a', path: '/tmp/s5a', runtime: 'node',
+      trigger: { type: 's3', bucket: 'shared', events: ['ObjectCreated'], enabled: true } });
+    const b = store.create({ name: 's5b', path: '/tmp/s5b', runtime: 'node',
+      trigger: { type: 's3', bucket: 'shared', events: ['ObjectRemoved'], enabled: true } });
+    await manager.sync(a);
+    await manager.sync(b);
+
+    manager.stop(a.id);
+    assert.deepStrictEqual(manager.s3RoutesFor('shared'), [{ events: ['ObjectRemoved'], prefix: undefined, suffix: undefined }]);
+    assert.strictEqual(calls.filter((c) => c.hasWatchers === false).length, 0);
+
+    manager.stop(b.id);
+    assert.deepStrictEqual(manager.s3RoutesFor('shared'), []);
+    assert.strictEqual(calls.filter((c) => c.hasWatchers === false).length, 1);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('a MinIO start failure is reported as an error status, not thrown', async () => {
+  localServices.start = async () => ({ ok: false, state: 'stopped', output: 'port is already allocated' });
+  try {
+    const fn = store.create({ name: 's6', path: '/tmp/s6', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b6', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    const st = manager.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /port is already allocated/);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
+});
+
+test('a bucket-config failure is reported as an error status, not thrown', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  s3Trigger.ensureBucketConfig = async () => { throw new Error('MinIO not running'); };
+  try {
+    const fn = store.create({ name: 's7', path: '/tmp/s7', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b7', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    const st = manager.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /MinIO not running/);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('switching a function from an s3 trigger to an sqs trigger clears its s3 route', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  s3Trigger.ensureBucketConfig = async () => {};
+  sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => {} }; };
+  try {
+    let fn = store.create({ name: 's8', path: '/tmp/s8', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b8', events: ['ObjectCreated'], enabled: true } });
+    await manager.sync(fn);
+    fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q8', enabled: true } });
+    await manager.sync(fn);
+
+    assert.deepStrictEqual(manager.s3RoutesFor('b8'), []);
+    assert.deepStrictEqual(manager.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('resumeAll configures every function with an enabled s3 trigger; stopAll tears them down', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  s3Trigger.ensureBucketConfig = async () => {};
+  try {
+    const a = store.create({ name: 's9a', path: '/tmp/s9a', runtime: 'node',
+      trigger: { type: 's3', bucket: 'b9', events: ['ObjectCreated'], enabled: true } });
+    const b = store.create({ name: 's9b', path: '/tmp/s9b', runtime: 'node' });
+
+    await manager.resumeAll();
+
+    assert.deepStrictEqual(manager.status(a.id), { state: 'listening', lastError: null, lastPolledAt: null });
+    assert.deepStrictEqual(manager.status(b.id), { state: 'idle', lastError: null, lastPolledAt: null });
+
+    manager.stopAll();
+    assert.deepStrictEqual(manager.s3RoutesFor('b9'), []);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
+  }
+});
+
+test('sync resolves an s3 trigger declared only in playground.json (fn.trigger stays null)', async () => {
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  s3Trigger.ensureBucketConfig = async () => {};
+  try {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-eff-s3-'));
+    fs.writeFileSync(path.join(dir, 'playground.json'),
+      JSON.stringify({ trigger: { type: 's3', bucket: 'from-file', events: ['ObjectCreated'] } }));
+    const fn = store.create({ name: 'eff-s3', path: dir, runtime: 'node' });
+
+    await manager.sync(fn);
+
+    assert.deepStrictEqual(manager.s3RoutesFor('from-file'),
+      [{ events: ['ObjectCreated'], prefix: undefined, suffix: undefined }]);
+    manager.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
   }
 });
