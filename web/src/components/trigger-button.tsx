@@ -9,10 +9,9 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { HTTP_TRIGGER_PORT } from '@/lib/http'
 import { useDetect, useUpdateFunction } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
-
-const HTTP_TRIGGER_PORT = 9500 // must match server/trigger/http.js's PORT
 
 type TriggerType = 'none' | 'sqs' | 'http'
 
