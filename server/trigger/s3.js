@@ -30,15 +30,37 @@ function matchesRoute(route, category, key) {
   return true;
 }
 
+// MinIO (like real S3) percent-encodes the object key inside the
+// notification payload — e.g. a real key of "images/pic.png" arrives here
+// as "images%2Fpic.png" — so a raw-key comparison against a plain prefix
+// like "images/" would never match. Decoded once here purely for our own
+// routing/matching/display purposes; a malformed percent-sequence falls
+// back to the raw value rather than throwing, since createRequestHandler's
+// caller only wraps dispatch() as a whole, not this specific step.
+function decodeKey(rawKey) {
+  try {
+    return decodeURIComponent(rawKey);
+  } catch {
+    return rawKey;
+  }
+}
+
 // Fire-and-forget by design: MinIO doesn't wait on Lambda's result (see
 // server/trigger/http.js's request handler for the contrasting synchronous
 // case), so a rejected invoke is swallowed rather than surfaced anywhere —
 // there's no caller left to report it to.
 function dispatch(raw, { routesFor, invokeFunction }) {
   const bucket = raw.s3?.bucket?.name;
-  const key = raw.s3?.object?.key;
+  const rawKey = raw.s3?.object?.key;
+  const key = typeof rawKey === 'string' ? decodeKey(rawKey) : rawKey;
   const category = categoryFor(raw.eventName);
   if (!bucket || !key || !category) return;
+  // The Records payload handed to the invoked function keeps the raw
+  // (still percent-encoded) key from MinIO/S3 untouched — matching real
+  // AWS, where a real S3-triggered Lambda receives event.Records[].s3.object.key
+  // percent-encoded and is expected to decode it itself. Only the decoded
+  // `key` above (used for route matching and the `source` field below,
+  // which the trigger status/history UI reads) is normalized.
   const record = normalizeRecord(raw);
   for (const route of routesFor(bucket)) {
     if (!matchesRoute(route, category, key)) continue;

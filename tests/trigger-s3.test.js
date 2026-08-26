@@ -46,6 +46,19 @@ test('dispatch invokes every route matching bucket, event category, prefix, and 
     { type: 'trigger', bucket: 'my-bucket', key: 'images/pic.png', eventName: 's3:ObjectCreated:Put' });
 });
 
+test('dispatch decodes a percent-encoded key for prefix matching and source.key, but leaves the Records payload raw', () => {
+  const invoked = [];
+  dispatch(record('s3:ObjectCreated:Put', 'my-bucket', 'images%2Fpic.png'), {
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'], prefix: 'images/' }],
+    invokeFunction: async (input) => { invoked.push(input); return { status: 200 }; },
+  });
+  assert.deepStrictEqual(invoked.map((i) => i.functionId), ['f1']);
+  assert.strictEqual(invoked[0].source.key, 'images/pic.png');
+  // Real S3-triggered Lambdas receive the still-encoded key and are expected
+  // to decode it themselves — the Records payload mirrors that, unchanged.
+  assert.strictEqual(invoked[0].event.Records[0].s3.object.key, 'images%2Fpic.png');
+});
+
 test('dispatch is a no-op for an unrouted bucket or an unrecognized event name', () => {
   let called = false;
   const invokeFunction = async () => { called = true; };
