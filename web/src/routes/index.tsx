@@ -15,7 +15,7 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult } from '@/lib/types'
+import type { InvokeResult, SavedEvent } from '@/lib/types'
 
 export const Route = createFileRoute('/')({
   component: App,
@@ -35,6 +35,7 @@ function App() {
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
+  const [activeAssertion, setActiveAssertion] = useState<SavedEvent | null>(null)
   const invoke = useInvoke()
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
@@ -44,6 +45,7 @@ function App() {
   function selectFunction(id: string | null) {
     setPinnedId(id)
     setResult(null)
+    setActiveAssertion(null)
   }
 
   // Tell the server which function is active so playground.json services
@@ -105,12 +107,14 @@ function App() {
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
                     invoking={invoke.isPending}
+                    onLoadSavedEvent={setActiveAssertion}
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <ResultPanel
                     result={result}
+                    expectedStatus={activeAssertion?.expectedStatus}
                     historyTab={
                       <HistoryList
                         key={selected.id}

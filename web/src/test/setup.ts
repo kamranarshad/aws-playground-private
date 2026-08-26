@@ -27,4 +27,16 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
 
+// jsdom's Range has no getClientRects, which CodeMirror's layout measurement
+// calls on every document change. Without a stub, typing into the JSON
+// editor throws from deep inside CodeMirror instead of from anything the
+// test did.
+if (!Range.prototype.getClientRects) {
+  Range.prototype.getClientRects = () => ({
+    length: 0,
+    item: () => null,
+    [Symbol.iterator]: function* () {},
+  }) as unknown as DOMRectList
+}
+
 afterEach(cleanup)

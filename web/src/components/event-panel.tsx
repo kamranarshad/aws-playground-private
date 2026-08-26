@@ -8,25 +8,28 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { EVENT_TEMPLATES } from '@/lib/templates'
 import { useUpdateFunction } from '@/lib/queries'
 import { useTheme } from '@/lib/theme'
-import type { FunctionDef } from '@/lib/types'
+import type { FunctionDef, SavedEvent } from '@/lib/types'
 
-export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking }: {
+export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onLoadSavedEvent }: {
   fn: FunctionDef
   eventText: string
   onEventTextChange: (text: string) => void
   onInvoke: () => void
   invoking: boolean
+  onLoadSavedEvent: (saved: SavedEvent | null) => void
 }) {
   const { theme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
+  const [saveExpectedStatus, setSaveExpectedStatus] = useState('')
   const update = useUpdateFunction()
 
   useEffect(() => setMounted(true), [])
@@ -58,14 +61,20 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   function saveEvent() {
     const name = saveName.trim()
     if (!name) return
+    const expectedStatus = saveExpectedStatus.trim() ? Number(saveExpectedStatus) : undefined
     const savedEvents = [
       ...fn.savedEvents.filter((s) => s.name !== name),
-      { name, event: JSON.parse(eventText) },
+      {
+        name,
+        event: JSON.parse(eventText),
+        ...(expectedStatus !== undefined && { expectedStatus }),
+      },
     ]
     update.mutate({ id: fn.id, patch: { savedEvents } }, {
       onSuccess: () => {
         setSaveOpen(false)
         setSaveName('')
+        setSaveExpectedStatus('')
         toast.success(`Saved event "${name}"`)
       },
     })
@@ -74,8 +83,10 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   return (
     <div className="flex h-full flex-col">
       <div className="m-1.5 flex items-center gap-1.5 rounded-lg bg-surface-strip px-2.5 py-1.5">
-        <Select value="" onValueChange={(name) =>
-          onEventTextChange(JSON.stringify(EVENT_TEMPLATES[name], null, 2))}>
+        <Select value="" onValueChange={(name) => {
+          onEventTextChange(JSON.stringify(EVENT_TEMPLATES[name], null, 2))
+          onLoadSavedEvent(null)
+        }}>
           <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="Template…" /></SelectTrigger>
           <SelectContent>
             {Object.keys(EVENT_TEMPLATES).map((name) => (
@@ -85,7 +96,9 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
         </Select>
         <Select value="" onValueChange={(name) => {
           const saved = fn.savedEvents.find((s) => s.name === name)
-          if (saved) onEventTextChange(JSON.stringify(saved.event, null, 2))
+          if (!saved) return
+          onEventTextChange(JSON.stringify(saved.event, null, 2))
+          onLoadSavedEvent(saved)
         }}>
           <SelectTrigger className="h-8 w-40 text-xs" disabled={fn.savedEvents.length === 0}>
             <SelectValue placeholder="Saved events…" />
@@ -115,16 +128,26 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
       <div className="cm-host min-h-0 flex-1 overflow-auto font-mono text-sm">
         {mounted && (
           <CodeMirror value={eventText} height="100%" theme={theme}
-            extensions={extensions} onChange={onEventTextChange} />
+            extensions={extensions}
+            onChange={(text) => { onEventTextChange(text); onLoadSavedEvent(null) }} />
         )}
       </div>
-      <Dialog open={saveOpen} onOpenChange={(o) => { setSaveOpen(o); if (!o) setSaveName('') }}>
+      <Dialog open={saveOpen} onOpenChange={(o) => {
+        setSaveOpen(o)
+        if (!o) { setSaveName(''); setSaveExpectedStatus('') }
+      }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Save event</DialogTitle></DialogHeader>
           <Input value={saveName} onChange={(e) => setSaveName(e.target.value)}
             placeholder="Event name" autoComplete="off" />
+          <div className="grid gap-2">
+            <Label htmlFor="save-event-expected-status">Expected status</Label>
+            <Input id="save-event-expected-status" type="number" value={saveExpectedStatus}
+              onChange={(e) => setSaveExpectedStatus(e.target.value)}
+              placeholder="e.g. 200 (optional)" />
+          </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName('') }}>
+            <Button variant="ghost" onClick={() => { setSaveOpen(false); setSaveName(''); setSaveExpectedStatus('') }}>
               Cancel
             </Button>
             <Button onClick={saveEvent} disabled={!saveName.trim() || update.isPending}>Save</Button>

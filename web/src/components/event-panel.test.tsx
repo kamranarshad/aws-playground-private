@@ -1,10 +1,18 @@
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render } from '@testing-library/react'
-import { expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { afterEach, expect, it, vi } from 'vitest'
+
+vi.mock('@/lib/api', () => ({
+  api: { updateFunction: vi.fn() },
+}))
 
 import { EventPanel } from '@/components/event-panel'
-import type { FunctionDef } from '@/lib/types'
+import { api } from '@/lib/api'
+import type { FunctionDef, SavedEvent } from '@/lib/types'
+
+afterEach(() => vi.clearAllMocks())
 
 function makeFn(overrides: Partial<FunctionDef> = {}): FunctionDef {
   return {
@@ -30,7 +38,7 @@ it('invokes on Cmd+Enter from inside the JSON editor, instead of inserting a bla
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={onEventTextChange}
-      onInvoke={onInvoke} invoking={false}
+      onInvoke={onInvoke} invoking={false} onLoadSavedEvent={vi.fn()}
     />,
     { wrapper: Wrapper },
   )
@@ -61,7 +69,7 @@ it('does not also trigger a window-level Cmd+Enter listener above it', () => {
     render(
       <EventPanel
         fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-        onInvoke={onInvoke} invoking={false}
+        onInvoke={onInvoke} invoking={false} onLoadSavedEvent={vi.fn()}
       />,
       { wrapper: Wrapper },
     )
@@ -75,4 +83,103 @@ it('does not also trigger a window-level Cmd+Enter listener above it', () => {
   } finally {
     window.removeEventListener('keydown', windowHandler)
   }
+})
+
+it('saves an expected status alongside a named event', async () => {
+  vi.mocked(api.updateFunction).mockResolvedValue(makeFn())
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getByRole('button', { name: /save/i }))
+  await user.type(screen.getByPlaceholderText('Event name'), 'foo')
+  await user.type(screen.getByLabelText('Expected status'), '200')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(api.updateFunction).toHaveBeenCalledWith('fn-1', {
+    savedEvents: [{ name: 'foo', event: { a: 1 }, expectedStatus: 200 }],
+  })
+})
+
+it('omits expectedStatus when the field is left blank', async () => {
+  vi.mocked(api.updateFunction).mockResolvedValue(makeFn())
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={vi.fn()}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getByRole('button', { name: /save/i }))
+  await user.type(screen.getByPlaceholderText('Event name'), 'foo')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+
+  expect(api.updateFunction).toHaveBeenCalledWith('fn-1', {
+    savedEvents: [{ name: 'foo', event: { a: 1 } }],
+  })
+})
+
+it('surfaces a saved event\'s assertion when it is loaded from the dropdown', async () => {
+  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const onEventTextChange = vi.fn()
+  const onLoadSavedEvent = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={onEventTextChange}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getAllByRole('combobox')[1])
+  await user.click(screen.getByRole('option', { name: 'foo' }))
+
+  expect(onEventTextChange).toHaveBeenCalledWith(JSON.stringify({ a: 1 }, null, 2))
+  expect(onLoadSavedEvent).toHaveBeenCalledWith(saved)
+})
+
+it('clears the active assertion when a template is loaded instead', async () => {
+  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const onLoadSavedEvent = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+    />,
+    { wrapper: Wrapper },
+  )
+
+  await user.click(screen.getAllByRole('combobox')[0])
+  await user.click(screen.getAllByRole('option')[0])
+
+  expect(onLoadSavedEvent).toHaveBeenCalledWith(null)
+})
+
+it('clears the active assertion when the event is hand-edited', async () => {
+  const saved: SavedEvent = { name: 'foo', event: { a: 1 }, expectedStatus: 200 }
+  const onLoadSavedEvent = vi.fn()
+  const user = userEvent.setup()
+  render(
+    <EventPanel
+      fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
+      onInvoke={vi.fn()} invoking={false} onLoadSavedEvent={onLoadSavedEvent}
+    />,
+    { wrapper: Wrapper },
+  )
+  const editor = document.querySelector('.cm-content')
+  if (!editor) throw new Error('CodeMirror content element did not mount')
+
+  await user.click(editor)
+  await user.keyboard('x')
+
+  expect(onLoadSavedEvent).toHaveBeenCalledWith(null)
 })
