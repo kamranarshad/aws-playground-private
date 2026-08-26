@@ -83,6 +83,13 @@ export interface LambdaError {
   stackTrace: string[]
 }
 
+export interface CheckResult {
+  matcher: 'toBe' | 'toEqual' | 'toContain' | 'toMatch'
+  actual: unknown
+  expected: unknown
+  pass: boolean
+}
+
 export interface Report {
   requestId: string
   durationMs: number
