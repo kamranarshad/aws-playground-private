@@ -114,8 +114,14 @@ function createRequestHandler({ routesFor, invokeFunction }) {
     } catch {
       return;
     }
-    for (const record of payload.Records ?? []) {
-      dispatch(record, { routesFor, invokeFunction });
+    const records = Array.isArray(payload.Records) ? payload.Records : [];
+    for (const record of records) {
+      try {
+        dispatch(record, { routesFor, invokeFunction });
+      } catch {
+        // Silently drop records that cause dispatch to fail — this fire-and-forget
+        // listener must never crash the process or reject a request.
+      }
     }
   };
 }

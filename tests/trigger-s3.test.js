@@ -182,3 +182,39 @@ test('the listener responds 200 for a payload with no Records', async () => {
     listener.stop();
   }
 });
+
+test('the listener responds 200 for a payload with non-array Records and invokes nothing', async () => {
+  let called = false;
+  const listener = await createListener({
+    port: 0,
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'] }],
+    invokeFunction: async () => { called = true; },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await post(port, JSON.stringify({ Records: 5 }));
+    assert.strictEqual(res.status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(called, false);
+  } finally {
+    listener.stop();
+  }
+});
+
+test('the listener responds 200 for a payload with null records and invokes nothing', async () => {
+  let called = false;
+  const listener = await createListener({
+    port: 0,
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'] }],
+    invokeFunction: async () => { called = true; },
+  });
+  try {
+    const port = listener.server.address().port;
+    const res = await post(port, JSON.stringify({ Records: [null] }));
+    assert.strictEqual(res.status, 200);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(called, false);
+  } finally {
+    listener.stop();
+  }
+});
