@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -44,7 +43,6 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
   const [open, setOpen] = useState(false)
   const [triggerType, setTriggerType] = useState<TriggerType>(fn.trigger?.type ?? 'none')
   const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
-  const [triggerEnabled, setTriggerEnabled] = useState(fn.trigger?.enabled ?? false)
   const update = useUpdateFunction()
 
   useEffect(() => {
@@ -56,20 +54,23 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
     if (!open) return
     setTriggerType(fn.trigger?.type ?? 'none')
     setTriggerQueueName(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
-    setTriggerEnabled(fn.trigger?.enabled ?? false)
   }, [open, fn])
 
   function save() {
+    // This dialog only ever sets type/queue name — enabling/disabling is
+    // TriggerToggle's job, so whatever's currently set is carried through
+    // unchanged (a brand-new trigger starts disabled until armed there).
+    const enabled = fn.trigger?.enabled ?? false
     update.mutate(
       {
         id: fn.id,
         patch: {
           trigger: triggerType === 'sqs'
             ? (triggerQueueName.trim()
-              ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled: triggerEnabled }
+              ? { type: 'sqs', queueName: triggerQueueName.trim(), enabled }
               : null)
             : triggerType === 'http'
-              ? { type: 'http', enabled: triggerEnabled }
+              ? { type: 'http', enabled }
               : null,
         },
       },
@@ -107,13 +108,9 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 <Input id="t-trigger-queue" value={triggerQueueName}
                   onChange={(e) => setTriggerQueueName(e.target.value)}
                   spellCheck={false} placeholder="queue name (empty = no trigger)" />
-                <label className="flex items-center gap-2 text-xs">
-                  <Checkbox checked={triggerEnabled} disabled={!triggerQueueName.trim()}
-                    onCheckedChange={(v) => setTriggerEnabled(v === true)} />
-                  Invoke automatically when a message arrives
-                </label>
                 <p className="text-xs text-muted-foreground">
-                  Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't exist.
+                  Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't
+                  exist. Use the power button next to Trigger to turn it on.
                 </p>
               </>
             )}
@@ -123,14 +120,10 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 <Input id="t-trigger-url" readOnly
                   value={`http://localhost:${HTTP_TRIGGER_PORT}/${fn.name}/...`}
                   spellCheck={false} onFocus={(e) => e.target.select()} />
-                <label className="flex items-center gap-2 text-xs">
-                  <Checkbox checked={triggerEnabled}
-                    onCheckedChange={(v) => setTriggerEnabled(v === true)} />
-                  Invoke automatically on incoming requests
-                </label>
                 <p className="text-xs text-muted-foreground">
                   Shares one listener on port {HTTP_TRIGGER_PORT} across every function with an
-                  HTTP trigger enabled, routed by name — names must be unique.
+                  HTTP trigger enabled, routed by name — names must be unique. Use the power
+                  button next to Trigger to turn it on.
                 </p>
               </>
             )}

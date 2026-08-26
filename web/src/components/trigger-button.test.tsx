@@ -49,26 +49,36 @@ it('seeds the trigger fields from the function', async () => {
     { wrapper: makeWrapper() })
   await openPicker()
   expect(screen.getByLabelText('SQS trigger queue')).toHaveValue('my-queue')
-  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
 })
 
 it('shows the computed URL immediately for a function that already has an http trigger', async () => {
   render(<TriggerButton fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />, { wrapper: makeWrapper() })
   await openPicker()
   expect(screen.getByLabelText('HTTP trigger URL')).toHaveValue('http://localhost:9500/test/...')
-  expect(screen.getByRole('checkbox', { name: /invoke automatically/i })).toBeChecked()
 })
 
-it('saves an sqs trigger through the patch', async () => {
+it('saves a new sqs trigger disabled — enabling it is the toggle button\'s job', async () => {
   render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
   const user = await openPicker()
   await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
   await user.click(await screen.findByRole('option', { name: 'SQS queue' }))
   await user.type(screen.getByLabelText('SQS trigger queue'), 'new-queue')
-  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
   await user.click(screen.getByRole('button', { name: 'Save' }))
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
-    trigger: { type: 'sqs', queueName: 'new-queue', enabled: true },
+    trigger: { type: 'sqs', queueName: 'new-queue', enabled: false },
+  })
+})
+
+it('preserves an already-enabled sqs trigger\'s enabled state when just editing the queue name', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'sqs', queueName: 'my-queue', enabled: true } }} />,
+    { wrapper: makeWrapper() })
+  const user = await openPicker()
+  const input = screen.getByLabelText('SQS trigger queue')
+  await user.clear(input)
+  await user.type(input, 'renamed-queue')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 'sqs', queueName: 'renamed-queue', enabled: true },
   })
 })
 
@@ -81,13 +91,21 @@ it('clears the trigger when the queue name is left blank', async () => {
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', { trigger: null })
 })
 
-it('saves an http trigger through the patch, computing the URL from the function name', async () => {
+it('saves a new http trigger disabled, computing the URL from the function name', async () => {
   render(<TriggerButton fn={fn} />, { wrapper: makeWrapper() })
   const user = await openPicker()
   await user.click(screen.getByRole('combobox', { name: 'Trigger' }))
   await user.click(await screen.findByRole('option', { name: 'HTTP (API Gateway)' }))
   expect(screen.getByLabelText('HTTP trigger URL')).toHaveValue('http://localhost:9500/test/...')
-  await user.click(screen.getByRole('checkbox', { name: /invoke automatically/i }))
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+  expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
+    trigger: { type: 'http', enabled: false },
+  })
+})
+
+it('preserves an already-enabled http trigger\'s enabled state when reopened and saved', async () => {
+  render(<TriggerButton fn={{ ...fn, trigger: { type: 'http', enabled: true } }} />, { wrapper: makeWrapper() })
+  const user = await openPicker()
   await user.click(screen.getByRole('button', { name: 'Save' }))
   expect(api.updateFunction).toHaveBeenCalledWith('fn1', {
     trigger: { type: 'http', enabled: true },
