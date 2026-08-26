@@ -14,6 +14,7 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
+import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
 import type { InvokeResult } from '@/lib/types'
 
@@ -35,6 +36,11 @@ function App() {
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
+  const [checkResults, setCheckResults] = useState<AssertionRun | null>(null)
+  // Mirrors EventPanel's own local script draft, so an invoke triggered from
+  // outside EventPanel (the window-level Cmd+Enter shortcut below) still
+  // knows whether a script is active and what it says.
+  const [currentScript, setCurrentScript] = useState('')
   const invoke = useInvoke()
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
@@ -44,6 +50,16 @@ function App() {
   function selectFunction(id: string | null) {
     setPinnedId(id)
     setResult(null)
+    setCheckResults(null)
+    setCurrentScript('')
+  }
+
+  // The script is checked against a specific response — once either one
+  // changes, a stale verdict would be misleading, so results are cleared
+  // and the button must be pressed again.
+  function onScriptChange(script: string) {
+    setCurrentScript(script)
+    setCheckResults(null)
   }
 
   // Tell the server which function is active so playground.json services
@@ -62,7 +78,23 @@ function App() {
       toast.error('Event is not valid JSON')
       return
     }
-    invoke.mutate({ functionId, event }, { onSuccess: setResult })
+    invoke.mutate({ functionId, event }, {
+      onSuccess: (r) => {
+        setResult(r)
+        // A script already in the box gets checked automatically against
+        // this fresh response — no separate "Run checks" press needed.
+        setCheckResults(currentScript.trim() ? runAssertions(currentScript, {
+          response: r.response, error: r.error, report: r.report,
+        }) : null)
+      },
+    })
+  }
+
+  function runChecks(script: string) {
+    if (!result) return
+    setCheckResults(runAssertions(script, {
+      response: result.response, error: result.error, report: result.report,
+    }))
   }
 
   useEffect(() => {
@@ -99,18 +131,27 @@ function App() {
               <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <EventPanel
+                    // Function switches reset the inline script draft along
+                    // with everything else EventPanel owns locally — a check
+                    // written against one function's response shape rarely
+                    // applies to another's.
+                    key={selected.id}
                     fn={selected}
                     eventText={drafts[selected.id] ?? '{}'}
                     onEventTextChange={(text) =>
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
                     invoking={invoke.isPending}
+                    onScriptChange={onScriptChange}
+                    hasResult={!!result}
+                    onRunChecks={runChecks}
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <ResultPanel
                     result={result}
+                    checkResults={checkResults}
                     historyTab={
                       <HistoryList
                         key={selected.id}

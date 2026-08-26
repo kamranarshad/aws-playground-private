@@ -1,4 +1,5 @@
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { CircleCheck, CircleX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -6,6 +7,7 @@ import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
 import { LogViewer } from '@/components/log-viewer'
+import type { AssertionRun } from '@/lib/assertions'
 import { cn } from '@/lib/utils'
 import type { InvokeResult } from '@/lib/types'
 
@@ -23,10 +25,69 @@ function Pane({ children }: { children: ReactNode }) {
   )
 }
 
-export function ResultPanel({ result, historyTab }: {
+function ChecksSummaryBadge({ run }: { run: AssertionRun }) {
+  const total = run.results.length
+  const passed = run.results.filter((r) => r.pass).length
+  // != null, not truthiness: a script that threw an empty-message Error still
+  // errored, and reading it as "no error" turns a broken run into a calm chip.
+  const errored = run.scriptError != null
+  if (total === 0 && !errored) {
+    return (
+      <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
+        no assertions
+      </Badge>
+    )
+  }
+  const allPass = !errored && passed === total
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        'font-mono tabular-nums text-[10px]',
+        allPass ? 'border-transparent bg-success/15 text-success'
+          : 'border-transparent bg-destructive/15 text-destructive',
+      )}
+    >
+      {/* A script that threw before its first expect() has nothing to count,
+          and "0/0 passed" reads like a no-op rather than a failure. */}
+      {total === 0 && errored ? 'script error' : `${passed}/${total} passed`}
+    </Badge>
+  )
+}
+
+function ChecksList({ run }: { run: AssertionRun }) {
+  if (run.results.length === 0 && run.scriptError == null) {
+    return <Pane>Script had no assertions.</Pane>
+  }
+  return (
+    <ScrollArea className="h-full">
+      <ul className="divide-y font-mono text-xs">
+        {run.results.map((r, i) => (
+          <li key={i} className="flex items-start gap-2 px-3 py-1.5">
+            {r.pass
+              ? <CircleCheck role="img" aria-label="Check passed" className="mt-0.5 size-3.5 shrink-0 text-success" />
+              : <CircleX role="img" aria-label="Check failed" className="mt-0.5 size-3.5 shrink-0 text-destructive" />}
+            <span>{r.matcher}({JSON.stringify(r.expected)}) — actual: {JSON.stringify(r.actual)}</span>
+          </li>
+        ))}
+        {run.scriptError != null && (
+          <li className="flex items-start gap-2 px-3 py-1.5">
+            <CircleX role="img" aria-label="Script error" className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+            <span className="text-destructive">{run.scriptError}</span>
+          </li>
+        )}
+      </ul>
+    </ScrollArea>
+  )
+}
+
+export function ResultPanel({ result, checkResults, historyTab }: {
   result: InvokeResult | null
+  checkResults?: AssertionRun | null
   historyTab?: ReactNode
 }) {
+  const [activeTab, setActiveTab] = useState('response')
+
   // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
   // the tree already covers reading it here. Memoised because a response can be
   // large and only the copy button needs the flat text.
@@ -38,18 +99,28 @@ export function ResultPanel({ result, historyTab }: {
     return json ?? null
   }, [result])
 
+  // Tabs is controlled because the Checks tab only exists while there are
+  // check results: the next invoke (or a function switch) unmounts it, and
+  // Radix would keep "checks" selected against a trigger and content that are
+  // both gone — rendering an entirely blank panel until the user clicks a tab.
   return (
-    <Tabs defaultValue="response" className="flex h-full flex-col gap-0">
+    <Tabs
+      value={activeTab === 'checks' && checkResults == null ? 'response' : activeTab}
+      onValueChange={setActiveTab}
+      className="flex h-full flex-col gap-0"
+    >
       <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
         <TabsList className="h-8 bg-transparent">
           <TabsTrigger value="response" className={TAB}>Response</TabsTrigger>
           <TabsTrigger value="logs" className={TAB}>Logs</TabsTrigger>
           <TabsTrigger value="report" className={TAB}>Report</TabsTrigger>
+          {checkResults != null && <TabsTrigger value="checks" className={TAB}>Checks</TabsTrigger>}
           {historyTab && <TabsTrigger value="history" className={TAB}>History</TabsTrigger>}
         </TabsList>
         {result && (
           <div className="ml-auto flex items-center gap-1.5">
             {result.ok && <HttpStatusBadge response={result.response} />}
+            {checkResults != null && <ChecksSummaryBadge run={checkResults} />}
             <Badge
               variant={result.ok ? 'outline' : 'destructive'}
               className={cn(
@@ -107,6 +178,11 @@ export function ResultPanel({ result, historyTab }: {
             : 'No report yet.'}
         </Pane>
       </TabsContent>
+      {checkResults != null && (
+        <TabsContent value="checks" className="min-h-0 flex-1">
+          <ChecksList run={checkResults} />
+        </TabsContent>
+      )}
       {historyTab && (
         <TabsContent value="history" className="min-h-0 flex-1">
           {historyTab}

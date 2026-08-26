@@ -3,6 +3,7 @@ export type Runtime = 'python' | 'node' | 'java' | 'provided'
 export interface SavedEvent {
   name: string
   event: unknown
+  assertionScript?: string
 }
 
 export type FunctionTrigger =
@@ -80,6 +81,13 @@ export interface LambdaError {
   type: string
   message: string
   stackTrace: string[]
+}
+
+export interface CheckResult {
+  matcher: 'toBe' | 'toEqual' | 'toContain' | 'toMatch'
+  actual: unknown
+  expected: unknown
+  pass: boolean
 }
 
 export interface Report {
