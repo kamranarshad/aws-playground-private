@@ -87,3 +87,29 @@ it('clears the function param when the selected function is deleted', async () =
   await screen.findByRole('heading', { name: 'order-lookup' })
   expect(router.state.location.search.function).toBeUndefined()
 })
+
+it('selects the tab named in the URL on load', async () => {
+  await renderApp('/?function=order-lookup&tab=logs')
+
+  expect(await screen.findByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true')
+})
+
+it('pushes the clicked tab into the URL as a new history entry', async () => {
+  const router = await renderApp('/?function=order-lookup')
+  await screen.findByRole('tab', { name: 'Report' })
+  const historyLenBefore = router.history.length
+
+  // Radix's TabsTrigger selects on `mousedown`, not `click` (and fireEvent.click
+  // never synthesizes the mousedown in between) — a plain fireEvent.click is a
+  // no-op here. mousedown is fired directly rather than via userEvent.click
+  // because react-resizable-panels' document-level pointerdown listener
+  // hit-tests with getBoundingClientRect, which jsdom always reports as zero
+  // everywhere; that makes it treat every pointerdown as landing on the
+  // resize handle and preventDefault() it, which per spec suppresses the
+  // compatibility mousedown event userEvent.click would otherwise dispatch.
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Report' }), { button: 0 })
+
+  expect(await screen.findByRole('tab', { name: 'Report' })).toHaveAttribute('aria-selected', 'true')
+  expect(router.state.location.search.tab).toBe('report')
+  expect(router.history.length).toBe(historyLenBefore + 1)
+})

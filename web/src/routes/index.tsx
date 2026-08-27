@@ -47,6 +47,11 @@ export function App() {
   const selectedId = (search.function && functions.find((f) => f.name === search.function)?.id)
     ?? functions[0]?.id
     ?? null
+  const activeTab = search.tab ?? 'response'
+
+  function onActiveTabChange(tab: string) {
+    navigate({ search: (prev) => ({ ...prev, tab: tab as ResultTab }) })
+  }
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
@@ -167,6 +172,8 @@ export function App() {
                   <ResultPanel
                     result={result}
                     checkResults={checkResults}
+                    activeTab={activeTab}
+                    onActiveTabChange={onActiveTabChange}
                     historyTab={
                       <HistoryList
                         key={selected.id}

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import { CircleCheck, CircleX } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -81,13 +81,13 @@ function ChecksList({ run }: { run: AssertionRun }) {
   )
 }
 
-export function ResultPanel({ result, checkResults, historyTab }: {
+export function ResultPanel({ result, checkResults, historyTab, activeTab, onActiveTabChange }: {
   result: InvokeResult | null
   checkResults?: AssertionRun | null
   historyTab?: ReactNode
+  activeTab: string
+  onActiveTabChange: (tab: string) => void
 }) {
-  const [activeTab, setActiveTab] = useState('response')
-
   // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
   // the tree already covers reading it here. Memoised because a response can be
   // large and only the copy button needs the flat text.
@@ -106,7 +106,7 @@ export function ResultPanel({ result, checkResults, historyTab }: {
   return (
     <Tabs
       value={activeTab === 'checks' && checkResults == null ? 'response' : activeTab}
-      onValueChange={setActiveTab}
+      onValueChange={onActiveTabChange}
       className="flex h-full flex-col gap-0"
     >
       <div className="m-1.5 flex items-center gap-2 rounded-lg bg-surface-strip px-2.5 py-1.5">
