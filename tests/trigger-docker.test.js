@@ -30,7 +30,9 @@ const daemonUp = (() => {
 })();
 
 const ready = daemonUp && imagePresent('softwaremill/elasticmq-native') && hasRuntime('python3');
-const s3Ready = daemonUp && imagePresent('minio/minio');
+// python3 too: both s3 cases invoke the fixtures/python/hello fixture, the
+// same one the elasticmq cases above use.
+const s3Ready = daemonUp && imagePresent('minio/minio') && hasRuntime('python3');
 
 let s3ListenerPromise;
 function ensureS3Listener() {
@@ -187,7 +189,7 @@ test('resumeAll resumes a previously enabled trigger after a simulated restart',
 });
 
 test('enabling an S3 trigger invokes the function when an object is created, and tags history',
-  { skip: s3Ready ? false : 'docker daemon or minio image not available' }, async () => {
+  { skip: s3Ready ? false : 'docker daemon, minio image, or python3 not available' }, async () => {
   await ensureS3Listener();
   const created = api.createFunction({ name: 's3-trig-e2e', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
@@ -211,7 +213,7 @@ test('enabling an S3 trigger invokes the function when an object is created, and
 });
 
 test('a prefix filter only matches keys under that prefix',
-  { skip: s3Ready ? false : 'docker daemon or minio image not available' }, async () => {
+  { skip: s3Ready ? false : 'docker daemon, minio image, or python3 not available' }, async () => {
   await ensureS3Listener();
   const created = api.createFunction({ name: 's3-trig-e2e-prefix', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
