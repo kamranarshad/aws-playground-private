@@ -34,16 +34,19 @@ export const Route = createFileRoute('/')({
 })
 
 export function App() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { data: functions = [] } = useFunctions()
-  // The user's explicit pick, if it's still in the list; otherwise fall back
-  // to the first function. Deriving this during render (rather than via an
-  // effect that corrects a stale/unset id after the fact) means a function
-  // list that arrives or changes never renders a transient "nothing
-  // selected" frame first.
-  const [pinnedId, setPinnedId] = useState<string | null>(null)
-  const selectedId = pinnedId && functions.some((f) => f.id === pinnedId)
-    ? pinnedId
-    : functions[0]?.id ?? null
+  // The URL's pick, if it's still in the list; otherwise fall back to the
+  // first function. Deriving this during render (rather than via an effect
+  // that corrects a stale/unset id after the fact) means a function list
+  // that arrives or changes never renders a transient "nothing selected"
+  // frame first. A `function` param that doesn't match anything (renamed,
+  // deleted, typo'd) falls back silently — the URL is not rewritten to
+  // "fix" it.
+  const selectedId = (search.function && functions.find((f) => f.name === search.function)?.id)
+    ?? functions[0]?.id
+    ?? null
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
@@ -59,7 +62,8 @@ export function App() {
   // Every path that changes the selection goes through here so the invoke
   // result from the previous function never bleeds into the next one.
   function selectFunction(id: string | null) {
-    setPinnedId(id)
+    const name = id ? functions.find((f) => f.id === id)?.name : undefined
+    navigate({ search: (prev) => ({ ...prev, function: name, tab: undefined }) })
     setResult(null)
     setCheckResults(null)
     setCurrentScript('')
