@@ -1,5 +1,8 @@
 export type Runtime = 'python' | 'node' | 'java' | 'provided'
 
+export type ResultTab = 'response' | 'logs' | 'report' | 'checks' | 'history'
+export const RESULT_TABS: ResultTab[] = ['response', 'logs', 'report', 'checks', 'history']
+
 export interface SavedEvent {
   name: string
   event: unknown

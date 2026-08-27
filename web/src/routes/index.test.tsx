@@ -24,30 +24,46 @@ it('handles an empty search', () => {
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-vi.mock('@/lib/api', () => ({
-  api: {
-    health: vi.fn(async () => ({ runtimes: {} })),
-    listFunctions: vi.fn(async () => ({
-      functions: [
-        { id: 'fn-1', name: 'order-lookup', path: '/tmp', runtime: 'node', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
-        { id: 'fn-2', name: 's3-handler', path: '/tmp2', runtime: 'python', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
-      ],
-    })),
-    setSelection: vi.fn(async () => ({})),
-    listServices: vi.fn(async () => ({ services: [], docker: { available: false } })),
-    listTriggerStatus: vi.fn(async () => ({})),
-    detect: vi.fn(async () => ({ envFiles: [], projectTrigger: null })),
-    listHistory: vi.fn(async () => ({ entries: [] })),
-    deleteFunction: vi.fn(async () => ({})),
-    invoke: vi.fn(async () => ({
-      ok: true,
-      phase: 'invoke',
-      response: { statusCode: 200 },
-      logs: '',
-      report: { requestId: 'r1', durationMs: 1, billedMs: 1, memoryMb: 128, timedOut: false },
-    })),
-  },
-}))
+vi.mock('@/lib/api', () => {
+  // A mutable backing list (rather than a fixed array) so that createFunction
+  // below can add to it — useCreateFunction's onSuccess both writes the new
+  // function into the query cache directly AND invalidates ['functions'],
+  // and a static mock would make that invalidation's refetch clobber the
+  // cache write back down to the original two functions.
+  const functions = [
+    { id: 'fn-1', name: 'order-lookup', path: '/tmp', runtime: 'node', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
+    { id: 'fn-2', name: 's3-handler', path: '/tmp2', runtime: 'python', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
+  ]
+  return {
+    api: {
+      health: vi.fn(async () => ({ runtimes: {} })),
+      listFunctions: vi.fn(async () => ({ functions: [...functions] })),
+      setSelection: vi.fn(async () => ({})),
+      listServices: vi.fn(async () => ({ services: [], docker: { available: false } })),
+      listTriggerStatus: vi.fn(async () => ({})),
+      detect: vi.fn(async () => ({ envFiles: [], projectTrigger: null, runtime: null, handlerCandidates: [] })),
+      listHistory: vi.fn(async () => ({ entries: [] })),
+      deleteFunction: vi.fn(async () => ({})),
+      invoke: vi.fn(async () => ({
+        ok: true,
+        phase: 'invoke',
+        response: { statusCode: 200 },
+        logs: '',
+        report: { requestId: 'r1', durationMs: 1, billedMs: 1, memoryMb: 128, timedOut: false },
+      })),
+      createFunction: vi.fn(async (input) => {
+        const fn = {
+          id: 'fn-3', name: input.name, path: input.path, runtime: input.runtime,
+          handler: input.handler, timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {},
+          envFile: '', buildCommand: input.buildCommand ?? '', localServices: [],
+          trigger: null, savedEvents: [],
+        }
+        functions.push(fn)
+        return fn
+      }),
+    },
+  }
+})
 
 import { renderApp } from '@/test/route-harness'
 
@@ -160,4 +176,30 @@ it('corrects the URL off the Checks tab (via replace) when check results clear w
   await waitFor(() => expect(router.state.location.search.tab).toBeUndefined())
   // replace, not push: the correction must not add a Back-able history entry
   expect(router.history.length).toBe(historyLenBefore)
+})
+
+it('selects the newly created function after Add function, not the first one in the list', async () => {
+  const router = await renderApp('/')
+  await screen.findByRole('heading', { name: 'order-lookup' })
+
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+  fireEvent.change(await screen.findByLabelText('Project path'), { target: { value: '/tmp3' } })
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'third-fn' } })
+  fireEvent.change(screen.getByLabelText('Handler'), { target: { value: 'index.handler' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Register' }))
+
+  expect(await screen.findByRole('heading', { name: 'third-fn' })).toBeInTheDocument()
+  expect(router.state.location.search.function).toBe('third-fn')
+})
+
+it('restores the previously selected function on Back navigation', async () => {
+  const router = await renderApp('/')
+  await screen.findByRole('heading', { name: 'order-lookup' })
+
+  fireEvent.click(screen.getByText('s3-handler'))
+  await screen.findByRole('heading', { name: 's3-handler' })
+
+  router.history.back()
+
+  await screen.findByRole('heading', { name: 'order-lookup' })
 })

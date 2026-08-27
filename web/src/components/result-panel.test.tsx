@@ -7,10 +7,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { ResultPanel } from '@/components/result-panel'
-import type { InvokeResult } from '@/lib/types'
+import type { InvokeResult, ResultTab } from '@/lib/types'
 
 function ControlledResultPanel(props: Omit<ComponentProps<typeof ResultPanel>, 'activeTab' | 'onActiveTabChange'>) {
-  const [tab, setTab] = useState('response')
+  const [tab, setTab] = useState<ResultTab>('response')
   return <ResultPanel {...props} activeTab={tab} onActiveTabChange={setTab} />
 }
 

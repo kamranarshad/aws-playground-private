@@ -16,10 +16,7 @@ import {
 } from '@/components/ui/resizable'
 import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult } from '@/lib/types'
-
-export type ResultTab = 'response' | 'logs' | 'report' | 'checks' | 'history'
-const RESULT_TABS: ResultTab[] = ['response', 'logs', 'report', 'checks', 'history']
+import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
 
 export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab } {
   return {
@@ -49,8 +46,8 @@ export function App() {
     ?? null
   const activeTab = search.tab ?? 'response'
 
-  function onActiveTabChange(tab: string) {
-    navigate({ search: (prev) => ({ ...prev, tab: tab as ResultTab }) })
+  function onActiveTabChange(tab: ResultTab) {
+    navigate({ search: (prev) => ({ ...prev, tab }) })
   }
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -68,6 +65,16 @@ export function App() {
   // result from the previous function never bleeds into the next one.
   function selectFunction(id: string | null) {
     const name = id ? functions.find((f) => f.id === id)?.name : undefined
+    selectByName(name)
+  }
+
+  // The create-dialog path already has the just-created function in hand
+  // (from its own mutation's onSuccess) and calls this directly, rather
+  // than going through selectFunction's id lookup — the function doesn't
+  // exist in `functions` (App's render-time list) yet at that point, since
+  // the query cache write that will eventually add it hasn't triggered a
+  // re-render of this component yet.
+  function selectByName(name: string | undefined) {
     navigate({ search: (prev) => ({ ...prev, function: name, tab: undefined }) })
     setResult(null)
     setCheckResults(null)
@@ -215,7 +222,7 @@ export function App() {
           )}
         </main>
       </div>
-      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={selectFunction} />
+      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={(fn) => selectByName(fn.name)} />
       <CommandPalette
         functions={functions}
         canInvoke={!!selectedId}
