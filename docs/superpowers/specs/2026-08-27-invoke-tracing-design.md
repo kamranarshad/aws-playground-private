@@ -108,15 +108,24 @@ The route handler:
 alongside the existing `AWS_LAMBDA_*` set:
 
 ```
-OTEL_EXPORTER_OTLP_ENDPOINT=<trace-receiver's endpoint()>
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=<trace-receiver's endpoint()>
+OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf
 OTEL_RESOURCE_ATTRIBUTES=faas.invocation_id=<requestId>
 ```
 
-These are the standard OTel SDK env vars — any handler that configures its
-tracer provider from env (the default pattern for every language SDK) picks
-these up with zero playground-specific code. A handler with no OTel SDK
-never touches them and behaves exactly as it does today.
+The signal-specific `_TRACES_ENDPOINT` var (not the generic
+`OTEL_EXPORTER_OTLP_ENDPOINT`) is deliberate and load-bearing: per the OTel
+spec (confirmed by reading `@opentelemetry/otlp-exporter-base`'s own env
+resolution code), the generic var has `/v1/traces` **appended** to it by
+the SDK, while the signal-specific var is used **verbatim**. Since
+`endpoint()` already returns the full `.../v1/traces` URL, only the
+signal-specific var is correct here — and since this receiver only ever
+handles traces, using the signal-specific var also avoids implying metrics
+or logs support that doesn't exist. These are standard OTel SDK env vars —
+any handler that configures its tracer provider from env (the default
+pattern for every language SDK) picks these up with zero
+playground-specific code. A handler with no OTel SDK never touches them
+and behaves exactly as it does today.
 
 ### Correlation window
 
@@ -165,7 +174,7 @@ alongside Response/Logs/Report/Checks/History — only shown when
 `result?.trace` is present. Spans render as a flat list ordered by start
 time, indented by `parentSpanId` depth, each row showing name, duration, and
 key attributes. Empty state: "No spans received — export to
-`OTEL_EXPORTER_OTLP_ENDPOINT` from your handler to see spans here." No
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` from your handler to see spans here." No
 waterfall/timeline visualization in this iteration.
 
 While the currently-displayed invoke's `trace.pending` is `true`, the web
@@ -184,8 +193,10 @@ never poll.
   exits (`process.exit(0)` right after the harness writes its result-file).
   This mirrors the real constraint AWS's own OTel Lambda layer works around
   by forcing a flush on invoke-complete — not something the playground
-  papers over. Documented in the Trace tab's empty state and README rather
-  than worked around by, e.g., delaying process exit.
+  papers over. Documented in the Trace tab's empty state and README, which
+  also point at the simplest fix: use a `SimpleSpanProcessor` (exports
+  synchronously when a span ends) instead of the default
+  `BatchSpanProcessor` for local playground use.
 - **Malformed OTLP payload**: `400`, payload dropped, no effect on any
   invoke in flight.
 - **Spans for an unknown or already-closed `requestId`**: dropped silently
@@ -202,12 +213,26 @@ never poll.
 
 ## New dependencies
 
-`@opentelemetry/otlp-transformer` (official OTel JS package providing
-`ProtobufTraceSerializer`/`JsonTraceSerializer` with a shared
-`deserializeRequest(bytes) -> IExportTraceServiceRequest` shape for both
-codecs) — added to the playground server's own `package.json`, not
-installed into or required by the user's project, same boundary the
-existing AWS SDK client dependencies for triggers already respect.
+None. The obvious candidate, `@opentelemetry/otlp-transformer` (the
+official OTel JS package), was checked directly against its published
+`.d.ts` and turns out to only implement the **exporter** side —
+`ProtobufTraceSerializer`/`JsonTraceSerializer` each expose
+`serializeRequest(spans: ReadableSpan[])` and `deserializeResponse(bytes)`,
+with no supported way to decode an incoming `ExportTraceServiceRequest`.
+There's no other package purpose-built for the receiving side either.
+
+Instead, `server/otlp-decode.js` hand-decodes exactly the OTLP messages
+this playground needs — `ExportTraceServiceRequest` → `ResourceSpans` →
+`ScopeSpans` → `Span`, plus the common `KeyValue`/`AnyValue`/`Resource`
+types — against the fixed, versioned
+[opentelemetry-proto schema](https://github.com/open-telemetry/opentelemetry-proto)
+(field numbers confirmed directly from that repo's `.proto` sources). This
+is a small, self-contained wire-format reader (varint + length-delimited
+parsing over a fixed set of known field numbers), in the same spirit as
+the `provided` harness hand-implementing the Lambda Runtime API instead of
+depending on a package. JSON-encoded OTLP bodies need no library at all —
+just `JSON.parse` plus reading the proto3 JSON mapping's field names
+(base64 for `bytes`, decimal strings for 64-bit ints).
 
 ## Non-goals
 
@@ -229,15 +254,23 @@ existing AWS SDK client dependencies for triggers already respect.
   failure-path envelopes unchanged.
 - `tests/trace-collector.test.js` (new): window-open buffering, merge on
   each incoming batch, drop-after-close, `pending` flag transitions.
-- `tests/api-traces.test.js` (new): `/v1/traces` decodes a hand-built OTLP
-  protobuf payload and an OTLP/JSON payload equivalently; malformed body
-  returns `400`; correlation by `faas.invocation_id` groups correctly.
+- `tests/otlp-decode.test.js` (new): a small test-only protobuf encoder
+  (mirroring the production decoder's field numbers) round-trips a
+  resource + span through `decodeProtobuf`; a hand-written JSON fixture
+  round-trips through `decodeJson`; both produce the same normalized shape.
+- `tests/trace-receiver.test.js` (new): posts real OTLP requests — built
+  with the actual `@opentelemetry/exporter-trace-otlp-proto` /
+  `-otlp-http` exporters pointed at the receiver's own `endpoint()`, not
+  hand-built bytes — and asserts correlation by `faas.invocation_id` groups
+  correctly; a malformed body returns `400`.
 - `tests/history.test.js`: `appendSpans` merges into an existing JSONL entry
   and updates `pending`.
 - End-to-end: a new `fixtures/typescript/otel-span` fixture (own
   `package.json`, installed by `npm run install:fixtures` like the other
   TypeScript fixtures, tests skipped when its `dist/` isn't built) whose
-  handler creates and force-flushes one OTel span before returning,
+  handler creates one OTel span through a `SimpleSpanProcessor` (exports
+  synchronously on span end — no explicit flush needed, sidestepping the
+  batch-processor/process-exit race described above) before returning,
   asserting it round-trips into the invoke result via the real
   `/v1/traces` route end to end.
 - Web: `result-panel.test.tsx` gains Trace tab cases — empty state, span
