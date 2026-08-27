@@ -27,8 +27,9 @@ today) and the existing History tab — no new invoke flow, no new port.
   API). The playground never injects instrumentation into a handler.
 - OTLP over HTTP only (no gRPC) — accepting both `application/x-protobuf`
   and `application/json` bodies on one route, since real OTel SDKs default
-  to protobuf but some configurations use JSON. No new port: one more route
-  behind the same Host-header-checked server `serve-web.js` already runs.
+  to protobuf but some configurations use JSON. Served from its own small
+  loopback-only listener, separate from the main web server's port (see
+  Receiver below for why).
 - Trace data is persisted with history, like `logs`/`report` today, subject
   to the same `capJson` 64KB-per-field cap.
 - Spans that arrive after the invoke's HTTP response has already gone out
@@ -61,31 +62,28 @@ inside envelopes that already exist.
 
 ## Span capture
 
-### Env injection
-
-`server/invoker.js`'s `buildEnv()` adds three env vars to every invoke,
-alongside the existing `AWS_LAMBDA_*` set:
-
-```
-OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:<port>/v1/traces
-OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-OTEL_RESOURCE_ATTRIBUTES=faas.invocation_id=<requestId>
-```
-
-These are the standard OTel SDK env vars — any handler that configures its
-tracer provider from env (the default pattern for every language SDK) picks
-these up with zero playground-specific code. A handler with no OTel SDK
-never touches them and behaves exactly as it does today. `<port>` is the
-port `serve-web.js` is already listening on, threaded into `invoke()`'s
-options the same way other per-invoke config is.
-
 ### Receiver
 
-New route `POST /v1/traces` added to the same fetch-based router
-`serve-web.js` already dispatches every other API route through — same
-port, same localhost-only Host-header check, no new listener process.
+The playground's web server doesn't have one consistently-discoverable port
+to hand out: production (`bin/cli.js` + `serve-web.js`) picks one at
+startup, but dev mode runs entirely inside `vite dev` (no `bin/cli.js`
+involved), and trigger-invoked calls run with no incoming HTTP request to
+read a host from. Rather than thread a port through every call site, span
+ingestion gets its own tiny dedicated loopback HTTP server, following the
+same pattern `harnesses/provided/harness.mjs` already uses for its Runtime
+API emulation: `server.listen(0, '127.0.0.1', ...)`, then read back the
+OS-assigned port from `server.address().port`.
 
-The handler:
+New module `server/trace-receiver.js`: starts this listener once per
+process (module-load time — one extra always-on tiny HTTP server per
+playground process, negligible cost, no lazy-init races between concurrent
+invokes), exposes `endpoint()` returning `http://127.0.0.1:<port>/v1/traces`
+and `close()` for test teardown. Bound to `127.0.0.1` only, so it's
+unreachable from outside the machine the same way every other playground
+listener is — no separate Host-header check needed since nothing but
+loopback can reach it.
+
+The route handler:
 1. Reads `content-type`; decodes the body as OTLP protobuf
    (`ExportTraceServiceRequest`) or OTLP/JSON accordingly. A malformed or
    undecodable body gets a `400` response and is dropped — matches how a
@@ -94,6 +92,22 @@ The handler:
 3. Pushes each group into `traceCollector` (new module,
    `server/trace-collector.js`), an in-memory `Map<requestId, { spans: [],
    closesAt: number }>`.
+
+### Env injection
+
+`server/invoker.js`'s `buildEnv()` adds three env vars to every invoke,
+alongside the existing `AWS_LAMBDA_*` set:
+
+```
+OTEL_EXPORTER_OTLP_ENDPOINT=<trace-receiver's endpoint()>
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_RESOURCE_ATTRIBUTES=faas.invocation_id=<requestId>
+```
+
+These are the standard OTel SDK env vars — any handler that configures its
+tracer provider from env (the default pattern for every language SDK) picks
+these up with zero playground-specific code. A handler with no OTel SDK
+never touches them and behaves exactly as it does today.
 
 ### Correlation window
 
@@ -159,8 +173,9 @@ never poll.
   invoke in flight.
 - **Spans for an unknown or already-closed `requestId`**: dropped silently
   server-side.
-- **Non-localhost POSTs to `/v1/traces`**: rejected by the existing
-  Host-header allowlist in `serve-web.js`, same as every other route.
+- **Non-localhost POSTs to `/v1/traces`**: not reachable at all — the trace
+  receiver binds `127.0.0.1` only, like every other loopback listener this
+  project already runs (e.g. the `provided` harness's Runtime API server).
 - **History growth**: `trace` goes through the existing `capJson` truncation
   like `report`/`response` — a very chatty handler's spans get truncated at
   the existing 64KB-per-field cap, not left unbounded.
