@@ -28,6 +28,18 @@ const s3Routes = new Map();
 const s3Triggered = new Map(); // functionId -> bucket
 const s3Status = new Map(); // functionId -> { state, lastError, lastPolledAt }
 
+// Because that listener is started outside this manager, a failed bind (port
+// 9501 already taken — likely whenever a second playground instance is
+// running, which bin/cli.js's port scan explicitly supports) would otherwise
+// be invisible here and every S3 trigger would keep reporting 'listening'
+// while nothing can ever reach it. bin/cli.js reports the failure in through
+// setS3ListenerError so the status the UI shows says 'error' instead.
+let s3ListenerError = null; // error message | null
+
+function setS3ListenerError(err) {
+  s3ListenerError = err ? (err.message || String(err)) : null;
+}
+
 function s3RoutesFor(bucket) {
   const m = s3Routes.get(bucket);
   return m ? [...m].map(([functionId, r]) => ({ functionId, ...r })) : [];
@@ -48,10 +60,26 @@ function queueBucketConfig(bucket, hasWatchers) {
   return next;
 }
 
+// Test-only. The disable path queues its ensureBucketConfig call and returns
+// immediately, so the actual call lands a microtask later — a test that stubs
+// ensureBucketConfig and restores it in a `finally` would otherwise restore
+// the real (network-calling) implementation before the stub was ever reached.
+// Awaiting this settles every currently-queued bucket-config call first.
+function drainBucketConfigQueue() {
+  return Promise.all(bucketConfigQueue.values());
+}
+
+// A dead shared listener outranks whatever the per-function sync recorded:
+// the bucket may well be configured correctly, but no event can reach us.
+function s3StatusFor(functionId) {
+  if (s3ListenerError) return { state: 'error', lastError: s3ListenerError, lastPolledAt: null };
+  return s3Status.get(functionId);
+}
+
 function status(functionId) {
   if (running.has(functionId)) return running.get(functionId).status;
   if (httpTriggered.has(functionId)) return httpStatus;
-  if (s3Status.has(functionId)) return s3Status.get(functionId);
+  if (s3Status.has(functionId)) return s3StatusFor(functionId);
   return { state: 'idle', lastError: null, lastPolledAt: null };
 }
 
@@ -59,7 +87,7 @@ function statusAll() {
   const out = {};
   for (const [id, r] of running) out[id] = r.status;
   for (const id of httpTriggered.keys()) out[id] = httpStatus;
-  for (const [id, st] of s3Status) out[id] = st;
+  for (const id of s3Status.keys()) out[id] = s3StatusFor(id);
   return out;
 }
 
@@ -120,9 +148,16 @@ function stopHttp(functionId) {
   stopHttpListenerIfIdle();
 }
 
+// Compared as sets, not as arrays: a stored `events` with a duplicate in it
+// (['ObjectCreated', 'ObjectCreated']) has the same length as a genuinely
+// different two-event list, and a plain length + includes() check would call
+// those equal and silently skip the reconfigure. Both validators dedupe now,
+// so this is belt-and-braces for data written before they did.
 function routeEquals(a, b) {
-  return !!a && a.prefix === b.prefix && a.suffix === b.suffix
-    && a.events.length === b.events.length && a.events.every((e) => b.events.includes(e));
+  if (!a || a.prefix !== b.prefix || a.suffix !== b.suffix) return false;
+  const aEvents = new Set(a.events);
+  const bEvents = new Set(b.events);
+  return aEvents.size === bEvents.size && [...aEvents].every((e) => bEvents.has(e));
 }
 
 async function syncS3(functionId, trigger) {
@@ -164,7 +199,14 @@ function removeS3Route(functionId, bucket) {
     bucketRoutes.delete(functionId);
     if (bucketRoutes.size === 0) {
       s3Routes.delete(bucket);
-      queueBucketConfig(bucket, false).catch(() => {});
+      // Fire-and-forget from the caller's point of view (stop() is sync), but
+      // not silent: a bucket left with a live webhook config pointing at a
+      // listener nothing routes to is worth a line in the server log — the
+      // enable path has a visible error status to surface this, the disable
+      // path has nowhere else to put it.
+      queueBucketConfig(bucket, false).catch((err) => {
+        console.warn(`aws-playground: failed to clear S3 notification config for bucket '${bucket}': ${err.message}`);
+      });
     }
   }
   s3Triggered.delete(functionId);
@@ -272,4 +314,7 @@ function stopAll() {
   for (const id of s3Triggered.keys()) stopS3(id);
 }
 
-module.exports = { sync, stop, resumeAll, stopAll, status, statusAll, s3RoutesFor };
+module.exports = {
+  sync, stop, resumeAll, stopAll, status, statusAll, s3RoutesFor, setS3ListenerError,
+  drainBucketConfigQueue,
+};

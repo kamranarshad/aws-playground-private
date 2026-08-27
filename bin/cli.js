@@ -100,6 +100,10 @@ const HOST = '127.0.0.1';
       invokeFunction: require('../server/api/invoke').invokeFunction,
     }).catch((err) => {
       console.warn(`aws-playground: could not start the S3 trigger listener: ${err.message}`);
+      // Also report it into the trigger manager: without this, every function
+      // with an S3 trigger keeps showing 'listening' in the UI even though no
+      // event can ever reach it.
+      triggerManager.setS3ListenerError(err);
     });
     const url = `http://localhost:${server.address().port}`;
     console.log(`aws-playground listening at ${url}`);
