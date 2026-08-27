@@ -64,3 +64,9 @@ test('malformed handler string -> phase:init', { skip }, async () => {
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.MalformedHandlerName');
 });
+
+test('python runtime reports initMs separately from durationMs', { skip }, async () => {
+  const { envelope } = await runHarness({ fixture: 'python/hello', handler: 'app.handler' });
+  assert.strictEqual(envelope.ok, true);
+  assert.ok(envelope.initMs >= 0, `expected initMs >= 0, got ${envelope.initMs}`);
+});
