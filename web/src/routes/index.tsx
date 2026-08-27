@@ -18,11 +18,22 @@ import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
 import type { InvokeResult } from '@/lib/types'
 
+export type ResultTab = 'response' | 'logs' | 'report' | 'checks' | 'history'
+const RESULT_TABS: ResultTab[] = ['response', 'logs', 'report', 'checks', 'history']
+
+export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab } {
+  return {
+    function: typeof search.function === 'string' ? search.function : undefined,
+    tab: RESULT_TABS.includes(search.tab as ResultTab) ? (search.tab as ResultTab) : undefined,
+  }
+}
+
 export const Route = createFileRoute('/')({
   component: App,
+  validateSearch,
 })
 
-function App() {
+export function App() {
   const { data: functions = [] } = useFunctions()
   // The user's explicit pick, if it's still in the list; otherwise fall back
   // to the first function. Deriving this during render (rather than via an
