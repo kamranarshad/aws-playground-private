@@ -170,11 +170,17 @@ stops advertising more data is coming).
 ### Web UI
 
 New "Trace" tab in `ResultPanel` (`web/src/components/result-panel.tsx`),
-alongside Response/Logs/Report/Checks/History — only shown when
-`result?.trace` is present. Spans render as a flat list ordered by start
-time, indented by `parentSpanId` depth, each row showing name, duration, and
-key attributes. Empty state: "No spans received — export to
-`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` from your handler to see spans here." No
+alongside Response/Logs/Report — always present, the same way those three
+are, rather than conditionally shown like Checks/History. `trace` is
+always populated (`{ spans: [], pending: false }` at minimum, per Span
+Capture's Correlation window above), so there's no "has a trace vs.
+doesn't" state to gate on the way there is for Checks (which genuinely
+doesn't exist until a script runs) — the tab just shows its empty state for
+the common case of a handler with no OTel SDK. Spans render as a flat list
+ordered by start time, indented by `parentSpanId` depth, each row showing
+name, duration, and key attributes. Empty state: "No spans received —
+export to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` from your handler to see
+spans here." No
 waterfall/timeline visualization in this iteration.
 
 While the currently-displayed invoke's `trace.pending` is `true`, the web
