@@ -42,20 +42,29 @@ today) and the existing History tab — no new invoke flow, no new port.
 
 Each harness (`harnesses/node/harness.mjs`, `python/harness.py`,
 `java/Harness.java`, `provided/harness.mjs`) already has a natural seam
-between resolving the handler (import, in Node's case) and invoking it. Each
-harness starts timing at process start (after arg parsing), records `initMs`
-right before calling the handler, then records `invokeMs` after the handler
-settles. Both go into the result-file envelope on the **success** path (the
-existing failure-path envelopes already carry a `phase: 'init' | 'invoke'`
-distinction and don't need this — a failed invoke doesn't have a meaningful
-handler-duration split).
+between resolving the handler (import, in Node's case) and invoking it —
+`durationMs` in every harness today is already measured from *after* that
+seam, i.e. handler-execution time only, matching what real Lambda's REPORT
+line calls `Duration` (which likewise excludes init time). Nothing about
+`durationMs` changes.
 
-`server/invoker.js` reads `initMs`/`invokeMs` off the envelope the same way
-it reads today's `durationMs`; `report.durationMs` continues to mean total
-time (now `initMs + invokeMs`) so the existing top-line badge in
-`result-panel.tsx` is unaffected. `report` gains `initMs`, and the Report tab
-gains an `Init Duration: X ms` line, matching real Lambda's REPORT line
-format when cold-start tracing is visible.
+What's missing is the init side: each harness starts a second timer at
+process start (right after arg parsing) and records how long it took to
+reach the point where `durationMs`'s own timer starts (module import for
+Node, `importlib.import_module` for Python, `Class.forName` for Java, first
+`GET /invocation/next` poll for `provided`). That becomes a new `initMs`
+field in the result-file envelope, reported only on the **success** path —
+the existing failure-path envelopes already carry a `phase: 'init' |
+'invoke'` distinction and don't need a numeric breakdown on top of it.
+
+`server/invoker.js` reads `initMs` off the envelope the same way it reads
+`durationMs` today and adds it to `report` unchanged; `report.durationMs`
+and the existing top-line "OK · Xms" badge in `result-panel.tsx` are
+unaffected. The Report tab gains an `Init Duration: X ms` line alongside the
+existing `Duration:`/`Billed Duration:` lines, matching real Lambda's REPORT
+line format — every playground invoke is a fresh process (the README's
+"cold-start semantics" by design), so init is always meaningful here, unlike
+real Lambda where it's usually omitted on warm invokes.
 
 No new dependencies, no new failure modes — this is a data plumbing change
 inside envelopes that already exist.
@@ -123,12 +132,20 @@ start the countdown: `closesAt = now + windowMs`
 `requestId` are dropped silently (no unbounded memory growth, no reopening
 a closed window).
 
-`invoker.js` does **not** block waiting for spans. It reads back whatever is
-currently in the buffer immediately after the child process exits and
-attaches it as `out.trace = { spans, pending: true }` if the window is still
-open, or `{ spans, pending: false }` if there was never any span for this
-`requestId` and nothing to wait for. This keeps the existing synchronous
-invoke response time unaffected by tracing.
+`invoker.js` does **not** block waiting for spans. Immediately after the
+child process exits, it takes a snapshot of whatever is currently in the
+buffer (usually empty — a span already in flight over the network when the
+child died can still arrive after this point, which is exactly the case
+this window exists for) and attaches it as `out.trace = { spans, pending:
+true }`, then starts the countdown. `pending` always starts `true` and
+flips to `false` only when the window closes — there's no cheaper "nothing
+will ever arrive, skip the window" shortcut, since a zero-span snapshot at
+this exact instant can't distinguish "no OTel SDK" from "OTel SDK whose
+export request just hasn't landed yet." The cost of always opening the
+window is trivial (one `Map` entry and one timer per invoke, both freed
+within `AWS_PLAYGROUND_TRACE_WINDOW_MS`), and the web UI only polls for the
+one invoke currently on screen, not every open window. This keeps the
+existing synchronous invoke response time unaffected by tracing.
 
 ### Persisting late arrivals
 
@@ -179,14 +196,16 @@ never poll.
 - **History growth**: `trace` goes through the existing `capJson` truncation
   like `report`/`response` — a very chatty handler's spans get truncated at
   the existing 64KB-per-field cap, not left unbounded.
-- **Phase timing on init failure**: unaffected — `initMs`/`invokeMs` are
-  only reported on the success path; existing failure-path `phase` values
-  and shapes are unchanged.
+- **Phase timing on init failure**: unaffected — `initMs` is only reported
+  on the success path; existing failure-path `phase` values and shapes are
+  unchanged.
 
 ## New dependencies
 
-A protobuf decoder for `ExportTraceServiceRequest` (OTLP's trace export
-message), added to the playground server's own `package.json` — not
+`@opentelemetry/otlp-transformer` (official OTel JS package providing
+`ProtobufTraceSerializer`/`JsonTraceSerializer` with a shared
+`deserializeRequest(bytes) -> IExportTraceServiceRequest` shape for both
+codecs) — added to the playground server's own `package.json`, not
 installed into or required by the user's project, same boundary the
 existing AWS SDK client dependencies for triggers already respect.
 
@@ -205,8 +224,9 @@ existing AWS SDK client dependencies for triggers already respect.
 ## Testing
 
 - Harness tests (`tests/harness-node.test.js`, `tests/harness-python.test.js`,
-  `tests/java.test.js`): success-path envelopes include `initMs`/`invokeMs`
-  summing to roughly `durationMs`; failure-path envelopes unchanged.
+  `tests/java.test.js`, `tests/harness-provided.test.js`): success-path
+  envelopes include a new `initMs` alongside the existing `durationMs`;
+  failure-path envelopes unchanged.
 - `tests/trace-collector.test.js` (new): window-open buffering, merge on
   each incoming batch, drop-after-close, `pending` flag transitions.
 - `tests/api-traces.test.js` (new): `/v1/traces` decodes a hand-built OTLP
@@ -214,9 +234,12 @@ existing AWS SDK client dependencies for triggers already respect.
   returns `400`; correlation by `faas.invocation_id` groups correctly.
 - `tests/history.test.js`: `appendSpans` merges into an existing JSONL entry
   and updates `pending`.
-- End-to-end: a fixture handler (small addition under `fixtures/`) using a
-  minimal OTel SDK setup that creates and flushes one span, asserting it
-  round-trips into the invoke result via the real `/v1/traces` route.
+- End-to-end: a new `fixtures/typescript/otel-span` fixture (own
+  `package.json`, installed by `npm run install:fixtures` like the other
+  TypeScript fixtures, tests skipped when its `dist/` isn't built) whose
+  handler creates and force-flushes one OTel span before returning,
+  asserting it round-trips into the invoke result via the real
+  `/v1/traces` route end to end.
 - Web: `result-panel.test.tsx` gains Trace tab cases — empty state, span
   list rendering with parent/child indentation, polling while `pending` is
   true and stopping once it flips to false.
