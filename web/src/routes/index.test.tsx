@@ -113,3 +113,14 @@ it('pushes the clicked tab into the URL as a new history entry', async () => {
   expect(router.state.location.search.tab).toBe('report')
   expect(router.history.length).toBe(historyLenBefore + 1)
 })
+
+it('corrects the URL off the Checks tab (via replace) when there are no check results', async () => {
+  const router = await renderApp('/?function=order-lookup&tab=checks')
+  const historyLenBefore = router.history.length
+
+  await screen.findByRole('tab', { name: 'Response' })
+
+  expect(router.state.location.search.tab).toBeUndefined()
+  // replace, not push: the correction must not add a Back-able history entry
+  expect(router.history.length).toBe(historyLenBefore)
+})

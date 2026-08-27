@@ -88,6 +88,18 @@ export function App() {
     syncSelection(selectedId)
   }, [selectedId, syncSelection])
 
+  // The Checks tab only exists while there are check results (see
+  // ResultPanel): the next invoke or a function switch clears them, and
+  // ResultPanel's own display already falls back to "Response" visually.
+  // This corrects the URL to match — via replace, since it's a passive
+  // consequence of state clearing, not a click, so it shouldn't add a
+  // Back-able history entry.
+  useEffect(() => {
+    if (activeTab === 'checks' && checkResults == null) {
+      navigate({ search: (prev) => ({ ...prev, tab: undefined }), replace: true })
+    }
+  }, [activeTab, checkResults, navigate])
+
   const selected = functions.find((f) => f.id === selectedId) ?? null
 
   function runInvoke(functionId: string) {
