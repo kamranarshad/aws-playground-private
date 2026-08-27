@@ -39,4 +39,24 @@ if (!Range.prototype.getClientRects) {
   }) as unknown as DOMRectList
 }
 
+// jsdom has no matchMedia. Rendering `App` through a real router (the route
+// test harness) ends up exercising something in the tree that reads it on
+// mount — without a stub the render silently produces an empty document
+// instead of the app (no thrown error to point at the cause).
+if (!window.matchMedia) {
+  window.matchMedia = ((query: string) => ({
+    matches: false, media: query, onchange: null,
+    addListener: () => {}, removeListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia
+}
+
+// jsdom defines window.scrollTo but only as a stub that logs "Not
+// implemented" to the console — TanStack Router's scroll restoration calls
+// it on every navigation. Without overriding it, each navigation in the
+// route test harness logs that warning even though the navigation itself
+// succeeds.
+window.scrollTo = () => {}
+
 afterEach(cleanup)

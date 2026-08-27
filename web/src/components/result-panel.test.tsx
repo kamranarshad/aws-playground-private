@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import type { ComponentProps } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -5,7 +7,12 @@ import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { ResultPanel } from '@/components/result-panel'
-import type { InvokeResult } from '@/lib/types'
+import type { InvokeResult, ResultTab } from '@/lib/types'
+
+function ControlledResultPanel(props: Omit<ComponentProps<typeof ResultPanel>, 'activeTab' | 'onActiveTabChange'>) {
+  const [tab, setTab] = useState<ResultTab>('response')
+  return <ResultPanel {...props} activeTab={tab} onActiveTabChange={setTab} />
+}
 
 function stubClipboard() {
   const writeText = vi.fn(async () => {})
@@ -30,19 +37,19 @@ const failed: InvokeResult = {
 }
 
 it('prompts to invoke before there is a result', () => {
-  render(<ResultPanel result={null} />)
+  render(<ControlledResultPanel result={null} />)
 
   expect(screen.getByText('Invoke to see the response.')).toBeInTheDocument()
 })
 
 it('shows the error type and message when the invoke failed', () => {
-  render(<ResultPanel result={failed} />)
+  render(<ControlledResultPanel result={failed} />)
 
   expect(screen.getByText(/Build\.Failed: Build command failed/)).toBeInTheDocument()
 })
 
 it('reports build duration separately from handler duration', async () => {
-  render(<ResultPanel result={failed} />)
+  render(<ControlledResultPanel result={failed} />)
 
   await userEvent.click(screen.getByRole('tab', { name: 'Report' }))
 
@@ -50,13 +57,13 @@ it('reports build duration separately from handler duration', async () => {
 })
 
 it('badges a successful run with its duration', () => {
-  render(<ResultPanel result={ok} />)
+  render(<ControlledResultPanel result={ok} />)
 
   expect(screen.getByText(/OK · 12\.5ms/)).toBeInTheDocument()
 })
 
 it('renders the response as a tree rather than one flat blob', () => {
-  render(<ResultPanel result={ok} />)
+  render(<ControlledResultPanel result={ok} />)
 
   expect(screen.getByText('statusCode')).toBeInTheDocument()
   expect(screen.getByLabelText('Collapse root')).toBeInTheDocument()
@@ -66,7 +73,7 @@ it('renders the response as a tree rather than one flat blob', () => {
 // the tree's own indentation is what you'd strip back out.
 it('copies the response as minified JSON', async () => {
   const writeText = stubClipboard()
-  render(<ResultPanel result={ok} />)
+  render(<ControlledResultPanel result={ok} />)
 
   await userEvent.click(screen.getByLabelText('Copy response JSON'))
 
@@ -75,7 +82,7 @@ it('copies the response as minified JSON', async () => {
 
 // A failed invoke has an error and a stack trace, not a response to copy.
 it('offers nothing to copy when there is no response', () => {
-  render(<ResultPanel result={failed} />)
+  render(<ControlledResultPanel result={failed} />)
 
   expect(screen.queryByLabelText('Copy response JSON')).not.toBeInTheDocument()
 })
@@ -83,7 +90,7 @@ it('offers nothing to copy when there is no response', () => {
 // `async () => {}` returns undefined, which JSON.stringify turns into undefined
 // rather than a string. That is a successful invoke, not an error.
 it('handles a successful invoke that returned nothing', () => {
-  render(<ResultPanel result={{ ...ok, response: undefined }} />)
+  render(<ControlledResultPanel result={{ ...ok, response: undefined }} />)
 
   expect(screen.getByText('undefined')).toBeInTheDocument()
   expect(screen.queryByText(/^undefined: undefined/)).not.toBeInTheDocument()
@@ -94,7 +101,7 @@ it('handles a successful invoke that returned nothing', () => {
 // rows and nothing separated an error from an info line.
 it('renders logs as parsed rows rather than one flat blob', async () => {
   const { container } = render(
-    <ResultPanel result={{ ...ok, logs: '2026-07-30T10:23:45.123Z ERROR boom\n' }} />,
+    <ControlledResultPanel result={{ ...ok, logs: '2026-07-30T10:23:45.123Z ERROR boom\n' }} />,
   )
 
   await userEvent.click(screen.getByRole('tab', { name: 'Logs' }))
@@ -107,7 +114,7 @@ it('renders logs as parsed rows rather than one flat blob', async () => {
 })
 
 it('still says there are no logs when the run printed nothing', async () => {
-  render(<ResultPanel result={{ ...ok, logs: '' }} />)
+  render(<ControlledResultPanel result={{ ...ok, logs: '' }} />)
 
   await userEvent.click(screen.getByRole('tab', { name: 'Logs' }))
 
@@ -123,20 +130,20 @@ const mixedChecks = {
 }
 
 it('shows neither the Checks tab nor a summary chip when no checks have run', () => {
-  render(<ResultPanel result={ok} />)
+  render(<ControlledResultPanel result={ok} />)
 
   expect(screen.queryByRole('tab', { name: 'Checks' })).not.toBeInTheDocument()
   expect(screen.queryByText(/passed/)).not.toBeInTheDocument()
 })
 
 it('summarizes how many checks passed', () => {
-  render(<ResultPanel result={ok} checkResults={mixedChecks} />)
+  render(<ControlledResultPanel result={ok} checkResults={mixedChecks} />)
 
   expect(screen.getByText('1/2 passed')).toBeInTheDocument()
 })
 
 it('lists each check with its matcher, expected, and actual value', async () => {
-  render(<ResultPanel result={ok} checkResults={mixedChecks} />)
+  render(<ControlledResultPanel result={ok} checkResults={mixedChecks} />)
 
   await userEvent.click(screen.getByRole('tab', { name: 'Checks' }))
 
@@ -148,7 +155,7 @@ it('lists each check with its matcher, expected, and actual value', async () => 
 
 it('shows a script-error row alongside any results gathered before it threw', async () => {
   render(
-    <ResultPanel
+    <ControlledResultPanel
       result={ok}
       checkResults={{
         results: [{ matcher: 'toBe' as const, actual: 200, expected: 200, pass: true }],
@@ -164,7 +171,7 @@ it('shows a script-error row alongside any results gathered before it threw', as
 })
 
 it('says a script had no assertions rather than showing an empty list', async () => {
-  render(<ResultPanel result={ok} checkResults={{ results: [], scriptError: null }} />)
+  render(<ControlledResultPanel result={ok} checkResults={{ results: [], scriptError: null }} />)
 
   expect(screen.getByText('no assertions')).toBeInTheDocument()
 
@@ -177,7 +184,7 @@ it('says a script had no assertions rather than showing an empty list', async ()
 // "no assertions" reads as a calm no-op and "0/0 passed" reads as a no-op that
 // happens to be red; neither says the script broke.
 it('chips a script that threw before asserting anything as an error, not a no-op', async () => {
-  render(<ResultPanel result={ok} checkResults={{ results: [], scriptError: 'boom' }} />)
+  render(<ControlledResultPanel result={ok} checkResults={{ results: [], scriptError: 'boom' }} />)
 
   expect(screen.queryByText('no assertions')).not.toBeInTheDocument()
   expect(screen.queryByText('0/0 passed')).not.toBeInTheDocument()
@@ -193,7 +200,7 @@ it('chips a script that threw before asserting anything as an error, not a no-op
 // check on scriptError would render it as a passing run.
 it('treats an empty-message script error as an error rather than a pass', async () => {
   render(
-    <ResultPanel
+    <ControlledResultPanel
       result={ok}
       checkResults={{
         results: [{ matcher: 'toBe' as const, actual: 200, expected: 200, pass: true }],
@@ -214,12 +221,12 @@ it('treats an empty-message script error as an error rather than a pass', async 
 // back to null on the next invoke the Checks trigger and content both unmount
 // while "checks" stays selected — leaving the panel entirely blank.
 it('falls back to the Response tab when the Checks tab disappears mid-selection', async () => {
-  const { rerender } = render(<ResultPanel result={ok} checkResults={mixedChecks} />)
+  const { rerender } = render(<ControlledResultPanel result={ok} checkResults={mixedChecks} />)
 
   await userEvent.click(screen.getByRole('tab', { name: 'Checks' }))
   expect(screen.getByText('toBe(200) — actual: 200')).toBeInTheDocument()
 
-  rerender(<ResultPanel result={ok} checkResults={null} />)
+  rerender(<ControlledResultPanel result={ok} checkResults={null} />)
 
   expect(screen.queryByRole('tab', { name: 'Checks' })).not.toBeInTheDocument()
   expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')

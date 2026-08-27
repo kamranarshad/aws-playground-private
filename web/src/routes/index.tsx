@@ -16,23 +16,39 @@ import {
 } from '@/components/ui/resizable'
 import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult } from '@/lib/types'
+import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
+
+export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab } {
+  return {
+    function: typeof search.function === 'string' ? search.function : undefined,
+    tab: RESULT_TABS.includes(search.tab as ResultTab) ? (search.tab as ResultTab) : undefined,
+  }
+}
 
 export const Route = createFileRoute('/')({
   component: App,
+  validateSearch,
 })
 
-function App() {
+export function App() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { data: functions = [] } = useFunctions()
-  // The user's explicit pick, if it's still in the list; otherwise fall back
-  // to the first function. Deriving this during render (rather than via an
-  // effect that corrects a stale/unset id after the fact) means a function
-  // list that arrives or changes never renders a transient "nothing
-  // selected" frame first.
-  const [pinnedId, setPinnedId] = useState<string | null>(null)
-  const selectedId = pinnedId && functions.some((f) => f.id === pinnedId)
-    ? pinnedId
-    : functions[0]?.id ?? null
+  // The URL's pick, if it's still in the list; otherwise fall back to the
+  // first function. Deriving this during render (rather than via an effect
+  // that corrects a stale/unset id after the fact) means a function list
+  // that arrives or changes never renders a transient "nothing selected"
+  // frame first. A `function` param that doesn't match anything (renamed,
+  // deleted, typo'd) falls back silently — the URL is not rewritten to
+  // "fix" it.
+  const selectedId = (search.function && functions.find((f) => f.name === search.function)?.id)
+    ?? functions[0]?.id
+    ?? null
+  const activeTab = search.tab ?? 'response'
+
+  function onActiveTabChange(tab: ResultTab) {
+    navigate({ search: (prev) => ({ ...prev, tab }) })
+  }
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [result, setResult] = useState<InvokeResult | null>(null)
@@ -48,7 +64,18 @@ function App() {
   // Every path that changes the selection goes through here so the invoke
   // result from the previous function never bleeds into the next one.
   function selectFunction(id: string | null) {
-    setPinnedId(id)
+    const name = id ? functions.find((f) => f.id === id)?.name : undefined
+    selectByName(name)
+  }
+
+  // The create-dialog path already has the just-created function in hand
+  // (from its own mutation's onSuccess) and calls this directly, rather
+  // than going through selectFunction's id lookup — the function doesn't
+  // exist in `functions` (App's render-time list) yet at that point, since
+  // the query cache write that will eventually add it hasn't triggered a
+  // re-render of this component yet.
+  function selectByName(name: string | undefined) {
+    navigate({ search: (prev) => ({ ...prev, function: name, tab: undefined }) })
     setResult(null)
     setCheckResults(null)
     setCurrentScript('')
@@ -67,6 +94,18 @@ function App() {
   useEffect(() => {
     syncSelection(selectedId)
   }, [selectedId, syncSelection])
+
+  // The Checks tab only exists while there are check results (see
+  // ResultPanel): the next invoke or a function switch clears them, and
+  // ResultPanel's own display already falls back to "Response" visually.
+  // This corrects the URL to match — via replace, since it's a passive
+  // consequence of state clearing, not a click, so it shouldn't add a
+  // Back-able history entry.
+  useEffect(() => {
+    if (activeTab === 'checks' && checkResults == null) {
+      navigate({ search: (prev) => ({ ...prev, tab: undefined }), replace: true })
+    }
+  }, [activeTab, checkResults, navigate])
 
   const selected = functions.find((f) => f.id === selectedId) ?? null
 
@@ -126,7 +165,7 @@ function App() {
         <main className="min-w-0 flex-1">
           {selected ? (
             <div className="flex h-full flex-col">
-              <FunctionHeader fn={selected} onDeleted={() => selectFunction(null)} />
+              <FunctionHeader key={`header-${selected.id}`} fn={selected} onDeleted={() => selectFunction(null)} />
               <EnvEditor key={selected.id} fn={selected} />
               <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <ResizablePanel defaultSize={50} minSize={25}>
@@ -152,6 +191,8 @@ function App() {
                   <ResultPanel
                     result={result}
                     checkResults={checkResults}
+                    activeTab={activeTab}
+                    onActiveTabChange={onActiveTabChange}
                     historyTab={
                       <HistoryList
                         key={selected.id}
@@ -181,7 +222,7 @@ function App() {
           )}
         </main>
       </div>
-      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={selectFunction} />
+      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={(fn) => selectByName(fn.name)} />
       <CommandPalette
         functions={functions}
         canInvoke={!!selectedId}
