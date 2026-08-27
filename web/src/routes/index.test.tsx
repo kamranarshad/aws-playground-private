@@ -21,7 +21,8 @@ it('handles an empty search', () => {
   expect(validateSearch({})).toEqual({ function: undefined, tab: undefined })
 })
 
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -38,6 +39,13 @@ vi.mock('@/lib/api', () => ({
     detect: vi.fn(async () => ({ envFiles: [], projectTrigger: null })),
     listHistory: vi.fn(async () => ({ entries: [] })),
     deleteFunction: vi.fn(async () => ({})),
+    invoke: vi.fn(async () => ({
+      ok: true,
+      phase: 'invoke',
+      response: { statusCode: 200 },
+      logs: '',
+      report: { requestId: 'r1', durationMs: 1, billedMs: 1, memoryMb: 128, timedOut: false },
+    })),
   },
 }))
 
@@ -114,13 +122,42 @@ it('pushes the clicked tab into the URL as a new history entry', async () => {
   expect(router.history.length).toBe(historyLenBefore + 1)
 })
 
-it('corrects the URL off the Checks tab (via replace) when there are no check results', async () => {
-  const router = await renderApp('/?function=order-lookup&tab=checks')
+it('corrects the URL off the Checks tab (via replace) when check results clear while checks is active', async () => {
+  const user = userEvent.setup()
+  const router = await renderApp('/?function=order-lookup')
+  await screen.findByRole('heading', { name: 'order-lookup' })
+
+  // Type a script (so the upcoming invoke produces check results, which is
+  // what makes the Checks tab exist at all — see ResultPanel). Focused
+  // directly, rather than via user.click, to avoid react-resizable-panels'
+  // document-level pointerdown listener: it hit-tests with
+  // getBoundingClientRect, which jsdom always reports as zero everywhere,
+  // so it would treat the click as landing on the resize handle and
+  // preventDefault() it, suppressing the compatibility mousedown a click
+  // would otherwise produce.
+  const scriptEditor = document.querySelectorAll('.cm-content')[1] as HTMLElement
+  scriptEditor.focus()
+  await user.keyboard('expect(response.statusCode).toBe(200)')
+
+  fireEvent.click(screen.getByRole('button', { name: /invoke/i }))
+  const checksTab = await screen.findByRole('tab', { name: 'Checks' })
+
+  // Radix's TabsTrigger selects on `mousedown`, not `click` — see the
+  // "pushes the clicked tab" test above for why this is a raw fireEvent
+  // rather than userEvent.
+  fireEvent.mouseDown(checksTab, { button: 0 })
+  expect(await screen.findByRole('tab', { name: 'Checks' })).toHaveAttribute('aria-selected', 'true')
+  expect(router.state.location.search.tab).toBe('checks')
+
   const historyLenBefore = router.history.length
 
-  await screen.findByRole('tab', { name: 'Response' })
+  // Editing the script clears checkResults (App's onScriptChange) while the
+  // URL's tab param is still 'checks' — the passive-clearing scenario the
+  // correcting effect exists for, without needing a second invoke.
+  scriptEditor.focus()
+  await user.keyboard('x')
 
-  expect(router.state.location.search.tab).toBeUndefined()
+  await waitFor(() => expect(router.state.location.search.tab).toBeUndefined())
   // replace, not push: the correction must not add a Back-able history entry
   expect(router.history.length).toBe(historyLenBefore)
 })
