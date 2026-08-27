@@ -61,3 +61,42 @@ test('services and trigger are both read independently from the same file', () =
   const dir = proj(JSON.stringify({ services: ['minio'], trigger: { type: 'http' } }));
   assert.deepStrictEqual(read(dir), { services: ['minio'], trigger: { type: 'http', enabled: true } });
 });
+
+test('valid s3 trigger is returned with enabled stamped true', () => {
+  const dir = proj(JSON.stringify({ trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'] } }));
+  assert.deepStrictEqual(read(dir),
+    { services: null, trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], enabled: true } });
+});
+
+test('an s3 trigger bucket, prefix, and suffix are trimmed; empty prefix/suffix are omitted', () => {
+  const dir = proj(JSON.stringify({
+    trigger: { type: 's3', bucket: '  uploads  ', events: ['ObjectCreated'], prefix: '  images/  ', suffix: '   ' },
+  }));
+  assert.deepStrictEqual(read(dir),
+    { services: null, trigger: { type: 's3', bucket: 'uploads', events: ['ObjectCreated'], enabled: true, prefix: 'images/' } });
+});
+
+test('an s3 trigger with no bucket, or no recognized events, is rejected', () => {
+  assert.deepStrictEqual(read(proj(JSON.stringify({ trigger: { type: 's3', events: ['ObjectCreated'] } }))),
+    { services: null, trigger: null });
+  assert.deepStrictEqual(read(proj(JSON.stringify({ trigger: { type: 's3', bucket: 'b' } }))),
+    { services: null, trigger: null });
+  assert.deepStrictEqual(read(proj(JSON.stringify({ trigger: { type: 's3', bucket: 'b', events: ['ObjectTagging'] } }))),
+    { services: null, trigger: null });
+});
+
+test('an s3 trigger with both event types keeps both, in the declared order', () => {
+  const dir = proj(JSON.stringify({
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectRemoved', 'ObjectCreated', 'ObjectTagging'] },
+  }));
+  assert.deepStrictEqual(read(dir),
+    { services: null, trigger: { type: 's3', bucket: 'b', events: ['ObjectRemoved', 'ObjectCreated'], enabled: true } });
+});
+
+test('a repeated s3 trigger event is deduped', () => {
+  const dir = proj(JSON.stringify({
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated', 'ObjectCreated', 'ObjectRemoved'] },
+  }));
+  assert.deepStrictEqual(read(dir),
+    { services: null, trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated', 'ObjectRemoved'], enabled: true } });
+});

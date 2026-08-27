@@ -146,6 +146,41 @@ Streams-triggered Lambda gets), with a `playground.json` that auto-starts
 DynamoDB Local when you select it — create the table, then enable the
 trigger from its trigger button to see it fire on inserts/updates/deletes.
 
+A function can also be invoked when an object is created or removed in a
+local MinIO bucket: click its trigger button, set the trigger type to "S3
+bucket", pick a bucket name and one or both event types (Object Created /
+Object Removed), and optionally a key prefix/suffix filter, then enable it.
+The playground auto-starts MinIO, creates the bucket if it doesn't exist,
+and configures a real MinIO webhook notification that POSTs to a shared
+listener at `http://localhost:9501` — the event the function receives is a
+real S3 event notification (`event.Records[0].eventName`, `.s3.bucket.name`,
+`.s3.object.key`), the same shape a real S3-triggered Lambda gets.
+Trigger-caused runs are tagged in the History tab the same way SQS- and
+HTTP-triggered ones are. See `fixtures/typescript/node-s3` for a worked
+example: enable the S3 trigger on it and `PutObject` into its bucket to see
+it fire.
+
+Unlike the SQS trigger (which just re-polls a message that arrives while
+another invoke is in flight) or the HTTP trigger (which answers the caller
+with `429`), the S3 trigger has nowhere to queue: an event that arrives
+while its function is already invoking is dropped, with no redelivery.
+
+If you used the playground before S3 triggers existed, you may have an
+`aws-playground-minio` container from back then — stopped containers are
+reused with `docker start` rather than recreated, so it won't have the
+webhook environment the trigger needs, and enabling one fails with a MinIO
+error about an unknown ARN. Run `docker rm -f aws-playground-minio` once;
+the next MinIO start recreates it with the right config.
+
+S3 triggers have only been validated on Docker Desktop (macOS/Windows),
+where `host.docker.internal` reaches the host's loopback interface and so
+the webhook listener on `127.0.0.1:9501` is reachable from inside the MinIO
+container. On native Linux Docker, `host.docker.internal` is mapped to the
+docker0 bridge gateway instead, which a loopback-only listener won't accept
+connections from — so S3 triggers may simply not fire there. The trigger
+still shows as "listening" in that case; it's a known limitation of this
+first cut, not something you've misconfigured.
+
 A project can declare its services in a `playground.json`:
 `{"services": ["minio", "elasticmq"]}`. The file is re-read fresh and
 overrides the manual toggles. Declared services auto-start when you

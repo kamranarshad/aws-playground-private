@@ -44,6 +44,16 @@ test('start runs a new container with volume, loopback ports, creds', async () =
   assert.ok(runCall.includes('minio/minio server /data'));
 });
 
+test('start configures the S3 trigger webhook target and host.docker.internal', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 0, stdout: 'abc123' } });
+  const r = await services.start('minio', { waitReady: false });
+  assert.strictEqual(r.ok, true);
+  const runCall = calls().find(c => c.startsWith('run'));
+  assert.ok(runCall.includes('MINIO_NOTIFY_WEBHOOK_ENABLE_PLAYGROUND=on'));
+  assert.ok(runCall.includes('MINIO_NOTIFY_WEBHOOK_ENDPOINT_PLAYGROUND=http://host.docker.internal:9501/'));
+  assert.ok(runCall.includes('--add-host=host.docker.internal:host-gateway'));
+});
+
 test('start reuses an existing stopped container via docker start', async () => {
   scenario({ inspect: { code: 0, stdout: 'false' }, start: { code: 0, stdout: 'aws-playground-minio' } });
   const r = await services.start('minio', { waitReady: false });

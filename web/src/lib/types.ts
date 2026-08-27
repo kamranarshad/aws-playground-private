@@ -10,6 +10,14 @@ export type FunctionTrigger =
   | { type: 'sqs'; queueName: string; enabled: boolean }
   | { type: 'http'; enabled: boolean }
   | { type: 'dynamodb'; tableName: string; enabled: boolean }
+  | {
+      type: 's3'
+      bucket: string
+      events: ('ObjectCreated' | 'ObjectRemoved')[]
+      prefix?: string
+      suffix?: string
+      enabled: boolean
+    }
 
 export interface FunctionDef {
   id: string
@@ -115,6 +123,7 @@ export type InvokeSource =
   | { type: 'manual' }
   | { type: 'trigger'; messageId: string }
   | { type: 'trigger'; method: string; path: string }
+  | { type: 'trigger'; bucket: string; key: string; eventName: string }
 
 export interface HistoryEntry {
   id: string
