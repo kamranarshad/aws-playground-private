@@ -141,7 +141,7 @@ export function App() {
         <main className="min-w-0 flex-1">
           {selected ? (
             <div className="flex h-full flex-col">
-              <FunctionHeader fn={selected} onDeleted={() => selectFunction(null)} />
+              <FunctionHeader key={`header-${selected.id}`} fn={selected} onDeleted={() => selectFunction(null)} />
               <EnvEditor key={selected.id} fn={selected} />
               <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
                 <ResizablePanel defaultSize={50} minSize={25}>

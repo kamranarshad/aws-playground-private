@@ -21,7 +21,7 @@ it('handles an empty search', () => {
   expect(validateSearch({})).toEqual({ function: undefined, tab: undefined })
 })
 
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 
 vi.mock('@/lib/api', () => ({
   api: {
@@ -59,4 +59,31 @@ it('falls back to the first function when the URL has no function param', async 
   await renderApp('/')
 
   expect(await screen.findByRole('heading', { name: 'order-lookup' })).toBeInTheDocument()
+})
+
+it('pushes the clicked function\'s name into the URL as a new history entry', async () => {
+  const router = await renderApp('/')
+  await screen.findByText('s3-handler')
+  const historyLenBefore = router.history.length
+
+  fireEvent.click(screen.getByText('s3-handler'))
+
+  expect(await screen.findByRole('heading', { name: 's3-handler' })).toBeInTheDocument()
+  expect(router.state.location.search).toEqual({ function: 's3-handler', tab: undefined })
+  expect(router.history.length).toBe(historyLenBefore + 1)
+})
+
+it('clears the function param when the selected function is deleted', async () => {
+  const router = await renderApp('/?function=s3-handler')
+  await screen.findByRole('heading', { name: 's3-handler' })
+
+  // FunctionHeader (web/src/components/function-header.tsx) puts the
+  // delete trigger behind an AlertDialog: an icon-only button labeled via
+  // aria-label "Delete function" opens it, and the confirm action's visible
+  // text is "Delete" ("Deleting…" while pending).
+  fireEvent.click(screen.getByRole('button', { name: 'Delete function' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Delete' }))
+
+  await screen.findByRole('heading', { name: 'order-lookup' })
+  expect(router.state.location.search.function).toBeUndefined()
 })
