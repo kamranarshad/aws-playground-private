@@ -153,6 +153,9 @@ async function invoke(opts) {
     memoryMb,
     timedOut: run.timedOut,
   };
+  if (envelope?.initMs != null) {
+    out.report.initMs = Math.round(envelope.initMs * 100) / 100;
+  }
   return out;
 }
 

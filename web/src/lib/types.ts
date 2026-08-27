@@ -98,6 +98,7 @@ export interface Report {
   memoryMb: number
   timedOut: boolean
   buildMs?: number
+  initMs?: number
 }
 
 export interface InvokeResult {

@@ -49,6 +49,16 @@ it('reports build duration separately from handler duration', async () => {
   expect(screen.getByText(/Build Duration: 340 ms/)).toBeInTheDocument()
 })
 
+it('shows Init Duration in the Report tab when the report includes initMs', async () => {
+  const withInit: InvokeResult = {
+    ...ok,
+    report: { ...ok.report, initMs: 42.5 },
+  }
+  render(<ResultPanel result={withInit} />)
+  await userEvent.click(screen.getByText('Report'))
+  expect(screen.getByText(/Init Duration: 42.5 ms/)).toBeInTheDocument()
+})
+
 it('badges a successful run with its duration', () => {
   render(<ResultPanel result={ok} />)
 

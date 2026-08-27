@@ -173,6 +173,7 @@ export function ResultPanel({ result, checkResults, historyTab }: {
               `Duration: ${result.report.durationMs} ms\n` +
               `Billed Duration: ${result.report.billedMs} ms\n` +
               `Memory Size: ${result.report.memoryMb} MB\n` +
+              (result.report.initMs != null ? `Init Duration: ${result.report.initMs} ms\n` : '') +
               (result.report.buildMs != null ? `Build Duration: ${result.report.buildMs} ms\n` : '') +
               (result.report.timedOut ? 'Status: TIMED OUT\n' : '')
             : 'No report yet.'}

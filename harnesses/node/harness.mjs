@@ -36,6 +36,8 @@ function namedError(name, message) {
   return e;
 }
 
+const harnessStart = process.hrtime.bigint();
+
 const event = JSON.parse(fs.readFileSync(0, 'utf8'));
 
 const dot = handlerSpec.lastIndexOf('.');
@@ -72,6 +74,7 @@ const context = {
 };
 
 const start = process.hrtime.bigint();
+const initMs = Number(start - harnessStart) / 1e6;
 try {
   const response = await new Promise((resolve, reject) => {
     const maybe = fn(event, context, (err, res) => (err ? reject(err) : resolve(res)));
@@ -80,7 +83,7 @@ try {
     // else: 3-arg callback style — wait for the callback
   });
   const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-  writeResult({ ok: true, phase: 'invoke', response: response ?? null, durationMs });
+  writeResult({ ok: true, phase: 'invoke', response: response ?? null, durationMs, initMs });
 } catch (err) {
   const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
   writeResult({ ok: false, phase: 'invoke', durationMs, error: shape(err) });

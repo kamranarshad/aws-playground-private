@@ -220,3 +220,30 @@ test('malformed handler string -> phase:init Runtime.MalformedHandlerName', asyn
   assert.strictEqual(envelope.phase, 'init');
   assert.strictEqual(envelope.error.type, 'Runtime.MalformedHandlerName');
 });
+
+// Test through invoker to verify initMs is threaded through correctly
+const { invoke } = require('../server/invoker');
+
+function baseInvoker(fixture, extra = {}) {
+  return {
+    name: 'test-fn',
+    dir: path.join(FIXTURES, fixture),
+    runtime: 'node',
+    handler: 'index.handler',
+    event: {},
+    ...extra,
+  };
+}
+
+test('node runtime reports initMs separately from durationMs', async () => {
+  const r = await invoke(baseInvoker('javascript/hello'));
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.report.initMs >= 0, `expected initMs >= 0, got ${r.report.initMs}`);
+  assert.ok(r.report.durationMs >= 0);
+});
+
+test('node handler exception does not report initMs', async () => {
+  const r = await invoke(baseInvoker('javascript/hello', { handler: 'does-not-exist.handler' }));
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(r.report.initMs, undefined);
+});
