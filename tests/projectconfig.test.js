@@ -92,3 +92,11 @@ test('an s3 trigger with both event types keeps both, in the declared order', ()
   assert.deepStrictEqual(read(dir),
     { services: null, trigger: { type: 's3', bucket: 'b', events: ['ObjectRemoved', 'ObjectCreated'], enabled: true } });
 });
+
+test('a repeated s3 trigger event is deduped', () => {
+  const dir = proj(JSON.stringify({
+    trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated', 'ObjectCreated', 'ObjectRemoved'] },
+  }));
+  assert.deepStrictEqual(read(dir),
+    { services: null, trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated', 'ObjectRemoved'], enabled: true } });
+});

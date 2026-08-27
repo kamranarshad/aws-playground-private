@@ -12,8 +12,11 @@ function parseTrigger(raw) {
   if (raw.type === 'http') return { type: 'http', enabled: true };
   if (raw.type === 's3') {
     if (typeof raw.bucket !== 'string' || !raw.bucket.trim()) return null;
+    // Deduped as well as filtered: a repeated event means nothing extra, and
+    // a duplicate would make a real events-list change look unchanged to the
+    // trigger manager's route comparison.
     const events = Array.isArray(raw.events)
-      ? raw.events.filter((e) => e === 'ObjectCreated' || e === 'ObjectRemoved')
+      ? [...new Set(raw.events.filter((e) => e === 'ObjectCreated' || e === 'ObjectRemoved'))]
       : [];
     if (events.length === 0) return null;
     const trigger = { type: 's3', bucket: raw.bucket.trim(), events, enabled: true };

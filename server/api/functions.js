@@ -25,6 +25,11 @@ function triggerError(trigger) {
       || !trigger.events.every((e) => e === 'ObjectCreated' || e === 'ObjectRemoved')) {
       return "trigger.events must be a non-empty array of 'ObjectCreated'/'ObjectRemoved'";
     }
+    // Normalized in place (this object is the one that goes on to the store):
+    // a repeated event means nothing extra, and a stored duplicate would make
+    // a real events-list change look unchanged to the trigger manager's
+    // route comparison, silently skipping the reconfigure.
+    trigger.events = [...new Set(trigger.events)];
     if (trigger.prefix !== undefined && typeof trigger.prefix !== 'string') return 'trigger.prefix must be a string';
     if (trigger.suffix !== undefined && typeof trigger.suffix !== 'string') return 'trigger.suffix must be a string';
   }
