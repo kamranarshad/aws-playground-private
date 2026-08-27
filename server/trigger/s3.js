@@ -30,16 +30,20 @@ function matchesRoute(route, category, key) {
   return true;
 }
 
-// MinIO (like real S3) percent-encodes the object key inside the
+// MinIO (like real S3) form-URL-encodes the object key inside the
 // notification payload — e.g. a real key of "images/pic.png" arrives here
 // as "images%2Fpic.png" — so a raw-key comparison against a plain prefix
-// like "images/" would never match. Decoded once here purely for our own
-// routing/matching/display purposes; a malformed percent-sequence falls
-// back to the raw value rather than throwing, since createRequestHandler's
-// caller only wraps dispatch() as a whole, not this specific step.
+// like "images/" would never match. That encoding also writes a literal
+// space as "+" (and a literal "+" as "%2B"), so "+" is turned back into a
+// space *before* percent-decoding — otherwise a key of "my file.txt"
+// arrives as "my+file.txt" and a prefix filter of "my " silently never
+// matches. Decoded once here purely for our own routing/matching/display
+// purposes; a malformed percent-sequence falls back to the raw value rather
+// than throwing, since createRequestHandler's caller only wraps dispatch()
+// as a whole, not this specific step.
 function decodeKey(rawKey) {
   try {
-    return decodeURIComponent(rawKey);
+    return decodeURIComponent(rawKey.replace(/\+/g, '%20'));
   } catch {
     return rawKey;
   }
@@ -158,6 +162,13 @@ function createListener({ routesFor, invokeFunction, port = PORT, host = HOST } 
     server.once('error', reject);
     server.listen(port, host, () => {
       server.removeListener('error', reject);
+      // An 'error' emitted after a successful bind (e.g. an accept-queue
+      // error) has no listener left to catch it, and an unhandled 'error' on
+      // an EventEmitter takes the whole process down. Log it instead — same
+      // shape as server/trigger/http.js's post-bind onError re-attachment.
+      server.on('error', (err) => {
+        console.warn(`aws-playground: S3 webhook listener error: ${err.message}`);
+      });
       resolve({ server, stop: () => server.close() });
     });
   });

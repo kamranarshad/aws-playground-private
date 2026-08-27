@@ -59,6 +59,38 @@ test('dispatch decodes a percent-encoded key for prefix matching and source.key,
   assert.strictEqual(invoked[0].event.Records[0].s3.object.key, 'images%2Fpic.png');
 });
 
+test('dispatch decodes a "+" in the key back to a space for prefix matching and source.key', () => {
+  const invoked = [];
+  // S3/MinIO form-URL-encode a literal space as "+" (and a literal "+" as
+  // "%2B"), so a prefix filter of "my " only matches once "+" is decoded.
+  dispatch(record('s3:ObjectCreated:Put', 'my-bucket', 'my+file.txt'), {
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'], prefix: 'my ' }],
+    invokeFunction: async (input) => { invoked.push(input); return { status: 200 }; },
+  });
+  assert.deepStrictEqual(invoked.map((i) => i.functionId), ['f1']);
+  assert.strictEqual(invoked[0].source.key, 'my file.txt');
+  assert.strictEqual(invoked[0].event.Records[0].s3.object.key, 'my+file.txt');
+});
+
+test('dispatch decodes an escaped literal "+" in the key as a "+", not a space', () => {
+  const invoked = [];
+  dispatch(record('s3:ObjectCreated:Put', 'my-bucket', 'a%2Bb.txt'), {
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'], prefix: 'a+' }],
+    invokeFunction: async (input) => { invoked.push(input); return { status: 200 }; },
+  });
+  assert.deepStrictEqual(invoked.map((i) => i.functionId), ['f1']);
+  assert.strictEqual(invoked[0].source.key, 'a+b.txt');
+});
+
+test('dispatch falls back to the raw key when it carries a malformed percent-sequence', () => {
+  const invoked = [];
+  dispatch(record('s3:ObjectCreated:Put', 'my-bucket', 'bad%ZZ.txt'), {
+    routesFor: () => [{ functionId: 'f1', events: ['ObjectCreated'] }],
+    invokeFunction: async (input) => { invoked.push(input); return { status: 200 }; },
+  });
+  assert.strictEqual(invoked[0].source.key, 'bad%ZZ.txt');
+});
+
 test('dispatch is a no-op for an unrouted bucket or an unrecognized event name', () => {
   let called = false;
   const invokeFunction = async () => { called = true; };
