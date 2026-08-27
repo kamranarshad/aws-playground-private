@@ -21,7 +21,7 @@ it('handles an empty search', () => {
   expect(validateSearch({})).toEqual({ function: undefined, tab: undefined })
 })
 
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/lib/api', () => {
@@ -199,7 +199,7 @@ it('restores the previously selected function on Back navigation', async () => {
   fireEvent.click(screen.getByText('s3-handler'))
   await screen.findByRole('heading', { name: 's3-handler' })
 
-  router.history.back()
+  await act(() => router.history.back())
 
   await screen.findByRole('heading', { name: 'order-lookup' })
 })
