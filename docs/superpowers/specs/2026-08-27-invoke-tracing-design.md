@@ -188,15 +188,33 @@ never poll.
 - **No OTel SDK in the handler**: no POSTs ever arrive; `trace = { spans:
   [], pending: false }`; empty state shown. Zero behavior change for the
   common case.
-- **Handler doesn't flush its span processor before returning**: spans sit
-  in the SDK's internal batch buffer and are lost when the child process
-  exits (`process.exit(0)` right after the harness writes its result-file).
-  This mirrors the real constraint AWS's own OTel Lambda layer works around
-  by forcing a flush on invoke-complete — not something the playground
-  papers over. Documented in the Trace tab's empty state and README, which
-  also point at the simplest fix: use a `SimpleSpanProcessor` (exports
-  synchronously when a span ends) instead of the default
-  `BatchSpanProcessor` for local playground use.
+- **Handler doesn't flush its span processor before returning**: verified
+  empirically while writing this spec (ran a real `@opentelemetry/sdk-trace`
+  + `@opentelemetry/exporter-trace-otlp-proto` handler through the real Node
+  harness against a throwaway receiver) — without an explicit `await
+  provider.forceFlush()` before the handler returns, **no span arrives at
+  all**, even with `SimpleSpanProcessor`. Ending a span only *starts* its
+  export; the actual HTTP POST is asynchronous I/O, and
+  `process.exit(0)` (right after the harness writes its result-file) kills
+  the process before that I/O completes, every time, regardless of
+  processor type — `SimpleSpanProcessor` vs `BatchSpanProcessor` only
+  changes how much gets buffered before an export starts, not whether the
+  export's completion is awaited. This mirrors the real constraint AWS's
+  own OTel Lambda layer works around by forcing a flush on invoke-complete
+  — not something the playground papers over. Documented in the Trace
+  tab's empty state and README: call `forceFlush()` (or `shutdown()`)
+  before returning, unconditionally.
+- **Handler builds its own `Resource` without env detection**: also
+  verified empirically — a `Resource` built via `resourceFromAttributes({
+  ... })` alone does **not** pick up `OTEL_RESOURCE_ATTRIBUTES`; only
+  `@opentelemetry/resources`' `envDetector` reads that env var, and it must
+  be explicitly merged in (`resourceFromAttributes({...}).merge(detectResources({
+  detectors: [envDetector] }))`) for the `faas.invocation_id` correlation
+  attribute to reach the span at all. `@opentelemetry/sdk-node`'s `NodeSDK`
+  (the higher-level, commonly-recommended entry point) includes
+  `envDetector` in its resource detectors by default, so this only bites
+  handlers that hand-rolled a lower-level `TracerProvider` setup — also
+  documented in the README/empty-state alongside the flush requirement.
 - **Malformed OTLP payload**: `400`, payload dropped, no effect on any
   invoke in flight.
 - **Spans for an unknown or already-closed `requestId`**: dropped silently
@@ -265,14 +283,15 @@ just `JSON.parse` plus reading the proto3 JSON mapping's field names
   correctly; a malformed body returns `400`.
 - `tests/history.test.js`: `appendSpans` merges into an existing JSONL entry
   and updates `pending`.
-- End-to-end: a new `fixtures/typescript/otel-span` fixture (own
-  `package.json`, installed by `npm run install:fixtures` like the other
-  TypeScript fixtures, tests skipped when its `dist/` isn't built) whose
-  handler creates one OTel span through a `SimpleSpanProcessor` (exports
-  synchronously on span end — no explicit flush needed, sidestepping the
-  batch-processor/process-exit race described above) before returning,
-  asserting it round-trips into the invoke result via the real
-  `/v1/traces` route end to end.
+- End-to-end: a new `fixtures/typescript/otel-span` fixture, its committed
+  `dist/index.js` bundled the same way `fixtures/typescript/node-s3` is
+  (own `package.json`, `npm install && npm run build` run once and the
+  output committed, tests skipped if `dist/` is missing). Its handler
+  builds a `TracerProvider` with a merged env-detected `Resource` (per the
+  gotcha above) and a `SimpleSpanProcessor`, creates one span, and calls
+  `await provider.forceFlush()` before returning — the exact shape verified
+  by hand while writing this spec. The test asserts the span round-trips
+  into the invoke result via the real `/v1/traces` route end to end.
 - Web: `result-panel.test.tsx` gains Trace tab cases — empty state, span
   list rendering with parent/child indentation, polling while `pending` is
   true and stopping once it flips to false.
