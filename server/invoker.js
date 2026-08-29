@@ -4,6 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { findVenvPython } = require('./detect');
+const traceReceiver = require('./trace-receiver');
+const traceCollector = require('./trace-collector');
 
 const HARNESS_DIR = path.join(__dirname, '..', 'harnesses');
 
@@ -61,19 +63,23 @@ function projectDirProblem(dir) {
   return null;
 }
 
-function buildEnv(opts, memoryMb) {
+function buildEnv(opts, memoryMb, requestId, otlpEndpoint) {
   const env = {};
   for (const k of BASE_ENV_KEYS) if (process.env[k]) env[k] = process.env[k];
   env.AWS_LAMBDA_FUNCTION_NAME = opts.name || 'playground';
   env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE = String(memoryMb);
   env.AWS_LAMBDA_FUNCTION_VERSION = '$LATEST';
   env.AWS_REGION = 'us-east-1';
+  env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = otlpEndpoint;
+  env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = 'http/protobuf';
+  env.OTEL_RESOURCE_ATTRIBUTES = `faas.invocation_id=${requestId}`;
   Object.assign(env, opts.env || {});
   return env;
 }
 
 async function invoke(opts) {
   const requestId = crypto.randomUUID();
+  traceCollector.open(requestId, opts.id);
   const timeoutMs = opts.timeoutMs ?? 30000;
   const memoryMb = opts.memoryMb ?? 128;
   const resultFile = path.join(os.tmpdir(), `awsplay-${requestId}.json`);
@@ -81,7 +87,8 @@ async function invoke(opts) {
     '--timeout-ms', String(timeoutMs), '--memory-mb', String(memoryMb),
     '--request-id', requestId];
   const { cmd, args } = command(opts, harnessArgs);
-  const env = buildEnv(opts, memoryMb);
+  const otlpEndpoint = await traceReceiver.endpoint();
+  const env = buildEnv(opts, memoryMb, requestId, otlpEndpoint);
 
   const startedAt = Date.now();
   const dirProblem = projectDirProblem(opts.dir);
@@ -156,6 +163,8 @@ async function invoke(opts) {
   if (envelope?.initMs != null) {
     out.report.initMs = Math.round(envelope.initMs * 100) / 100;
   }
+  const { spans } = traceCollector.snapshotAndStartWindow(requestId);
+  out.trace = { spans, pending: true };
   return out;
 }
 
