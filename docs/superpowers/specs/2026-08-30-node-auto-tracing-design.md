@@ -48,6 +48,24 @@ original non-goal: the playground never modifies a user's project.
   env var, same receiver, same collector, same Trace tab. Nothing about
   span capture, correlation, or display changes; this spec is purely about
   how spans get *created* without hand-written SDK code.
+- **Only handlers Node loads as CommonJS actually get auto-traced.**
+  Verified by hand: OTel's Node auto-instrumentation patches libraries by
+  hooking CommonJS's `require()`; a handler loaded as a native ES module
+  never goes through that hook, so it runs correctly but silently produces
+  zero auto-instrumented spans — not an error, just an empty trace, the
+  same "no tracing configured" outcome a handler with no OTel code at all
+  already produces today. This is *not* about the handler's source
+  language — every existing TypeScript fixture in this repo (including
+  `otel-span`) is esbuild-bundled to CommonJS output by default (confirmed
+  by reading the actual bundled `dist/index.js`: `require(...)` calls, not
+  `import`), so bundled TS handlers are covered same as hand-written
+  `.js`/`.cjs` ones. The gap is specifically: a `.mjs` handler, or a `.js`
+  handler with `"type": "module"` in its `package.json`, invoked without a
+  CJS-emitting build step. Documented plainly in the README rather than
+  worked around — there is a general fix (Node's `module.register()` ESM
+  loader hook, stable since Node 20.6, which this project's Node ≥22.12
+  floor supports), but it adds real complexity and is left for a later
+  iteration if the gap turns out to matter in practice.
 
 ## Detection: does this project already have its own tracing?
 
@@ -77,9 +95,16 @@ own testable unit separate from `invoker.js`'s control flow.
 
 ## The bootstrap
 
-New file `harnesses/node/auto-trace-bootstrap.mjs` — a playground-owned
+New file `harnesses/node/auto-trace-bootstrap.cjs` — a playground-owned
 file, loaded via Node's `--require` flag, never copied into or referenced
-from the user's project. It:
+from the user's project. **Must be `.cjs` (CommonJS), not `.mjs`** — verified
+by hand: OTel's Node auto-instrumentation patches libraries by hooking
+CommonJS's `require()` (via `require-in-the-middle`), which native ES
+module `import` statements never go through at all. A `.cjs` bootstrap
+loaded via `--require` patches `require()` globally regardless of the
+bootstrap file's own module type, so this only affects the bootstrap
+itself, not what it's able to intercept — see the handler-format
+constraint below for the half that isn't fixable this way. It:
 
 1. Registers `AsyncLocalStorageContextManager` (from
    `@opentelemetry/context-async-hooks`) as the global context manager —
@@ -121,7 +146,7 @@ every time a new library gets added to the ecosystem). `@opentelemetry/instrumen
 `{ cmd: process.execPath, args: [harnessPath, ...harnessArgs] }` for
 `runtime === 'node'`. When auto-tracing applies for this invoke (opt-in
 flag set, no existing tracing setup detected), the args array gains
-`--require <absolute-path-to-auto-trace-bootstrap.mjs>` inserted **before**
+`--require <absolute-path-to-auto-trace-bootstrap.cjs>` inserted **before**
 the harness script path — Node only honors CLI flags positioned before the
 script argument, so this ordering is load-bearing, not stylistic.
 `invoke()` computes the detection result once, before calling `command()`,
@@ -162,6 +187,12 @@ PATCH pattern `LocalServiceToggles` already uses.
 - **`package.json` missing, unreadable, or has no `dependencies`/`devDependencies`
   object:** treated as "no existing tracing setup" — auto-tracing applies.
   Never throws; never blocks an invoke.
+- **Handler is a native ES module** (`.mjs`, or `.js` with `"type": "module"`
+  and no CJS-emitting build step): per the Scope decisions section above,
+  produces zero auto-instrumented spans, not an error — indistinguishable
+  in the Trace tab from a handler that never opted in at all. No detection
+  or warning is added for this case in this iteration; it's documented in
+  the README as a known boundary instead.
 - **The auto-instrumentation bootstrap itself throws during module load**
   (a bad/incompatible library version, an unexpected environment): this
   would currently surface as a generic init failure for the whole invoke,
@@ -222,13 +253,16 @@ dependency too, for the bootstrap's own context manager registration).
   include `--require` pointed at the bootstrap file, positioned before the
   harness script path; a case asserting that with an existing
   `@opentelemetry/sdk-trace*` dependency present, no `--require` is added.
-- A new fixture, `fixtures/typescript/auto-trace-http`: a plain Node
-  handler with **no OTel code at all** that makes one real outgoing `http`
-  request (to a local test server, mirroring `harness-node-s3.test.js`'s
+- A new fixture, `fixtures/javascript/auto-trace-http`: a plain
+  hand-written CommonJS handler (`exports.handler = ...`, `require('http')`,
+  matching `fixtures/javascript/hello`'s existing convention — no build
+  step needed) with **no OTel code at all**, making one real outgoing
+  `http` request to a local test server (mirroring `harness-node-s3.test.js`'s
   in-test HTTP stub pattern) — proving the auto-instrumentation path
   captures a real span for a library the handler never manually
-  instrumented. A committed, pre-built `dist/index.js`, same pattern as
-  every other TypeScript fixture.
+  instrumented. Deliberately plain JavaScript, not a TypeScript+esbuild
+  fixture, both because no build step is needed to demonstrate this and
+  to keep the "which handlers actually get patched" story simple to read.
 - An end-to-end test (`tests/harness-node-autotrace.test.js`, mirroring
   `tests/harness-node-otel.test.js`'s structure) spawning the real Node
   harness with `--require` against the real trace-receiver, asserting a
