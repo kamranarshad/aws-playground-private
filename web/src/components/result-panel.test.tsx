@@ -220,6 +220,35 @@ it('treats an empty-message script error as an error rather than a pass', async 
   expect(screen.getByLabelText('Script error')).toBeInTheDocument()
 })
 
+it('shows the Trace tab\'s empty state when the result has no spans', async () => {
+  const withEmptyTrace: InvokeResult = { ...ok, trace: { spans: [], pending: false } }
+  render(<ResultPanel result={withEmptyTrace} />)
+  await userEvent.click(screen.getByText('Trace'))
+  expect(screen.getByText(/No spans received/)).toBeInTheDocument()
+})
+
+it('shows the Trace tab before any invoke has happened', async () => {
+  render(<ResultPanel result={null} />)
+  await userEvent.click(screen.getByText('Trace'))
+  expect(screen.getByText(/No spans received/)).toBeInTheDocument()
+})
+
+it('renders captured spans in the Trace tab', async () => {
+  const withSpans: InvokeResult = {
+    ...ok,
+    trace: {
+      pending: false,
+      spans: [{
+        traceId: 'aa', spanId: 'bb', parentSpanId: null, name: 'do-work',
+        startTimeUnixNano: '1000000000', endTimeUnixNano: '1005000000', attributes: {},
+      }],
+    },
+  }
+  render(<ResultPanel result={withSpans} />)
+  await userEvent.click(screen.getByText('Trace'))
+  expect(screen.getByText('do-work')).toBeInTheDocument()
+})
+
 // Radix keeps the selected tab value internally, so when checkResults goes
 // back to null on the next invoke the Checks trigger and content both unmount
 // while "checks" stays selected — leaving the panel entirely blank.
