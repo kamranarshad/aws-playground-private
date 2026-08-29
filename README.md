@@ -218,6 +218,44 @@ Datadog's JSON intake shape, switched with `{"format":"json"}`.
 rather than through a logging framework so its `build.sh` stays as dependency-free
 as `fixtures/java/hello`'s.
 
+## Trace
+
+The Trace tab appears in the result panel once a handler has captured
+OpenTelemetry spans. Every invoke gets three OTLP env vars injected:
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (the playground's span receiver),
+`OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf`, and
+`OTEL_RESOURCE_ATTRIBUTES=faas.invocation_id=<requestId>` (used to correlate
+spans back to the invoke). Any handler that configures its tracer provider
+from env — the standard pattern for OpenTelemetry SDKs — picks these up
+automatically with zero playground-specific code.
+
+Spans are shown as a flat list ordered by start time, indented by parent-child
+relationships. If no spans arrive, the tab shows an empty state; this is normal
+for handlers without an OpenTelemetry SDK.
+
+**Two gotchas verified while building this feature:**
+
+1. **Handler must flush before returning**: Ending a span only *starts* its
+   asynchronous export — the HTTP POST won't complete before the process exits
+   unless the handler explicitly calls `await provider.forceFlush()` (or
+   `shutdown()`) before returning. This applies regardless of the span processor
+   type (SimpleSpanProcessor vs. BatchSpanProcessor only affect buffering, not
+   export completion). See `fixtures/typescript/otel-span` for a working example.
+
+2. **Hand-built Resource doesn't pick up `OTEL_RESOURCE_ATTRIBUTES`**: A
+   `Resource` created via `resourceFromAttributes({...})` alone does not read
+   the `OTEL_RESOURCE_ATTRIBUTES` env var; only `@opentelemetry/resources`'
+   `envDetector` reads it. For the playground's per-invoke correlation attribute
+   (`faas.invocation_id`) to reach your spans, merge the two:
+   `resourceFromAttributes({...}).merge(detectResources({ detectors: [envDetector] }))`.
+   Higher-level SDKs like `@opentelemetry/sdk-node`'s `NodeSDK` include
+   `envDetector` by default, so this only affects hand-rolled lower-level
+   `TracerProvider` setups.
+
+The Report tab also gained an **Init Duration** line showing module
+resolve/import time separately from handler execution time, matching the
+`REPORT` line format in real Lambda's CloudWatch logs.
+
 ## Data
 
 Registered functions, per-function env vars, and saved events live in
