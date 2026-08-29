@@ -7,7 +7,7 @@ import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
 import { LogViewer } from '@/components/log-viewer'
-import { TracePanel } from '@/components/trace-panel'
+import { TraceTab } from '@/components/trace-tab'
 import type { AssertionRun } from '@/lib/assertions'
 import { cn } from '@/lib/utils'
 import type { InvokeResult, ResultTab } from '@/lib/types'
@@ -182,7 +182,7 @@ export function ResultPanel({ result, checkResults, historyTab, activeTab, onAct
         </Pane>
       </TabsContent>
       <TabsContent value="trace" className="min-h-0 flex-1">
-        <TracePanel key={result?.report.requestId ?? 'empty'} spans={result?.trace?.spans ?? []} />
+        <TraceTab key={result?.report.requestId ?? 'empty'} spans={result?.trace?.spans ?? []} />
       </TabsContent>
       {checkResults != null && (
         <TabsContent value="checks" className="min-h-0 flex-1">
