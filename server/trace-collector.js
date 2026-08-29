@@ -33,21 +33,32 @@ function snapshotAndStartWindow(requestId) {
   const buf = buffers.get(requestId);
   if (!buf) return { spans: [] };
   const spans = buf.spans.slice();
-  buf.closesAt = Date.now() + windowMs();
-  const timer = setTimeout(() => close(requestId), windowMs());
+  const ms = windowMs();
+  buf.closesAt = Date.now() + ms;
+  const timer = setTimeout(() => close(requestId), ms);
   timer.unref?.();
   timers.set(requestId, timer);
   return { spans };
 }
 
+// Non-mutating read of the live buffer, used by the read API to answer
+// "is this invoke's trace still open" from memory instead of disk. Once
+// close() removes the buffer, its absence IS the pending:false signal --
+// no persisted flag is needed for that, which is what lets close() below
+// skip writing to history entirely.
+function peek(requestId) {
+  return buffers.get(requestId) ?? null;
+}
+
+// No history write here: any spans that actually arrived were already
+// persisted incrementally by ingest() above. The only thing this used to
+// write was a pending:false flag -- now derived live from peek() instead,
+// which is what removes a full read-parse-rewrite of the function's whole
+// history file from every single invoke's tail end.
 function close(requestId) {
-  const buf = buffers.get(requestId);
   buffers.delete(requestId);
   const timer = timers.get(requestId);
   if (timer) { clearTimeout(timer); timers.delete(requestId); }
-  if (buf?.functionId) {
-    try { history.appendSpans(buf.functionId, requestId, [], false); } catch {}
-  }
 }
 
-module.exports = { open, ingest, snapshotAndStartWindow, close, windowMs };
+module.exports = { open, ingest, snapshotAndStartWindow, peek, close, windowMs };

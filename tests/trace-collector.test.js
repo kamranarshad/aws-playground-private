@@ -33,14 +33,39 @@ test('spans ingested during the post-exit window are persisted to history', asyn
   assert.strictEqual(found.trace.pending, true);
 });
 
-test('the window closes after windowMs, drops the buffer, and marks history not pending', async () => {
-  history.append('fn-c', { report: { requestId: 'req-3', durationMs: 1 }, ok: true, logs: '' });
+test('the window closes after windowMs and drops the buffer, without touching history', async () => {
+  // Seeded the way a real invoke persists it: invoker.js writes
+  // trace: { spans, pending: true } into the history entry it appends.
+  history.append('fn-c', { report: { requestId: 'req-3', durationMs: 1 }, ok: true, logs: '',
+    trace: { spans: [], pending: true } });
   traceCollector.open('req-3', 'fn-c');
   traceCollector.snapshotAndStartWindow('req-3');
+  assert.ok(traceCollector.peek('req-3'), 'buffer is live while the window is open');
   await new Promise((resolve) => setTimeout(resolve, 80));
+  // The buffer being gone IS the "not pending" signal now -- close() no
+  // longer rewrites the whole history file just to flip a stored flag, so
+  // the persisted record keeps whatever pending value it was last written
+  // with. Deriving pending from this is api/history.js's getInvokeTrace job.
+  assert.strictEqual(traceCollector.peek('req-3'), null);
   const found = history.getByRequestId('fn-c', 'req-3');
-  assert.strictEqual(found.trace.pending, false);
+  assert.strictEqual(found.trace.pending, true, 'close() must not rewrite history');
   // a straggler after close is dropped, not reopening the window
   traceCollector.ingest('req-3', [{ name: 'too-late' }]);
+  assert.strictEqual(traceCollector.peek('req-3'), null);
   assert.strictEqual(history.getByRequestId('fn-c', 'req-3').trace.spans.length, 0);
+});
+
+test('peek exposes the live buffer while open and nothing once closed or never opened', async () => {
+  assert.strictEqual(traceCollector.peek('never-opened-peek'), null);
+
+  traceCollector.open('req-4', 'fn-d');
+  traceCollector.ingest('req-4', [{ name: 'span-p' }]);
+  assert.deepStrictEqual(traceCollector.peek('req-4').spans, [{ name: 'span-p' }]);
+  assert.strictEqual(traceCollector.peek('req-4').functionId, 'fn-d');
+
+  traceCollector.snapshotAndStartWindow('req-4');
+  assert.deepStrictEqual(traceCollector.peek('req-4').spans, [{ name: 'span-p' }]);
+
+  traceCollector.close('req-4');
+  assert.strictEqual(traceCollector.peek('req-4'), null);
 });
