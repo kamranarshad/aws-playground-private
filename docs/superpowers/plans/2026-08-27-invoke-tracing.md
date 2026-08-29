@@ -28,26 +28,14 @@
 - Modify: `server/invoker.js:147-155`
 - Modify: `web/src/lib/types.ts` (the `Report` interface)
 - Modify: `web/src/components/result-panel.tsx` (the Report tab)
-- Test: `tests/harness-node.test.js`, `tests/invoker.test.js`, `web/src/components/result-panel.test.tsx`
+- Test: `tests/harness-node.test.js` (new file), `web/src/components/result-panel.test.tsx`
 
 **Interfaces:**
 - Produces: every harness's success envelope may include a numeric `initMs` field; `invoker.js`'s `invoke()` return value's `report` object may include `initMs` (rounded to 2 decimals, same as `durationMs`). Later tasks (2-4) rely on this same `report.initMs` field name and rounding.
 
 - [ ] **Step 1: Write the failing harness test**
 
-Add to `tests/harness-node.test.js` (it currently tests the node runtime only via `invoker.test.js`'s `'node runtime works through the invoker'` case — add a dedicated assertion there):
-
-```js
-test('node runtime reports initMs separately from durationMs', () => {
-  return invoke(base('javascript/hello', { runtime: 'node', handler: 'index.handler' })).then((r) => {
-    assert.strictEqual(r.ok, true);
-    assert.ok(r.report.initMs >= 0, `expected initMs >= 0, got ${r.report.initMs}`);
-    assert.ok(r.report.durationMs >= 0);
-  });
-});
-```
-
-This test doesn't exist yet in `tests/harness-node.test.js` — that file doesn't exist as a dedicated file today (Node coverage lives in `tests/invoker.test.js`); create `tests/harness-node.test.js` with:
+`tests/harness-node.test.js` does not exist yet — dedicated Node-runtime coverage today lives only inside `tests/invoker.test.js` (e.g. its `'node runtime works through the invoker'` case), which this task leaves untouched. Create `tests/harness-node.test.js` with:
 
 ```js
 const { test } = require('node:test');
