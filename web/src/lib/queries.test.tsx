@@ -11,11 +11,14 @@ vi.mock('@/lib/api', () => ({
     }),
     listTriggerStatus: vi.fn().mockResolvedValue({}),
     listHistory: vi.fn().mockResolvedValue({ entries: [] }),
+    getTrace: vi.fn().mockResolvedValue({ trace: { spans: [], pending: true } }),
   },
 }))
 
 import { api } from '@/lib/api'
-import { useHistoryQuery, useReleaseSelectionOnUnload, useServices, useTriggerStatus } from '@/lib/queries'
+import {
+  useHistoryQuery, useReleaseSelectionOnUnload, useServices, useTracePoll, useTriggerStatus,
+} from '@/lib/queries'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -95,4 +98,23 @@ it('polls history so a trigger-caused run shows up without reselecting the funct
 
   await act(() => vi.advanceTimersByTimeAsync(5_000))
   expect(api.listHistory).toHaveBeenCalledTimes(2)
+})
+
+it('polls for a trace only while pending is true, and stops once told pending is false', async () => {
+  vi.useFakeTimers()
+  const { rerender } = renderHook(
+    ({ pending }: { pending: boolean }) => useTracePoll('fn-1', 'req-1', pending),
+    { wrapper: makeWrapper(), initialProps: { pending: true } },
+  )
+
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(api.getTrace).toHaveBeenCalledTimes(1)
+
+  await act(() => vi.advanceTimersByTimeAsync(1_500))
+  expect(api.getTrace).toHaveBeenCalledTimes(2)
+
+  rerender({ pending: false })
+  const callsAtStop = vi.mocked(api.getTrace).mock.calls.length
+  await act(() => vi.advanceTimersByTimeAsync(5_000))
+  expect(api.getTrace).toHaveBeenCalledTimes(callsAtStop)
 })

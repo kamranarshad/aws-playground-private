@@ -76,6 +76,7 @@ async function invokeFunction(input) {
       };
     } else {
       result = await invoke({
+        id: fn.id,
         name: fn.name,
         dir: fn.path,
         runtime: fn.runtime,
@@ -104,6 +105,7 @@ async function invokeFunction(input) {
         error: result.error ?? null,
         logs: result.logs,
         report: result.report,
+        trace: result.trace ?? null,
         durationMs: result.report.durationMs,
         ok: result.ok,
         source: source ?? { type: 'manual' },

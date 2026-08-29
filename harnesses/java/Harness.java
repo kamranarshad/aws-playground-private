@@ -30,6 +30,7 @@ public class Harness {
     static final Gson GSON = new GsonBuilder().serializeNulls().create();
 
     public static void main(String[] argv) throws Exception {
+        long harnessStart = System.nanoTime();
         Map<String, String> args = parseArgs(argv);
         String resultFile = args.get("--result-file");
         String handlerSpec = args.getOrDefault("--handler", "");
@@ -58,13 +59,14 @@ public class Harness {
                 target = cls.getDeclaredConstructor().newInstance();
             }
         } catch (Throwable t) {
-            writeResult(resultFile, envelope(false, "init", null, error(t), 0));
+            writeResult(resultFile, envelope(false, "init", null, error(t), 0, null));
             return;
         }
 
         long deadline = System.currentTimeMillis() + timeoutMs;
         Class<?>[] pts = method.getParameterTypes();
         long start = System.nanoTime();
+        double initMs = (start - harnessStart) / 1e6;
         try {
             Object responseTree;
             if (pts.length == 3 && InputStream.class.isAssignableFrom(pts[0])) {
@@ -88,12 +90,12 @@ public class Harness {
                 responseTree = result == null ? null : GSON.toJsonTree(result);
             }
             double durationMs = (System.nanoTime() - start) / 1e6;
-            writeResult(resultFile, envelope(true, "invoke", responseTree, null, durationMs));
+            writeResult(resultFile, envelope(true, "invoke", responseTree, null, durationMs, initMs));
         } catch (Throwable t) {
             double durationMs = (System.nanoTime() - start) / 1e6;
             Throwable cause = t instanceof java.lang.reflect.InvocationTargetException
                 && t.getCause() != null ? t.getCause() : t;
-            writeResult(resultFile, envelope(false, "invoke", null, error(cause), durationMs));
+            writeResult(resultFile, envelope(false, "invoke", null, error(cause), durationMs, null));
         }
     }
 
@@ -151,13 +153,14 @@ public class Harness {
     }
 
     static Map<String, Object> envelope(boolean ok, String phase, Object response,
-                                        Map<String, Object> error, double durationMs) {
+                                        Map<String, Object> error, double durationMs, Double initMs) {
         Map<String, Object> env = new LinkedHashMap<>();
         env.put("ok", ok);
         env.put("phase", phase);
         if (response != null) env.put("response", response);
         if (error != null) env.put("error", error);
         env.put("durationMs", durationMs);
+        if (initMs != null) env.put("initMs", initMs);
         return env;
     }
 

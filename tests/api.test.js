@@ -61,6 +61,48 @@ test('function CRUD with validation', async () => {
   assert.strictEqual(r.status, 404);
 });
 
+test('getInvokeTrace returns 404 for an unknown function, null trace when none recorded, and the persisted trace otherwise', { skip: noPy }, async () => {
+  let r = api.createFunction({ name: 'trace-fn', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const id = r.body.id;
+
+  r = api.getInvokeTrace('no-such-fn', 'req-1');
+  assert.strictEqual(r.status, 404);
+
+  r = api.getInvokeTrace(id, 'no-such-request');
+  assert.strictEqual(r.status, 404);
+
+  await api.invokeFunction({ functionId: id, event: {} });
+  const history = api.listHistory(id).body.entries;
+  const requestId = history[0].report.requestId;
+  // Served from the live trace-collector buffer: the window is still open,
+  // so more spans could still arrive.
+  r = api.getInvokeTrace(id, requestId);
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(r.body.trace, { spans: [], pending: true });
+});
+
+test('getInvokeTrace reports pending:false from history once the trace window has closed', { skip: noPy }, async () => {
+  const prevWindow = process.env.AWS_PLAYGROUND_TRACE_WINDOW_MS;
+  process.env.AWS_PLAYGROUND_TRACE_WINDOW_MS = '50';
+  try {
+    const id = api.createFunction({ name: 'trace-closed-fn', path: path.join(FIXTURES, 'python/hello'),
+      runtime: 'python', handler: 'app.handler' }).body.id;
+    await api.invokeFunction({ functionId: id, event: {} });
+    const requestId = api.listHistory(id).body.entries[0].report.requestId;
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    // The collector has dropped the buffer, so this now falls through to the
+    // persisted entry -- which still carries pending:true on disk, since
+    // close() no longer rewrites history just to flip that flag.
+    const r = api.getInvokeTrace(id, requestId);
+    assert.strictEqual(r.status, 200);
+    assert.deepStrictEqual(r.body.trace, { spans: [], pending: false });
+  } finally {
+    if (prevWindow === undefined) delete process.env.AWS_PLAYGROUND_TRACE_WINDOW_MS;
+    else process.env.AWS_PLAYGROUND_TRACE_WINDOW_MS = prevWindow;
+  }
+});
+
 test('trigger field validation on create and update', () => {
   let r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
     trigger: { type: 'sns', queueName: 'q', enabled: true } });

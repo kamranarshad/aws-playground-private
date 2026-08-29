@@ -37,6 +37,7 @@ class Context:
 
 
 def main():
+    harness_start = time.monotonic()
     p = argparse.ArgumentParser()
     p.add_argument("--handler", required=True)
     p.add_argument("--result-file", required=True)
@@ -67,6 +68,7 @@ def main():
         return
 
     ctx = Context(args.timeout_ms, args.memory_mb, args.request_id)
+    init_ms = (time.monotonic() - harness_start) * 1000
     start = time.monotonic()
     try:
         response = func(event, ctx)
@@ -74,7 +76,7 @@ def main():
         json.dumps(response)  # raises TypeError if not JSON-serializable
         write_result(args.result_file, {
             "ok": True, "phase": "invoke",
-            "response": response, "durationMs": duration})
+            "response": response, "durationMs": duration, "initMs": init_ms})
     except Exception as e:
         duration = (time.monotonic() - start) * 1000
         write_result(args.result_file, {

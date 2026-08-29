@@ -25,6 +25,12 @@ test('java RequestHandler happy path with proxied context + logger', { skip }, a
   assert.ok(r.logs.includes('hello from java logger'));
 });
 
+test('java runtime reports initMs separately from durationMs', { skip }, async () => {
+  const r = await invoke(base());
+  assert.strictEqual(r.ok, true);
+  assert.ok(r.report.initMs >= 0, `expected initMs >= 0, got ${r.report.initMs}`);
+});
+
 test('class-only handler defaults to handleRequest', { skip }, async () => {
   const r = await invoke(base({ handler: 'example.Hello' }));
   assert.strictEqual(r.ok, true);

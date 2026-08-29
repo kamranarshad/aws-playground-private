@@ -1,5 +1,5 @@
 import type {
-  Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus, TriggersStatus,
+  Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus, Trace, TriggersStatus,
 } from './types'
 
 export class ApiError extends Error {
@@ -45,6 +45,8 @@ export const api = {
     request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history`),
   clearHistory: (id: string) =>
     request<void>(`/api/functions/${id}/history`, { method: 'DELETE' }),
+  getTrace: (id: string, requestId: string) =>
+    request<{ trace: Trace | null }>(`/api/functions/${id}/history/${requestId}/trace`),
   listServices: () => request<ServicesStatus>('/api/services'),
   setSelection: (functionId: string | null) =>
     request<{ started: string[]; scheduledStop: string[] }>('/api/selection', {

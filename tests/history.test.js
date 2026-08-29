@@ -164,3 +164,43 @@ test('oversized report is capped and flagged', () => {
   assert.strictEqual(listed.truncated, true);
   assert.ok(listed.report);
 });
+
+test('append persists trace and includes it in truncated flag', () => {
+  const stored = history.append('fn12', entry({ trace: { spans: [{ name: 'a' }], pending: true } }));
+  assert.deepStrictEqual(stored.trace, { spans: [{ name: 'a' }], pending: true });
+  const listed = history.list('fn12')[0];
+  assert.deepStrictEqual(listed.trace, { spans: [{ name: 'a' }], pending: true });
+});
+
+test('getByRequestId finds an entry by its report.requestId', () => {
+  history.append('fn13', entry({ report: { requestId: 'req-find-me', durationMs: 1 } }));
+  const found = history.getByRequestId('fn13', 'req-find-me');
+  assert.ok(found);
+  assert.strictEqual(found.report.requestId, 'req-find-me');
+  assert.strictEqual(history.getByRequestId('fn13', 'no-such-id'), null);
+  assert.strictEqual(history.getByRequestId('no-such-fn', 'req-find-me'), null);
+});
+
+test('appendSpans merges spans into the matching entry and updates pending', () => {
+  history.append('fn14', entry({
+    report: { requestId: 'req-merge', durationMs: 1 },
+    trace: { spans: [{ name: 'first' }], pending: true },
+  }));
+  history.appendSpans('fn14', 'req-merge', [{ name: 'second' }], true);
+  let found = history.getByRequestId('fn14', 'req-merge');
+  assert.deepStrictEqual(found.trace.spans, [{ name: 'first' }, { name: 'second' }]);
+  assert.strictEqual(found.trace.pending, true);
+
+  history.appendSpans('fn14', 'req-merge', [], false);
+  found = history.getByRequestId('fn14', 'req-merge');
+  assert.strictEqual(found.trace.pending, false);
+  assert.strictEqual(found.trace.spans.length, 2);
+});
+
+test('appendSpans no-ops for an unknown functionId, requestId, or falsy functionId', () => {
+  assert.doesNotThrow(() => history.appendSpans(undefined, 'req-x', [{ name: 'x' }], true));
+  assert.doesNotThrow(() => history.appendSpans('no-such-fn', 'req-x', [{ name: 'x' }], true));
+  history.append('fn15', entry({ report: { requestId: 'req-y', durationMs: 1 } }));
+  assert.doesNotThrow(() => history.appendSpans('fn15', 'no-such-request', [{ name: 'x' }], true));
+  assert.strictEqual(history.getByRequestId('fn15', 'req-y').trace, undefined);
+});

@@ -7,6 +7,7 @@ import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
 import { LogViewer } from '@/components/log-viewer'
+import { TracePanel } from '@/components/trace-panel'
 import type { AssertionRun } from '@/lib/assertions'
 import { cn } from '@/lib/utils'
 import type { InvokeResult, ResultTab } from '@/lib/types'
@@ -114,6 +115,7 @@ export function ResultPanel({ result, checkResults, historyTab, activeTab, onAct
           <TabsTrigger value="response" className={TAB}>Response</TabsTrigger>
           <TabsTrigger value="logs" className={TAB}>Logs</TabsTrigger>
           <TabsTrigger value="report" className={TAB}>Report</TabsTrigger>
+          <TabsTrigger value="trace" className={TAB}>Trace</TabsTrigger>
           {checkResults != null && <TabsTrigger value="checks" className={TAB}>Checks</TabsTrigger>}
           {historyTab && <TabsTrigger value="history" className={TAB}>History</TabsTrigger>}
         </TabsList>
@@ -173,10 +175,14 @@ export function ResultPanel({ result, checkResults, historyTab, activeTab, onAct
               `Duration: ${result.report.durationMs} ms\n` +
               `Billed Duration: ${result.report.billedMs} ms\n` +
               `Memory Size: ${result.report.memoryMb} MB\n` +
+              (result.report.initMs != null ? `Init Duration: ${result.report.initMs} ms\n` : '') +
               (result.report.buildMs != null ? `Build Duration: ${result.report.buildMs} ms\n` : '') +
               (result.report.timedOut ? 'Status: TIMED OUT\n' : '')
             : 'No report yet.'}
         </Pane>
+      </TabsContent>
+      <TabsContent value="trace" className="min-h-0 flex-1">
+        <TracePanel key={result?.report.requestId ?? 'empty'} spans={result?.trace?.spans ?? []} />
       </TabsContent>
       {checkResults != null && (
         <TabsContent value="checks" className="min-h-0 flex-1">

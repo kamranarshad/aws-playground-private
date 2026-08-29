@@ -125,3 +125,20 @@ test('project path pointing at a file is reported as not a folder', async () => 
   assert.ok(/not a folder/.test(r.error.message),
     `message should say it is not a folder, got: ${r.error.message}`);
 });
+
+test('invoke() always returns a trace field, even with no OTel SDK involved', async () => {
+  const r = await invoke(base('javascript/hello', { runtime: 'node', handler: 'index.handler', id: 'fn-trace-test' }));
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(r.trace, { spans: [], pending: true });
+});
+
+test('invoke() injects OTLP env vars pointed at the trace receiver', async () => {
+  const r = await invoke(base('javascript/env-echo', {
+    runtime: 'node', handler: 'index.handler', id: 'fn-trace-env',
+    event: { keys: ['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT', 'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL', 'OTEL_RESOURCE_ATTRIBUTES'] },
+  }));
+  assert.strictEqual(r.ok, true);
+  assert.match(r.response.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, /^http:\/\/127\.0\.0\.1:\d+\/v1\/traces$/);
+  assert.strictEqual(r.response.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL, 'http/protobuf');
+  assert.match(r.response.OTEL_RESOURCE_ATTRIBUTES, /^faas\.invocation_id=/);
+});

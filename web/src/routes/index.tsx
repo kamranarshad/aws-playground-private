@@ -15,7 +15,9 @@ import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
 import { runAssertions, type AssertionRun } from '@/lib/assertions'
-import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
+import {
+  useFunctions, useInvoke, useSelectionSync, useTracePoll,
+} from '@/lib/queries'
 import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
 
 export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab } {
@@ -58,6 +60,13 @@ export function App() {
   // knows whether a script is active and what it says.
   const [currentScript, setCurrentScript] = useState('')
   const invoke = useInvoke()
+  const currentRequestId = result?.report.requestId ?? null
+  const tracePending = result?.trace?.pending === true
+  const tracePoll = useTracePoll(selectedId, currentRequestId, tracePending)
+  useEffect(() => {
+    if (!tracePoll.data?.trace) return
+    setResult((r) => (r && r.report.requestId === currentRequestId ? { ...r, trace: tracePoll.data!.trace! } : r))
+  }, [tracePoll.data, currentRequestId])
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
 
