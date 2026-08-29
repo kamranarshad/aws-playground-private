@@ -117,8 +117,9 @@ function decodeProtobuf(buf) {
 }
 
 // Same output shape as decodeProtobuf, from the proto3 JSON mapping instead
-// of the wire format: bytes fields are base64, 64-bit ints are decimal
-// strings (already what we want for start/endTimeUnixNano).
+// of the wire format: trace/span IDs are plain hex (an OTLP-specific
+// deviation from the generic mapping), 64-bit ints are decimal strings
+// (already what we want for start/endTimeUnixNano).
 function jsonAnyValue(v) {
   if (!v) return undefined;
   if ('stringValue' in v) return v.stringValue;
@@ -137,18 +138,17 @@ function jsonAttributeList(attrs) {
   return out;
 }
 
-function base64ToHex(b64) {
-  return b64 ? Buffer.from(b64, 'base64').toString('hex') : '';
-}
-
 function decodeJson(text) {
   const parsed = JSON.parse(text);
   return (parsed.resourceSpans ?? []).map((rs) => ({
     resourceAttributes: jsonAttributeList(rs.resource?.attributes),
+    // OTLP/JSON sends trace/span IDs as plain hex strings, not base64 --
+    // this is a deliberate OTLP deviation from the generic proto3 JSON
+    // mapping (which would base64-encode arbitrary `bytes` fields).
     spans: (rs.scopeSpans ?? []).flatMap((ss) => (ss.spans ?? []).map((s) => ({
-      traceId: base64ToHex(s.traceId),
-      spanId: base64ToHex(s.spanId),
-      parentSpanId: s.parentSpanId ? base64ToHex(s.parentSpanId) : null,
+      traceId: s.traceId ?? '',
+      spanId: s.spanId ?? '',
+      parentSpanId: s.parentSpanId ?? null,
       name: s.name ?? '',
       startTimeUnixNano: s.startTimeUnixNano ?? '0',
       endTimeUnixNano: s.endTimeUnixNano ?? '0',

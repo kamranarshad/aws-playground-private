@@ -106,8 +106,8 @@ test('decodeJson reads the equivalent proto3 JSON mapping', () => {
       resource: { attributes: [{ key: 'faas.invocation_id', value: { stringValue: 'req-456' } }] },
       scopeSpans: [{
         spans: [{
-          traceId: Buffer.from('aabbcc', 'hex').toString('base64'),
-          spanId: Buffer.from('001122', 'hex').toString('base64'),
+          traceId: 'aabbcc',
+          spanId: '001122',
           name: 'json-span',
           startTimeUnixNano: '2000000000',
           endTimeUnixNano: '2010000000',
@@ -119,6 +119,7 @@ test('decodeJson reads the equivalent proto3 JSON mapping', () => {
   const [group] = decodeJson(json);
   assert.deepStrictEqual(group.resourceAttributes, { 'faas.invocation_id': 'req-456' });
   assert.strictEqual(group.spans[0].traceId, 'aabbcc');
+  assert.strictEqual(group.spans[0].spanId, '001122');
   assert.strictEqual(group.spans[0].name, 'json-span');
   assert.strictEqual(group.spans[0].startTimeUnixNano, '2000000000');
   assert.deepStrictEqual(group.spans[0].attributes, { ok: true });

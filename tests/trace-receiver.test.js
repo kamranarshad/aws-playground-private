@@ -12,6 +12,7 @@ const { trace } = require('@opentelemetry/api');
 const { resourceFromAttributes, detectResources, envDetector } = require('@opentelemetry/resources');
 const { TracerProvider, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+const { OTLPTraceExporter: OTLPTraceExporterJson } = require('@opentelemetry/exporter-trace-otlp-http');
 
 async function sendOneRealSpan(requestId, endpoint) {
   const prevAttrs = process.env.OTEL_RESOURCE_ATTRIBUTES;
@@ -38,6 +39,30 @@ async function sendOneRealSpan(requestId, endpoint) {
   }
 }
 
+// Same as sendOneRealSpan, but over OTLP/JSON -- the encoding whose
+// trace/span IDs are plain hex rather than base64. Exercises decodeJson
+// against the real transformer's output rather than a hand-built fixture.
+async function sendOneRealSpanJson(requestId, endpoint) {
+  const prevAttrs = process.env.OTEL_RESOURCE_ATTRIBUTES;
+  process.env.OTEL_RESOURCE_ATTRIBUTES = `faas.invocation_id=${requestId}`;
+  try {
+    const resource = resourceFromAttributes({ 'service.name': 'trace-receiver-test' })
+      .merge(detectResources({ detectors: [envDetector] }));
+    const provider = new TracerProvider({
+      resource,
+      spanProcessors: [new SimpleSpanProcessor({ exporter: new OTLPTraceExporterJson({ url: endpoint }) })],
+    });
+    const tracer = provider.getTracer('trace-receiver-test');
+    const span = tracer.startSpan('do-work-json');
+    span.setAttribute('custom.attr', 'value-json');
+    span.end();
+    await provider.forceFlush();
+  } finally {
+    if (prevAttrs === undefined) delete process.env.OTEL_RESOURCE_ATTRIBUTES;
+    else process.env.OTEL_RESOURCE_ATTRIBUTES = prevAttrs;
+  }
+}
+
 test('a real OTel exporter\'s protobuf export correlates to the right requestId', async () => {
   const endpoint = await traceReceiver.endpoint();
   traceCollector.open('req-real-1', 'fn-real');
@@ -48,6 +73,23 @@ test('a real OTel exporter\'s protobuf export correlates to the right requestId'
   assert.strictEqual(spans.length, 1);
   assert.strictEqual(spans[0].name, 'do-work');
   assert.strictEqual(spans[0].attributes['custom.attr'], 'value-1');
+});
+
+test('a real OTel exporter\'s JSON export correlates to the right requestId', async () => {
+  const endpoint = await traceReceiver.endpoint();
+  traceCollector.open('req-real-json-1', 'fn-real-json');
+  await sendOneRealSpanJson('req-real-json-1', endpoint);
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const { spans } = traceCollector.snapshotAndStartWindow('req-real-json-1');
+  assert.strictEqual(spans.length, 1);
+  assert.strictEqual(spans[0].name, 'do-work-json');
+  assert.strictEqual(spans[0].attributes['custom.attr'], 'value-json');
+  // The ID assertions are the point of this test: OTLP/JSON sends trace/span
+  // IDs as plain hex, so decoding them as base64 (the generic proto3 JSON
+  // rule) silently yields a 48-char / 24-char string of garbage instead.
+  // Name and attributes survive that bug untouched, so only these catch it.
+  assert.match(spans[0].traceId, /^[0-9a-f]{32}$/);
+  assert.match(spans[0].spanId, /^[0-9a-f]{16}$/);
 });
 
 test('a malformed OTLP body returns 400 and does not crash the server', async () => {
