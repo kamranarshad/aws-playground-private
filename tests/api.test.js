@@ -61,6 +61,25 @@ test('function CRUD with validation', async () => {
   assert.strictEqual(r.status, 404);
 });
 
+test('getInvokeTrace returns 404 for an unknown function, null trace when none recorded, and the persisted trace otherwise', { skip: noPy }, async () => {
+  let r = api.createFunction({ name: 'trace-fn', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const id = r.body.id;
+
+  r = api.getInvokeTrace('no-such-fn', 'req-1');
+  assert.strictEqual(r.status, 404);
+
+  r = api.getInvokeTrace(id, 'no-such-request');
+  assert.strictEqual(r.status, 404);
+
+  await api.invokeFunction({ functionId: id, event: {} });
+  const history = api.listHistory(id).body.entries;
+  const requestId = history[0].report.requestId;
+  r = api.getInvokeTrace(id, requestId);
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(r.body.trace, { spans: [], pending: true });
+});
+
 test('trigger field validation on create and update', () => {
   let r = api.createFunction({ name: 'trig', path: FIXTURES, runtime: 'node',
     trigger: { type: 'sns', queueName: 'q', enabled: true } });

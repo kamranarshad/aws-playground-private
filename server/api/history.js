@@ -12,4 +12,11 @@ function clearHistory(functionId) {
   return { status: 204 };
 }
 
-module.exports = { listHistory, clearHistory };
+function getInvokeTrace(functionId, requestId) {
+  if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
+  const entry = history.getByRequestId(functionId, requestId);
+  if (!entry) return { status: 404, body: { error: 'invoke not found' } };
+  return { status: 200, body: { trace: entry.trace ?? null } };
+}
+
+module.exports = { listHistory, clearHistory, getInvokeTrace };

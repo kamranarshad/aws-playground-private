@@ -84,6 +84,21 @@ export interface LambdaError {
   stackTrace: string[]
 }
 
+export interface Span {
+  traceId: string
+  spanId: string
+  parentSpanId: string | null
+  name: string
+  startTimeUnixNano: string
+  endTimeUnixNano: string
+  attributes: Record<string, string | number | boolean>
+}
+
+export interface Trace {
+  spans: Span[]
+  pending: boolean
+}
+
 export interface CheckResult {
   matcher: 'toBe' | 'toEqual' | 'toContain' | 'toMatch'
   actual: unknown
@@ -110,6 +125,7 @@ export interface InvokeResult {
   error?: LambdaError
   logs: string
   report: Report
+  trace?: Trace
 }
 
 export type InvokeSource =
@@ -129,6 +145,7 @@ export interface HistoryEntry {
   error?: LambdaError | null
   logs: string
   report: Report | null
+  trace?: Trace | null
   durationMs: number | null
   ok: boolean
   truncated: boolean
