@@ -41,6 +41,18 @@ export function useHistoryQuery(id: string | null) {
   })
 }
 
+// Spans for an invoke can still be arriving from the OTLP receiver after the
+// response comes back, so poll the trace endpoint while it's pending and
+// stop once the last poll (or the initial invoke response) says it's done.
+export function useTracePoll(functionId: string | null, requestId: string | null, pending: boolean) {
+  return useQuery({
+    queryKey: ['trace', functionId, requestId],
+    queryFn: () => api.getTrace(functionId!, requestId!),
+    enabled: pending && !!functionId && !!requestId,
+    refetchInterval: pending ? 1_500 : false,
+  })
+}
+
 function onApiError(err: Error) {
   toast.error(err.message)
 }
