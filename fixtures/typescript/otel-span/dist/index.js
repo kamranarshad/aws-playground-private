@@ -1571,6 +1571,311 @@ var init_esm = __esm({
   }
 });
 
+// node_modules/@opentelemetry/context-async-hooks/build/src/AbstractAsyncHooksContextManager.js
+var require_AbstractAsyncHooksContextManager = __commonJS({
+  "node_modules/@opentelemetry/context-async-hooks/build/src/AbstractAsyncHooksContextManager.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.AbstractAsyncHooksContextManager = void 0;
+    var events_1 = require("events");
+    var ADD_LISTENER_METHODS = [
+      "addListener",
+      "on",
+      "once",
+      "prependListener",
+      "prependOnceListener"
+    ];
+    var AbstractAsyncHooksContextManager = class {
+      /**
+       * Binds a the certain context or the active one to the target function and then returns the target
+       * @param context A context (span) to be bind to target
+       * @param target a function or event emitter. When target or one of its callbacks is called,
+       *  the provided context will be used as the active context for the duration of the call.
+       */
+      bind(context2, target) {
+        if (target instanceof events_1.EventEmitter) {
+          return this._bindEventEmitter(context2, target);
+        }
+        if (typeof target === "function") {
+          return this._bindFunction(context2, target);
+        }
+        return target;
+      }
+      _bindFunction(context2, target) {
+        const manager = this;
+        const contextWrapper = function(...args) {
+          return manager.with(context2, () => target.apply(this, args));
+        };
+        Object.defineProperty(contextWrapper, "length", {
+          enumerable: false,
+          configurable: true,
+          writable: false,
+          value: target.length
+        });
+        return contextWrapper;
+      }
+      /**
+       * By default, EventEmitter call their callback with their context, which we do
+       * not want, instead we will bind a specific context to all callbacks that
+       * go through it.
+       * @param context the context we want to bind
+       * @param ee EventEmitter an instance of EventEmitter to patch
+       */
+      _bindEventEmitter(context2, ee) {
+        const map = this._getPatchMap(ee);
+        if (map !== void 0)
+          return ee;
+        this._createPatchMap(ee);
+        ADD_LISTENER_METHODS.forEach((methodName) => {
+          if (ee[methodName] === void 0)
+            return;
+          ee[methodName] = this._patchAddListener(ee, ee[methodName], context2);
+        });
+        if (typeof ee.removeListener === "function") {
+          ee.removeListener = this._patchRemoveListener(ee, ee.removeListener);
+        }
+        if (typeof ee.off === "function") {
+          ee.off = this._patchRemoveListener(ee, ee.off);
+        }
+        if (typeof ee.removeAllListeners === "function") {
+          ee.removeAllListeners = this._patchRemoveAllListeners(ee, ee.removeAllListeners);
+        }
+        return ee;
+      }
+      /**
+       * Patch methods that remove a given listener so that we match the "patched"
+       * version of that listener (the one that propagate context).
+       * @param ee EventEmitter instance
+       * @param original reference to the patched method
+       */
+      _patchRemoveListener(ee, original) {
+        const contextManager = this;
+        return function(event, listener) {
+          const events = contextManager._getPatchMap(ee)?.[event];
+          if (events === void 0) {
+            return original.call(this, event, listener);
+          }
+          const patchedListener = events.get(listener);
+          return original.call(this, event, patchedListener || listener);
+        };
+      }
+      /**
+       * Patch methods that remove all listeners so we remove our
+       * internal references for a given event.
+       * @param ee EventEmitter instance
+       * @param original reference to the patched method
+       */
+      _patchRemoveAllListeners(ee, original) {
+        const contextManager = this;
+        return function(event) {
+          const map = contextManager._getPatchMap(ee);
+          if (map !== void 0) {
+            if (arguments.length === 0) {
+              contextManager._createPatchMap(ee);
+            } else if (map[event] !== void 0) {
+              delete map[event];
+            }
+          }
+          return original.apply(this, arguments);
+        };
+      }
+      /**
+       * Patch methods on an event emitter instance that can add listeners so we
+       * can force them to propagate a given context.
+       * @param ee EventEmitter instance
+       * @param original reference to the patched method
+       * @param [context] context to propagate when calling listeners
+       */
+      _patchAddListener(ee, original, context2) {
+        const contextManager = this;
+        return function(event, listener) {
+          if (contextManager._wrapped) {
+            return original.call(this, event, listener);
+          }
+          let map = contextManager._getPatchMap(ee);
+          if (map === void 0) {
+            map = contextManager._createPatchMap(ee);
+          }
+          let listeners = map[event];
+          if (listeners === void 0) {
+            listeners = /* @__PURE__ */ new WeakMap();
+            map[event] = listeners;
+          }
+          const patchedListener = contextManager.bind(context2, listener);
+          listeners.set(listener, patchedListener);
+          contextManager._wrapped = true;
+          try {
+            return original.call(this, event, patchedListener);
+          } finally {
+            contextManager._wrapped = false;
+          }
+        };
+      }
+      _createPatchMap(ee) {
+        const map = /* @__PURE__ */ Object.create(null);
+        ee[this._kOtListeners] = map;
+        return map;
+      }
+      _getPatchMap(ee) {
+        return ee[this._kOtListeners];
+      }
+      _kOtListeners = Symbol("OtListeners");
+      _wrapped = false;
+    };
+    exports2.AbstractAsyncHooksContextManager = AbstractAsyncHooksContextManager;
+  }
+});
+
+// node_modules/@opentelemetry/context-async-hooks/build/src/AsyncHooksContextManager.js
+var require_AsyncHooksContextManager = __commonJS({
+  "node_modules/@opentelemetry/context-async-hooks/build/src/AsyncHooksContextManager.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.AsyncHooksContextManager = void 0;
+    var api_1 = (init_esm(), __toCommonJS(esm_exports));
+    var asyncHooks = require("async_hooks");
+    var AbstractAsyncHooksContextManager_1 = require_AbstractAsyncHooksContextManager();
+    var AsyncHooksContextManager = class extends AbstractAsyncHooksContextManager_1.AbstractAsyncHooksContextManager {
+      _asyncHook;
+      _contexts = /* @__PURE__ */ new Map();
+      _stack = [];
+      constructor() {
+        super();
+        this._asyncHook = asyncHooks.createHook({
+          init: this._init.bind(this),
+          before: this._before.bind(this),
+          after: this._after.bind(this),
+          destroy: this._destroy.bind(this),
+          promiseResolve: this._destroy.bind(this)
+        });
+      }
+      active() {
+        return this._stack[this._stack.length - 1] ?? api_1.ROOT_CONTEXT;
+      }
+      with(context2, fn, thisArg, ...args) {
+        this._enterContext(context2);
+        try {
+          return fn.call(thisArg, ...args);
+        } finally {
+          this._exitContext();
+        }
+      }
+      enable() {
+        this._asyncHook.enable();
+        return this;
+      }
+      disable() {
+        this._asyncHook.disable();
+        this._contexts.clear();
+        this._stack = [];
+        return this;
+      }
+      /**
+       * Init hook will be called when userland create a async context, setting the
+       * context as the current one if it exist.
+       * @param uid id of the async context
+       * @param type the resource type
+       */
+      _init(uid, type) {
+        if (type === "TIMERWRAP")
+          return;
+        const context2 = this._stack[this._stack.length - 1];
+        if (context2 !== void 0) {
+          this._contexts.set(uid, context2);
+        }
+      }
+      /**
+       * Destroy hook will be called when a given context is no longer used so we can
+       * remove its attached context.
+       * @param uid uid of the async context
+       */
+      _destroy(uid) {
+        this._contexts.delete(uid);
+      }
+      /**
+       * Before hook is called just before executing a async context.
+       * @param uid uid of the async context
+       */
+      _before(uid) {
+        const context2 = this._contexts.get(uid);
+        if (context2 !== void 0) {
+          this._enterContext(context2);
+        }
+      }
+      /**
+       * After hook is called just after completing the execution of a async context.
+       */
+      _after() {
+        this._exitContext();
+      }
+      /**
+       * Set the given context as active
+       */
+      _enterContext(context2) {
+        this._stack.push(context2);
+      }
+      /**
+       * Remove the context at the root of the stack
+       */
+      _exitContext() {
+        this._stack.pop();
+      }
+    };
+    exports2.AsyncHooksContextManager = AsyncHooksContextManager;
+  }
+});
+
+// node_modules/@opentelemetry/context-async-hooks/build/src/AsyncLocalStorageContextManager.js
+var require_AsyncLocalStorageContextManager = __commonJS({
+  "node_modules/@opentelemetry/context-async-hooks/build/src/AsyncLocalStorageContextManager.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.AsyncLocalStorageContextManager = void 0;
+    var api_1 = (init_esm(), __toCommonJS(esm_exports));
+    var async_hooks_1 = require("async_hooks");
+    var AbstractAsyncHooksContextManager_1 = require_AbstractAsyncHooksContextManager();
+    var AsyncLocalStorageContextManager2 = class extends AbstractAsyncHooksContextManager_1.AbstractAsyncHooksContextManager {
+      _asyncLocalStorage;
+      constructor() {
+        super();
+        this._asyncLocalStorage = new async_hooks_1.AsyncLocalStorage();
+      }
+      active() {
+        return this._asyncLocalStorage.getStore() ?? api_1.ROOT_CONTEXT;
+      }
+      with(context2, fn, thisArg, ...args) {
+        const cb = thisArg == null ? fn : fn.bind(thisArg);
+        return this._asyncLocalStorage.run(context2, cb, ...args);
+      }
+      enable() {
+        return this;
+      }
+      disable() {
+        this._asyncLocalStorage.disable();
+        return this;
+      }
+    };
+    exports2.AsyncLocalStorageContextManager = AsyncLocalStorageContextManager2;
+  }
+});
+
+// node_modules/@opentelemetry/context-async-hooks/build/src/index.js
+var require_src = __commonJS({
+  "node_modules/@opentelemetry/context-async-hooks/build/src/index.js"(exports2) {
+    "use strict";
+    Object.defineProperty(exports2, "__esModule", { value: true });
+    exports2.AsyncLocalStorageContextManager = exports2.AsyncHooksContextManager = void 0;
+    var AsyncHooksContextManager_1 = require_AsyncHooksContextManager();
+    Object.defineProperty(exports2, "AsyncHooksContextManager", { enumerable: true, get: function() {
+      return AsyncHooksContextManager_1.AsyncHooksContextManager;
+    } });
+    var AsyncLocalStorageContextManager_1 = require_AsyncLocalStorageContextManager();
+    Object.defineProperty(exports2, "AsyncLocalStorageContextManager", { enumerable: true, get: function() {
+      return AsyncLocalStorageContextManager_1.AsyncLocalStorageContextManager;
+    } });
+  }
+});
+
 // node_modules/@opentelemetry/core/build/src/trace/suppress-tracing.js
 var require_suppress_tracing = __commonJS({
   "node_modules/@opentelemetry/core/build/src/trace/suppress-tracing.js"(exports2) {
@@ -5078,7 +5383,7 @@ var require_exporter = __commonJS({
 });
 
 // node_modules/@opentelemetry/core/build/src/index.js
-var require_src = __commonJS({
+var require_src2 = __commonJS({
   "node_modules/@opentelemetry/core/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -5307,7 +5612,7 @@ var require_ResourceImpl = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.defaultResource = exports2.emptyResource = exports2.resourceFromDetectedResource = exports2.resourceFromAttributes = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var semantic_conventions_1 = (init_esm2(), __toCommonJS(esm_exports2));
     var default_service_name_1 = require_default_service_name();
     var utils_1 = require_utils2();
@@ -5477,7 +5782,7 @@ var require_EnvDetector = __commonJS({
     exports2.envDetector = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
     var semantic_conventions_1 = (init_esm2(), __toCommonJS(esm_exports2));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var EnvDetector = class {
       // Type, attribute keys, and attribute values should not exceed 256 characters.
       _MAX_LENGTH = 255;
@@ -6015,7 +6320,7 @@ var require_detectors = __commonJS({
 });
 
 // node_modules/@opentelemetry/resources/build/src/index.js
-var require_src2 = __commonJS({
+var require_src3 = __commonJS({
   "node_modules/@opentelemetry/resources/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -6112,7 +6417,7 @@ var require_Span = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.SpanImpl = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var semantic_conventions_1 = (init_esm2(), __toCommonJS(esm_exports2));
     var enums_1 = require_enums();
     var inspect_1 = require_inspect();
@@ -6604,7 +6909,7 @@ var require_Tracer = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.Tracer = void 0;
     var api = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var Span_1 = require_Span();
     var TracerMetrics_1 = require_TracerMetrics();
     var version_1 = require_version2();
@@ -6732,7 +7037,7 @@ var require_MultiSpanProcessor = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.MultiSpanProcessor = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var MultiSpanProcessor = class {
       _spanProcessors;
       constructor(spanProcessors) {
@@ -6834,7 +7139,7 @@ var require_ParentBasedSampler = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.ParentBasedSampler = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var AlwaysOffSampler_1 = require_AlwaysOffSampler();
     var AlwaysOnSampler_1 = require_AlwaysOnSampler();
     var ParentBasedSampler = class {
@@ -6954,7 +7259,7 @@ var require_BatchSpanProcessorBase = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.BatchSpanProcessorBase = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var SpanProcessorMetrics_1 = require_SpanProcessorMetrics();
     var semconv_1 = require_semconv3();
     var BatchSpanProcessorBase = class {
@@ -7228,7 +7533,7 @@ var require_TracerProvider = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.TracerProvider = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var resources_1 = require_src2();
+    var resources_1 = require_src3();
     var Tracer_1 = require_Tracer();
     var MultiSpanProcessor_1 = require_MultiSpanProcessor();
     var ParentBasedSampler_1 = require_ParentBasedSampler();
@@ -7338,7 +7643,7 @@ var require_ConsoleSpanExporter = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.ConsoleSpanExporter = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var ConsoleSpanExporter = class {
       /**
        * Export spans.
@@ -7409,7 +7714,7 @@ var require_InMemorySpanExporter = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.InMemorySpanExporter = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var InMemorySpanExporter = class {
       _finishedSpans = [];
       /**
@@ -7455,7 +7760,7 @@ var require_SimpleSpanProcessor = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.SimpleSpanProcessor = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var SpanProcessorMetrics_1 = require_SpanProcessorMetrics();
     var semconv_1 = require_semconv3();
     var SimpleSpanProcessor2 = class {
@@ -7627,7 +7932,7 @@ var require_TraceIdRatioBasedSampler = __commonJS({
 });
 
 // node_modules/@opentelemetry/sdk-trace/build/src/index.js
-var require_src3 = __commonJS({
+var require_src4 = __commonJS({
   "node_modules/@opentelemetry/sdk-trace/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -7840,7 +8145,7 @@ function createOtlpExportDelegate(components, settings) {
 var import_core, OTLPExportDelegate;
 var init_otlp_export_delegate = __esm({
   "node_modules/@opentelemetry/otlp-exporter-base/build/esm/otlp-export-delegate.js"() {
-    import_core = __toESM(require_src());
+    import_core = __toESM(require_src2());
     init_types2();
     init_logging_response_handler();
     init_esm();
@@ -7980,7 +8285,7 @@ var import_core2, componentCounter, ExporterMetrics;
 var init_ExporterMetrics = __esm({
   "node_modules/@opentelemetry/otlp-exporter-base/build/esm/ExporterMetrics.js"() {
     init_esm();
-    import_core2 = __toESM(require_src());
+    import_core2 = __toESM(require_src2());
     init_semconv();
     init_version2();
     componentCounter = /* @__PURE__ */ new Map();
@@ -8672,7 +8977,7 @@ var require_logs2 = __commonJS({
 });
 
 // node_modules/@opentelemetry/api-logs/build/src/index.js
-var require_src4 = __commonJS({
+var require_src5 = __commonJS({
   "node_modules/@opentelemetry/api-logs/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -8910,7 +9215,7 @@ var require_logs_serializer = __commonJS({
     exports2.serializeLogsExportRequest = void 0;
     var protobuf_writer_1 = require_protobuf_writer();
     var hex_to_binary_1 = require_hex_to_binary();
-    var api_logs_1 = require_src4();
+    var api_logs_1 = require_src5();
     var common_serializer_1 = require_common_serializer();
     var protobuf_size_estimator_1 = require_protobuf_size_estimator();
     function serializeLogRecord(writer, logRecord) {
@@ -10487,7 +10792,7 @@ var require_LastValue = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.LastValueAggregator = exports2.LastValueAccumulation = void 0;
     var types_1 = require_types();
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var MetricData_1 = require_MetricData();
     var LastValueAccumulation = class {
       startTime;
@@ -10937,7 +11242,7 @@ var require_MetricReader = __commonJS({
     var AggregationSelector_1 = require_AggregationSelector();
     var MetricReaderMetrics_1 = require_MetricReaderMetrics();
     var version_1 = require_version3();
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var MetricReader = class {
       // Tracks the shutdown state.
       // TODO: use BindOncePromise here once a new version of @opentelemetry/core is available.
@@ -11115,7 +11420,7 @@ var require_PeriodicExportingMetricReader = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.PeriodicExportingMetricReader = void 0;
     var api = (init_esm(), __toCommonJS(esm_exports));
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var MetricReader_1 = require_MetricReader();
     var utils_1 = require_utils5();
     var MetricData_1 = require_MetricData();
@@ -11291,7 +11596,7 @@ var require_InMemoryMetricExporter = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.InMemoryMetricExporter = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var InMemoryMetricExporter = class {
       _shutdown = false;
       _aggregationTemporality;
@@ -11341,7 +11646,7 @@ var require_ConsoleMetricExporter = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.ConsoleMetricExporter = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var AggregationSelector_1 = require_AggregationSelector();
     var ConsoleMetricExporter = class _ConsoleMetricExporter {
       _shutdown = false;
@@ -11763,7 +12068,7 @@ var require_DeltaMetricProcessor = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.DeltaMetricProcessor = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var utils_1 = require_utils5();
     var HashMap_1 = require_HashMap();
     var DeltaMetricProcessor = class {
@@ -12572,7 +12877,7 @@ var require_MetricCollector = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.MetricCollector = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var MetricCollector = class {
       _sharedState;
       _metricReader;
@@ -12943,7 +13248,7 @@ var require_MeterProvider = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.MeterProvider = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var resources_1 = require_src2();
+    var resources_1 = require_src3();
     var MetricReader_1 = require_MetricReader();
     var MeterProviderSharedState_1 = require_MeterProviderSharedState();
     var MetricCollector_1 = require_MetricCollector();
@@ -13019,7 +13324,7 @@ var require_MeterProvider = __commonJS({
 });
 
 // node_modules/@opentelemetry/sdk-metrics/build/src/index.js
-var require_src5 = __commonJS({
+var require_src6 = __commonJS({
   "node_modules/@opentelemetry/sdk-metrics/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -13080,7 +13385,7 @@ var require_metrics_serializer = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.serializeMetricsExportRequest = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var sdk_metrics_1 = require_src5();
+    var sdk_metrics_1 = require_src6();
     var common_serializer_1 = require_common_serializer();
     var protobuf_size_estimator_1 = require_protobuf_size_estimator();
     var protobuf_writer_1 = require_protobuf_writer();
@@ -13866,7 +14171,7 @@ var require_utils6 = __commonJS({
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.JSON_ENCODER = exports2.PROTOBUF_ENCODER = exports2.encodeAsString = exports2.encodeAsLongBits = exports2.toLongBits = exports2.hrTimeToNanos = void 0;
-    var core_1 = require_src();
+    var core_1 = require_src2();
     var hex_to_binary_1 = require_hex_to_binary();
     function hrTimeToNanos(hrTime2) {
       const NANOSECONDS = BigInt(1e9);
@@ -13988,7 +14293,7 @@ var require_internal3 = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.createExportMetricsServiceRequest = exports2.toMetric = exports2.toScopeMetrics = exports2.toResourceMetrics = void 0;
     var api_1 = (init_esm(), __toCommonJS(esm_exports));
-    var sdk_metrics_1 = require_src5();
+    var sdk_metrics_1 = require_src6();
     var internal_types_1 = require_internal_types();
     var internal_1 = require_internal();
     function toResourceMetrics(resourceMetrics, encoder) {
@@ -14336,7 +14641,7 @@ var require_json3 = __commonJS({
 });
 
 // node_modules/@opentelemetry/otlp-transformer/build/src/index.js
-var require_src6 = __commonJS({
+var require_src7 = __commonJS({
   "node_modules/@opentelemetry/otlp-transformer/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -14823,7 +15128,7 @@ function getSharedConfigurationFromEnvironment(signalIdentifier) {
 var import_core3;
 var init_shared_env_configuration = __esm({
   "node_modules/@opentelemetry/otlp-exporter-base/build/esm/configuration/shared-env-configuration.js"() {
-    import_core3 = __toESM(require_src());
+    import_core3 = __toESM(require_src2());
     init_esm();
   }
 });
@@ -14923,7 +15228,7 @@ var init_otlp_node_http_env_configuration = __esm({
   "node_modules/@opentelemetry/otlp-exporter-base/build/esm/configuration/otlp-node-http-env-configuration.js"() {
     fs = __toESM(require("fs"));
     path = __toESM(require("path"));
-    import_core4 = __toESM(require_src());
+    import_core4 = __toESM(require_src2());
     init_esm();
     init_shared_env_configuration();
     init_shared_configuration();
@@ -15018,7 +15323,7 @@ var require_OTLPTraceExporter = __commonJS({
     Object.defineProperty(exports2, "__esModule", { value: true });
     exports2.OTLPTraceExporter = void 0;
     var otlp_exporter_base_1 = (init_esm3(), __toCommonJS(esm_exports3));
-    var otlp_transformer_1 = require_src6();
+    var otlp_transformer_1 = require_src7();
     var node_http_1 = (init_index_node_http(), __toCommonJS(index_node_http_exports));
     var semconv_1 = require_semconv5();
     var OTLPTraceExporter2 = class extends otlp_exporter_base_1.OTLPExporterBase {
@@ -15059,7 +15364,7 @@ var require_platform4 = __commonJS({
 });
 
 // node_modules/@opentelemetry/exporter-trace-otlp-proto/build/src/index.js
-var require_src7 = __commonJS({
+var require_src8 = __commonJS({
   "node_modules/@opentelemetry/exporter-trace-otlp-proto/build/src/index.js"(exports2) {
     "use strict";
     Object.defineProperty(exports2, "__esModule", { value: true });
@@ -15078,9 +15383,11 @@ __export(index_exports, {
 });
 module.exports = __toCommonJS(index_exports);
 init_esm();
-var import_resources = __toESM(require_src2());
-var import_sdk_trace = __toESM(require_src3());
-var import_exporter_trace_otlp_proto = __toESM(require_src7());
+var import_context_async_hooks = __toESM(require_src());
+var import_resources = __toESM(require_src3());
+var import_sdk_trace = __toESM(require_src4());
+var import_exporter_trace_otlp_proto = __toESM(require_src8());
+context.setGlobalContextManager(new import_context_async_hooks.AsyncLocalStorageContextManager().enable());
 var resource = (0, import_resources.resourceFromAttributes)({ "service.name": "otel-span-fixture" }).merge((0, import_resources.detectResources)({ detectors: [import_resources.envDetector] }));
 var provider = new import_sdk_trace.TracerProvider({
   resource,
@@ -15088,13 +15395,45 @@ var provider = new import_sdk_trace.TracerProvider({
 });
 trace.setGlobalTracerProvider(provider);
 var tracer = trace.getTracer("otel-span-fixture");
+function sleep(ms) {
+  return new Promise((resolve2) => setTimeout(resolve2, ms));
+}
 var handler = async (event) => {
-  const span = tracer.startSpan("do-work");
-  span.setAttribute("event.name", event.name ?? "world");
-  await new Promise((resolve2) => setTimeout(resolve2, 5));
-  span.end();
-  await provider.forceFlush();
-  return { ok: true, greeting: `hello, ${event.name ?? "world"}` };
+  return tracer.startActiveSpan("handle-request", async (rootSpan) => {
+    try {
+      rootSpan.setAttribute("event.name", event.name ?? "world");
+      await tracer.startActiveSpan("validate-input", async (span) => {
+        span.setAttribute("input.valid", true);
+        await sleep(2);
+        span.end();
+      });
+      const user = await tracer.startActiveSpan("fetch-data", async (span) => {
+        span.setAttribute("data.source", "users-table");
+        const record = await tracer.startActiveSpan("db-query", async (dbSpan) => {
+          dbSpan.setAttribute("db.system", "postgresql");
+          dbSpan.setAttribute("db.statement", "SELECT * FROM users WHERE name = $1");
+          await sleep(10);
+          dbSpan.end();
+          const result = { id: 1, name: event.name ?? "world" };
+          return result;
+        });
+        await sleep(5);
+        span.end();
+        return record;
+      });
+      const body = await tracer.startActiveSpan("build-response", async (span) => {
+        const response = { ok: true, greeting: `hello, ${user.name}` };
+        span.setAttribute("response.size_bytes", JSON.stringify(response).length);
+        await sleep(3);
+        span.end();
+        return response;
+      });
+      return body;
+    } finally {
+      rootSpan.end();
+      await provider.forceFlush();
+    }
+  });
 };
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

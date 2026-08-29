@@ -34,7 +34,7 @@ function runHarness(event, requestId, otlpEndpoint) {
   });
 }
 
-test('a real OTel-instrumented handler\'s span round-trips through the real /v1/traces receiver',
+test('a real OTel-instrumented handler\'s nested spans round-trip through the real /v1/traces receiver',
   { skip: built ? false : 'fixture dist not built' }, async () => {
   const requestId = 'req-e2e-otel';
   const endpoint = await traceReceiver.endpoint();
@@ -49,7 +49,20 @@ test('a real OTel-instrumented handler\'s span round-trips through the real /v1/
   // processes it asynchronously relative to this test process
   await new Promise((resolve) => setTimeout(resolve, 200));
   const { spans } = traceCollector.snapshotAndStartWindow(requestId);
-  assert.strictEqual(spans.length, 1);
-  assert.strictEqual(spans[0].name, 'do-work');
-  assert.strictEqual(spans[0].attributes['event.name'], 'world');
+  assert.strictEqual(spans.length, 5);
+  const byName = Object.fromEntries(spans.map((s) => [s.name, s]));
+  assert.ok(byName['handle-request']);
+  assert.ok(byName['validate-input']);
+  assert.ok(byName['fetch-data']);
+  assert.ok(byName['db-query']);
+  assert.ok(byName['build-response']);
+
+  assert.strictEqual(byName['handle-request'].parentSpanId, null);
+  assert.strictEqual(byName['validate-input'].parentSpanId, byName['handle-request'].spanId);
+  assert.strictEqual(byName['fetch-data'].parentSpanId, byName['handle-request'].spanId);
+  assert.strictEqual(byName['db-query'].parentSpanId, byName['fetch-data'].spanId);
+  assert.strictEqual(byName['build-response'].parentSpanId, byName['handle-request'].spanId);
+
+  assert.strictEqual(byName['handle-request'].attributes['event.name'], 'world');
+  assert.strictEqual(byName['db-query'].attributes['db.system'], 'postgresql');
 });
