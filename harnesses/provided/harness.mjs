@@ -15,6 +15,7 @@ function arg(name, fallback) {
   return i === -1 ? fallback : process.argv[i + 1];
 }
 
+const harnessStart = process.hrtime.bigint();
 const resultFile = arg('--result-file');
 const handlerSpec = arg('--handler', 'bootstrap');
 const timeoutMs = parseInt(arg('--timeout-ms', '30000'), 10);
@@ -59,6 +60,7 @@ const functionName = process.env.AWS_LAMBDA_FUNCTION_NAME || 'playground';
 const arn = `arn:aws:lambda:${process.env.AWS_REGION || 'us-east-1'}:000000000000:function:${functionName}`;
 const deadline = Date.now() + timeoutMs;
 let startedAt = null;
+let initMs = null;
 let polled = false;
 
 function durationMs() {
@@ -90,7 +92,10 @@ const BASE = '/2018-06-01/runtime';
 const server = http.createServer(async (req, res) => {
   const url = req.url.split('?')[0];
   if (req.method === 'GET' && url === `${BASE}/invocation/next`) {
-    if (startedAt === null) startedAt = process.hrtime.bigint();
+    if (startedAt === null) {
+      startedAt = process.hrtime.bigint();
+      initMs = Number(startedAt - harnessStart) / 1e6;
+    }
     polled = true;
     res.writeHead(200, {
       'content-type': 'application/json',
@@ -107,7 +112,7 @@ const server = http.createServer(async (req, res) => {
     res.end('{"status":"OK"}');
     let response;
     try { response = JSON.parse(body); } catch { response = body; }
-    return finish({ ok: true, phase: 'invoke', response, durationMs: durationMs() });
+    return finish({ ok: true, phase: 'invoke', response, durationMs: durationMs(), initMs });
   }
   if (req.method === 'POST' && url === `${BASE}/invocation/${requestId}/error`) {
     const body = await readBody(req);

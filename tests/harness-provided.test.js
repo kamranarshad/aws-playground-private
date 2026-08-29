@@ -99,3 +99,11 @@ test('python-exec fixture uppercases keys via the runtime API', async () => {
   assert.strictEqual(envelope.ok, true);
   assert.deepStrictEqual(envelope.response, { NAME: 'os-runtime', runtime: 'python-exec' });
 });
+
+test('provided runtime reports initMs separately from durationMs', { skip: noBash }, async () => {
+  const { envelope } = await runHarness({
+    dir: path.join(FIXTURES, 'provided/bash'), handler: 'bootstrap',
+    event: { hello: 'world' } });
+  assert.strictEqual(envelope.ok, true);
+  assert.ok(envelope.initMs >= 0, `expected initMs >= 0, got ${envelope.initMs}`);
+});
