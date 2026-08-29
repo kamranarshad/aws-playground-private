@@ -78,6 +78,7 @@ function append(functionId, entry) {
   const event = capJson(entry.event);
   const response = capJson(entry.response);
   const report = capJson(entry.report ?? null);
+  const trace = capJson(entry.trace ?? null);
   const stored = {
     id: crypto.randomUUID(),
     ts: Date.now(),
@@ -90,9 +91,10 @@ function append(functionId, entry) {
     error: entry.error ?? null,
     logs: logs.value,
     report: report.value,
+    ...(trace.value !== null ? { trace: trace.value } : {}),
     durationMs: entry.durationMs ?? null,
     ok: !!entry.ok,
-    truncated: logs.truncated || event.truncated || response.truncated || report.truncated,
+    truncated: logs.truncated || event.truncated || response.truncated || report.truncated || trace.truncated,
   };
   const file = fileFor(functionId);
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -105,6 +107,27 @@ function append(functionId, entry) {
   return stored;
 }
 
+function getByRequestId(functionId, requestId) {
+  return readAll(functionId).find((e) => e.report?.requestId === requestId) ?? null;
+}
+
+// Merges late-arriving spans into an already-persisted entry, found by its
+// report.requestId (entries aren't otherwise indexed by that field). No-ops
+// if the entry isn't found -- e.g. it was trimmed by MAX_ENTRIES compaction
+// while the trace window was still open, an edge the window's short default
+// (10s) makes unlikely to matter in practice.
+function appendSpans(functionId, requestId, spans, pending) {
+  if (!functionId) return;
+  const all = readAll(functionId);
+  const entry = all.find((e) => e.report?.requestId === requestId);
+  if (!entry) return;
+  const existingSpans = Array.isArray(entry.trace?.spans) ? entry.trace.spans : [];
+  const merged = capJson({ spans: existingSpans.concat(spans), pending });
+  entry.trace = merged.value;
+  entry.truncated = entry.truncated || merged.truncated;
+  writeAll(functionId, all);
+}
+
 function clear(functionId) {
   try {
     fs.rmSync(fileFor(functionId));
@@ -114,5 +137,5 @@ function clear(functionId) {
   }
 }
 
-module.exports = { append, list, clear, MAX_ENTRIES, MAX_FIELD_BYTES,
+module.exports = { append, list, clear, getByRequestId, appendSpans, MAX_ENTRIES, MAX_FIELD_BYTES,
   COMPACT_BYTES, compactBytes };
