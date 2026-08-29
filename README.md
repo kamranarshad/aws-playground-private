@@ -220,8 +220,10 @@ as `fixtures/java/hello`'s.
 
 ## Trace
 
-The Trace tab appears in the result panel once a handler has captured
-OpenTelemetry spans. Every invoke gets three OTLP env vars injected:
+The Trace tab is always present in the result panel, alongside
+Response/Logs/Report — it shows an empty state for the common case of a
+handler with no OpenTelemetry SDK, and a flat list of captured spans once
+one exports something. Every invoke gets three OTLP env vars injected:
 `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (the playground's span receiver),
 `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf`, and
 `OTEL_RESOURCE_ATTRIBUTES=faas.invocation_id=<requestId>` (used to correlate
@@ -230,8 +232,7 @@ from env — the standard pattern for OpenTelemetry SDKs — picks these up
 automatically with zero playground-specific code.
 
 Spans are shown as a flat list ordered by start time, indented by parent-child
-relationships. If no spans arrive, the tab shows an empty state; this is normal
-for handlers without an OpenTelemetry SDK.
+relationships.
 
 **Two gotchas verified while building this feature:**
 

@@ -70,9 +70,15 @@ function buildEnv(opts, memoryMb, requestId, otlpEndpoint) {
   env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE = String(memoryMb);
   env.AWS_LAMBDA_FUNCTION_VERSION = '$LATEST';
   env.AWS_REGION = 'us-east-1';
-  env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = otlpEndpoint;
-  env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = 'http/protobuf';
-  env.OTEL_RESOURCE_ATTRIBUTES = `faas.invocation_id=${requestId}`;
+  // undefined when the span receiver failed to bind (e.g. a sandbox that
+  // disallows loopback listens). Injecting nothing degrades to "tracing
+  // unavailable"; injecting the string "undefined" would instead make every
+  // OTel-enabled handler fail on an unparseable endpoint.
+  if (otlpEndpoint) {
+    env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = otlpEndpoint;
+    env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = 'http/protobuf';
+    env.OTEL_RESOURCE_ATTRIBUTES = `faas.invocation_id=${requestId}`;
+  }
   Object.assign(env, opts.env || {});
   return env;
 }

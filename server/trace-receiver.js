@@ -57,10 +57,18 @@ const readyPromise = new Promise((resolve, reject) => {
   server.once('error', reject);
   server.listen(0, '127.0.0.1', () => resolve(server.address().port));
 });
+// A rejection here must not crash the whole playground process via an
+// unhandled rejection -- endpoint() below turns a listen failure into
+// "tracing unavailable" instead of a startup crash.
+readyPromise.catch(() => {});
 
 async function endpoint() {
-  const port = await readyPromise;
-  return `http://127.0.0.1:${port}/v1/traces`;
+  try {
+    const port = await readyPromise;
+    return `http://127.0.0.1:${port}/v1/traces`;
+  } catch {
+    return undefined;
+  }
 }
 
 function close() {

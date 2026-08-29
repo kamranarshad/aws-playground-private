@@ -30,7 +30,10 @@ export function TracePanel({ spans }: { spans: Span[] }) {
     )
   }
   const byId = new Map(spans.map((s) => [s.spanId, s]))
-  const sorted = [...spans].sort((a, b) => (BigInt(a.startTimeUnixNano) < BigInt(b.startTimeUnixNano) ? -1 : 1))
+  const sorted = [...spans].sort((a, b) => {
+    const diff = BigInt(a.startTimeUnixNano) - BigInt(b.startTimeUnixNano)
+    return diff < 0n ? -1 : diff > 0n ? 1 : 0
+  })
   return (
     <ScrollArea className="h-full">
       <ul className="divide-y font-mono text-xs">
