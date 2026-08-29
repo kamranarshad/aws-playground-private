@@ -61,7 +61,7 @@ it('shows Init Duration in the Report tab when the report includes initMs', asyn
     ...ok,
     report: { ...ok.report, initMs: 42.5 },
   }
-  render(<ResultPanel result={withInit} />)
+  render(<ControlledResultPanel result={withInit} />)
   await userEvent.click(screen.getByText('Report'))
   expect(screen.getByText(/Init Duration: 42.5 ms/)).toBeInTheDocument()
 })
@@ -229,13 +229,13 @@ it('treats an empty-message script error as an error rather than a pass', async 
 
 it('shows the Trace tab\'s empty state when the result has no spans', async () => {
   const withEmptyTrace: InvokeResult = { ...ok, trace: { spans: [], pending: false } }
-  render(<ResultPanel result={withEmptyTrace} />)
+  render(<ControlledResultPanel result={withEmptyTrace} />)
   await userEvent.click(screen.getByText('Trace'))
   expect(screen.getByText(/No spans received/)).toBeInTheDocument()
 })
 
 it('shows the Trace tab before any invoke has happened', async () => {
-  render(<ResultPanel result={null} />)
+  render(<ControlledResultPanel result={null} />)
   await userEvent.click(screen.getByText('Trace'))
   expect(screen.getByText(/No spans received/)).toBeInTheDocument()
 })
@@ -251,7 +251,7 @@ it('renders captured spans in the Trace tab', async () => {
       }],
     },
   }
-  render(<ResultPanel result={withSpans} />)
+  render(<ControlledResultPanel result={withSpans} />)
   await userEvent.click(screen.getByText('Trace'))
   expect(screen.getByText('do-work')).toBeInTheDocument()
 })
