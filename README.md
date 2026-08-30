@@ -292,6 +292,18 @@ The Report tab also gained an **Init Duration** line showing module
 resolve/import time separately from handler execution time, matching the
 `REPORT` line format in real Lambda's CloudWatch logs.
 
+### Auto-tracing (opt-in, no SDK code needed)
+
+An "Auto-trace" toggle appears in the header of every Node.js function, next to the trigger controls — when enabled and the project has no `@opentelemetry/sdk-trace*` dependency of its own, the playground injects an auto-instrumentation bootstrap that patches common libraries (HTTP, AWS SDK, DB drivers) at process launch via Node's `--require` flag, producing real OpenTelemetry spans without any changes to the handler code.
+
+If a project already declares its own `@opentelemetry/sdk-trace` (or related SDK-trace variants like `@opentelemetry/sdk-trace-node`), auto-tracing is skipped entirely for that invoke — auto-instrumentation never runs, and the handler's own setup takes over. This is determined once per invoke before the process spawns, preventing any race with the handler's own tracer provider registration.
+
+**CommonJS constraint:** Only handlers Node loads as CommonJS actually get auto-traced. OTel's Node auto-instrumentation patches libraries via CommonJS's `require()` hook; a native ES module handler runs fine but produces zero auto-instrumented spans. This affects `.mjs` handlers or `.js` handlers with `"type": "module"` in their `package.json` without a build step that emits CommonJS — but every TypeScript fixture in this repo (including the manual `otel-span` example) is esbuild-bundled to CommonJS output by default, so bundled TS handlers are covered the same way hand-written `.js`/`.cjs` files are.
+
+See `fixtures/javascript/auto-trace-http` for a working example: a plain CommonJS handler making a real outgoing HTTP request, with no OTel code at all — enable auto-tracing to see it capture a real span.
+
+**A detection heuristic limitation:** The check for existing tracing (looking for `@opentelemetry/sdk-trace*` in dependencies) is static and pre-flight, not runtime-verified. A project declaring the SDK as a dependency but never actually calling `trace.setGlobalTracerProvider` will have auto-tracing skipped anyway, running with no tracing — an accepted limitation to avoid runtime races, not a crash or a silent wrong answer.
+
 ## Data
 
 Registered functions, per-function env vars, and saved events live in
