@@ -282,6 +282,31 @@ it('opens on the timeline view when traceView is controlled to "timeline"', asyn
   expect(await screen.findByTestId('trace-bar-bb')).toBeInTheDocument()
 })
 
+it('shows the list view (not the timeline) when traceView is controlled to "list"', async () => {
+  const withSpans: InvokeResult = {
+    ...ok,
+    trace: {
+      pending: false,
+      spans: [{
+        traceId: 'aa', spanId: 'bb', parentSpanId: null, name: 'do-work',
+        startTimeUnixNano: '1000000000', endTimeUnixNano: '1005000000', attributes: {},
+      }],
+    },
+  }
+  function ControlledAtTraceList() {
+    const [tab, setTab] = useState<ResultTab>('trace')
+    return (
+      <ResultPanel
+        result={withSpans} activeTab={tab} onActiveTabChange={setTab}
+        traceView="list" onTraceViewChange={() => {}}
+      />
+    )
+  }
+  render(<ControlledAtTraceList />)
+  await screen.findByRole('tab', { name: 'Trace' })
+  expect(screen.queryByTestId('trace-bar-bb')).not.toBeInTheDocument()
+})
+
 // Radix keeps the selected tab value internally, so when checkResults goes
 // back to null on the next invoke the Checks trigger and content both unmount
 // while "checks" stays selected — leaving the panel entirely blank.
