@@ -247,3 +247,61 @@ test('node handler exception does not report initMs', async () => {
   assert.strictEqual(r.ok, false);
   assert.strictEqual(r.report.initMs, undefined);
 });
+
+function makeNodeFixture(code) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-flush-fixture-'));
+  fs.writeFileSync(path.join(dir, 'index.js'), code);
+  return dir;
+}
+
+function runHarnessDirect(dir, extraEnv) {
+  return new Promise((resolve) => {
+    const resultFile = path.join(os.tmpdir(), `hflush-${process.pid}-${Math.random().toString(36).slice(2)}.json`);
+    const child = execFile(process.execPath,
+      [HARNESS, '--handler', 'index.handler', '--result-file', resultFile,
+       '--timeout-ms', '30000', '--memory-mb', '128', '--request-id', 'req-flush'],
+      { cwd: dir, env: { PATH: process.env.PATH, HOME: process.env.HOME, ...extraEnv } },
+      () => {
+        let envelope = null;
+        try { envelope = JSON.parse(fs.readFileSync(resultFile, 'utf8')); fs.unlinkSync(resultFile); } catch {}
+        resolve(envelope);
+      });
+    child.stdin.end('{}');
+  });
+}
+
+test('harness awaits and calls globalThis.__awsPlaygroundFlushTracing before exiting, on success and on failure', async () => {
+  const flushMarker = path.join(os.tmpdir(), `flush-marker-${process.pid}-${Math.random().toString(36).slice(2)}.txt`);
+  const stubRequire = path.join(os.tmpdir(), `flush-stub-${process.pid}-${Math.random().toString(36).slice(2)}.cjs`);
+  fs.writeFileSync(stubRequire, `
+    globalThis.__awsPlaygroundFlushTracing = async () => {
+      require('fs').appendFileSync(${JSON.stringify(flushMarker)}, 'flushed\\n');
+    };
+  `);
+  const okDir = makeNodeFixture(`exports.handler = async () => ({ ok: true });`);
+  const errDir = makeNodeFixture(`exports.handler = async () => { throw new Error('boom'); };`);
+  try {
+    const okEnvelope = await runHarnessDirect(okDir, { NODE_OPTIONS: `--require ${stubRequire}` });
+    assert.strictEqual(okEnvelope.ok, true);
+    const errEnvelope = await runHarnessDirect(errDir, { NODE_OPTIONS: `--require ${stubRequire}` });
+    assert.strictEqual(errEnvelope.ok, false);
+
+    const flushLog = fs.readFileSync(flushMarker, 'utf8');
+    assert.strictEqual(flushLog.split('\n').filter(Boolean).length, 2);
+  } finally {
+    fs.rmSync(flushMarker, { force: true });
+    fs.rmSync(stubRequire, { force: true });
+    fs.rmSync(okDir, { recursive: true, force: true });
+    fs.rmSync(errDir, { recursive: true, force: true });
+  }
+});
+
+test('harness does not fail when no auto-tracing hook is defined (the common case)', async () => {
+  const okDir = makeNodeFixture(`exports.handler = async () => ({ ok: true });`);
+  try {
+    const envelope = await runHarnessDirect(okDir, {});
+    assert.strictEqual(envelope.ok, true);
+  } finally {
+    fs.rmSync(okDir, { recursive: true, force: true });
+  }
+});
