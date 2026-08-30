@@ -31,8 +31,8 @@ vi.mock('@/lib/api', () => {
   // and a static mock would make that invalidation's refetch clobber the
   // cache write back down to the original two functions.
   const functions = [
-    { id: 'fn-1', name: 'order-lookup', path: '/tmp', runtime: 'node', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
-    { id: 'fn-2', name: 's3-handler', path: '/tmp2', runtime: 'python', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [] },
+    { id: 'fn-1', name: 'order-lookup', path: '/tmp', runtime: 'node', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [], autoTrace: false },
+    { id: 'fn-2', name: 's3-handler', path: '/tmp2', runtime: 'python', handler: 'index.handler', timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {}, envFile: '', buildCommand: '', localServices: [], trigger: null, savedEvents: [], autoTrace: false },
   ]
   return {
     api: {
@@ -56,7 +56,7 @@ vi.mock('@/lib/api', () => {
           id: 'fn-3', name: input.name, path: input.path, runtime: input.runtime,
           handler: input.handler, timeoutMs: 3000, memoryMb: 128, jarPath: null, env: {},
           envFile: '', buildCommand: input.buildCommand ?? '', localServices: [],
-          trigger: null, savedEvents: [],
+          trigger: null, savedEvents: [], autoTrace: false,
         }
         functions.push(fn)
         return fn

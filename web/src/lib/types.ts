@@ -37,6 +37,7 @@ export interface FunctionDef {
   localServices: string[]
   trigger: FunctionTrigger | null
   savedEvents: SavedEvent[]
+  autoTrace: boolean
 }
 
 export interface ServiceCredential {

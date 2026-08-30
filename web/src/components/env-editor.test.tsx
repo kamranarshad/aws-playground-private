@@ -17,6 +17,7 @@ const fn: FunctionDef = {
   handler: 'index.handler', timeoutMs: 30000, memoryMb: 128, jarPath: null,
   env: { AWS_SECRET_ACCESS_KEY: 'shhh', BUCKET: 'my-bucket' },
   envFile: 'auto', buildCommand: '', localServices: [], trigger: null, savedEvents: [],
+  autoTrace: false,
 }
 
 const detection: Detection = {

@@ -6,6 +6,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { AutoTraceToggle } from '@/components/auto-trace-toggle'
 import { SettingsDialog } from '@/components/settings-dialog'
 import { TriggerButton } from '@/components/trigger-button'
 import { TriggerStatusBadge } from '@/components/trigger-status-badge'
@@ -32,6 +33,7 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
       </span>
       <div className="ml-auto flex items-center gap-1">
         <TriggerButton fn={fn} />
+        <AutoTraceToggle fn={fn} />
         <TriggerToggle fn={fn} />
         <SettingsDialog fn={fn} />
         <AlertDialog>

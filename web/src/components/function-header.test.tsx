@@ -18,6 +18,7 @@ const fn: FunctionDef = {
   id: 'fn1', name: 'test', path: '/tmp/test', runtime: 'node',
   handler: 'index.handler', timeoutMs: 30000, memoryMb: 128, jarPath: null,
   env: {}, envFile: 'auto', buildCommand: '', localServices: [], trigger: null, savedEvents: [],
+  autoTrace: false,
 }
 
 beforeEach(() => {
@@ -59,4 +60,11 @@ it('shows the trigger status badge for a playground.json-declared trigger even t
 it('mounts the trigger button', async () => {
   render(<FunctionHeader fn={fn} onDeleted={() => {}} />, { wrapper: makeWrapper() })
   expect(await screen.findByRole('button', { name: 'Configure trigger' })).toBeInTheDocument()
+})
+
+it('shows the auto-trace toggle for a Node function but not for a non-Node one', () => {
+  const { rerender } = render(<FunctionHeader fn={fn} onDeleted={() => {}} />, { wrapper: makeWrapper() })
+  expect(screen.getByText('Auto-trace')).toBeInTheDocument()
+  rerender(<FunctionHeader fn={{ ...fn, runtime: 'python' }} onDeleted={() => {}} />)
+  expect(screen.queryByText('Auto-trace')).not.toBeInTheDocument()
 })
