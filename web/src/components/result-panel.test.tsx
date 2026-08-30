@@ -307,6 +307,43 @@ it('shows the list view (not the timeline) when traceView is controlled to "list
   expect(screen.queryByTestId('trace-bar-bb')).not.toBeInTheDocument()
 })
 
+// TraceTab is re-keyed by requestId (result-panel.tsx) so each invoke opens
+// its own default-depth tree. That remount used to double as the reset that
+// snapped the trace view back to List; now the view lives in the parent's
+// URL-derived state, so the same remount must NOT lose it.
+it('keeps the timeline view across a re-invoke that changes requestId', async () => {
+  const withSpans: InvokeResult = {
+    ...ok,
+    trace: {
+      pending: false,
+      spans: [{
+        traceId: 'aa', spanId: 'bb', parentSpanId: null, name: 'do-work',
+        startTimeUnixNano: '1000000000', endTimeUnixNano: '1005000000', attributes: {},
+      }],
+    },
+  }
+  const nextInvoke: InvokeResult = { ...withSpans, report: { ...withSpans.report, requestId: 'req-2' } }
+  function ControlledAtTimeline({ result }: { result: InvokeResult }) {
+    const [tab, setTab] = useState<ResultTab>('trace')
+    // Real state (not a no-op setter): if TraceTab's remount ever calls
+    // onViewChange('list') on its own, that must actually flow back here.
+    const [traceView, setTraceView] = useState<TraceView>('timeline')
+    return (
+      <ResultPanel
+        result={result} activeTab={tab} onActiveTabChange={setTab}
+        traceView={traceView} onTraceViewChange={setTraceView}
+      />
+    )
+  }
+  const { rerender } = render(<ControlledAtTimeline result={withSpans} />)
+  expect(await screen.findByTestId('trace-bar-bb')).toBeInTheDocument()
+
+  // A new requestId is exactly what changes TraceTab's `key` and remounts it.
+  rerender(<ControlledAtTimeline result={nextInvoke} />)
+
+  expect(await screen.findByTestId('trace-bar-bb')).toBeInTheDocument()
+})
+
 // Radix keeps the selected tab value internally, so when checkResults goes
 // back to null on the next invoke the Checks trigger and content both unmount
 // while "checks" stays selected — leaving the panel entirely blank.
