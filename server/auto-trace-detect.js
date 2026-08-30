@@ -12,8 +12,9 @@ function hasOwnTracingSetup(projectDir) {
   } catch {
     return false;
   }
-  const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
-  return Object.keys(deps).some((name) => name.startsWith('@opentelemetry/sdk-trace'));
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  return Object.keys(deps).some((name) =>
+    name.startsWith('@opentelemetry/sdk-trace') || name === '@opentelemetry/sdk-node');
 }
 
 module.exports = { hasOwnTracingSetup };

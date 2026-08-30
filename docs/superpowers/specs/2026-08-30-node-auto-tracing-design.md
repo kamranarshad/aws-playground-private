@@ -72,10 +72,12 @@ original non-goal: the playground never modifies a user's project.
 Before an invoke ever spawns a child process, if `opts.autoTrace` is true
 and `opts.runtime === 'node'`, `server/invoker.js` reads the project's
 `package.json` (from `opts.dir`) and checks `dependencies` and
-`devDependencies` for any key starting with `@opentelemetry/sdk-trace`
-(covers `@opentelemetry/sdk-trace`, `@opentelemetry/sdk-trace-node`,
-`@opentelemetry/sdk-trace-base` — every real entry point for "this project
-sets up its own tracer provider"). A missing, unreadable, or malformed
+`devDependencies` for any key starting with `@opentelemetry/sdk-trace`, or
+equal to `@opentelemetry/sdk-node` (covers `@opentelemetry/sdk-trace`,
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/sdk-trace-base`, and
+`@opentelemetry/sdk-node` — every real entry point for "this project sets up
+its own tracer provider", including projects that only declare `sdk-node`
+directly and pull `sdk-trace-node` in transitively). A missing, unreadable, or malformed
 `package.json` counts as "no existing tracing" (same permissive-default
 posture `server/detect.js` already takes elsewhere in this codebase).
 

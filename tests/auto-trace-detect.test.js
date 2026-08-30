@@ -48,3 +48,13 @@ test('real fixture: otel-span declares its own tracing and is correctly detected
   const dir = path.join(__dirname, '..', 'fixtures', 'typescript', 'otel-span');
   assert.strictEqual(hasOwnTracingSetup(dir), true);
 });
+
+test('true when @opentelemetry/sdk-node is a direct dependency', () => {
+  const dir = projectWith({ dependencies: { '@opentelemetry/sdk-node': '^0.55.0' } });
+  assert.strictEqual(hasOwnTracingSetup(dir), true);
+});
+
+test('true when @opentelemetry/sdk-node is only a devDependency', () => {
+  const dir = projectWith({ devDependencies: { '@opentelemetry/sdk-node': '^0.55.0' } });
+  assert.strictEqual(hasOwnTracingSetup(dir), true);
+});
