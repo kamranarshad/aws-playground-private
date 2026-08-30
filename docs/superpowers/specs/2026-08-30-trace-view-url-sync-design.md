@@ -53,7 +53,7 @@ function onTraceViewChange(view: TraceView) {
 
 Wherever `TraceTab` is currently rendered (inside `ResultPanel`, for the `trace` tab's content) passes `view={traceView}` and `onViewChange={onTraceViewChange}` down from the route — following the same prop-drilling `ResultPanel` already does for `activeTab`/`onActiveTabChange`.
 
-**5. Persistence across function switches / re-invokes.** The chosen view persists in the URL exactly like `tab` already does — switching functions or invoking again does not reset it back to `list`. No special reset logic is added.
+**5. Persistence across re-invokes.** The chosen view persists in the URL across re-invokes on the same function — invoking again does not reset it back to `list`, since `tab`/`traceView` are search-param state, untouched by the invoke lifecycle. Switching functions is a separate case: it already resets `tab` back to `'response'` (pre-existing behavior in `selectByName`, unrelated to this feature), and the scoping effect in point 2 then clears `traceView` too as a consequence — not a special-cased reset added by this feature. No new reset logic is added anywhere.
 
 ## Testing
 
