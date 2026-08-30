@@ -19,11 +19,13 @@ import {
   useFunctions, useInvoke, useSelectionSync, useTracePoll,
 } from '@/lib/queries'
 import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
+import type { TraceView } from '@/components/trace-tab'
 
-export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab } {
+export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab; traceView?: 'timeline' } {
   return {
     function: typeof search.function === 'string' ? search.function : undefined,
     tab: RESULT_TABS.includes(search.tab as ResultTab) ? (search.tab as ResultTab) : undefined,
+    traceView: search.traceView === 'timeline' ? 'timeline' : undefined,
   }
 }
 
@@ -50,6 +52,11 @@ export function App() {
 
   function onActiveTabChange(tab: ResultTab) {
     navigate({ search: (prev) => ({ ...prev, tab }) })
+  }
+  const traceView: TraceView = search.traceView ?? 'list'
+
+  function onTraceViewChange(view: TraceView) {
+    navigate({ search: (prev) => ({ ...prev, traceView: view === 'timeline' ? 'timeline' : undefined }) })
   }
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -115,6 +122,16 @@ export function App() {
       navigate({ search: (prev) => ({ ...prev, tab: undefined }), replace: true })
     }
   }, [activeTab, checkResults, navigate])
+
+  // traceView is only meaningful while the Trace tab is active; leaving it
+  // in the URL after switching away would let a stale value silently apply
+  // the next time the Trace tab is reopened via the URL alone. Same
+  // replace-not-push justification as the Checks-tab effect above.
+  useEffect(() => {
+    if (activeTab !== 'trace' && search.traceView) {
+      navigate({ search: (prev) => ({ ...prev, traceView: undefined }), replace: true })
+    }
+  }, [activeTab, search.traceView, navigate])
 
   const selected = functions.find((f) => f.id === selectedId) ?? null
 
@@ -202,6 +219,8 @@ export function App() {
                     checkResults={checkResults}
                     activeTab={activeTab}
                     onActiveTabChange={onActiveTabChange}
+                    traceView={traceView}
+                    onTraceViewChange={onTraceViewChange}
                     historyTab={
                       <HistoryList
                         key={selected.id}

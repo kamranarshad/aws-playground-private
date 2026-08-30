@@ -21,6 +21,15 @@ it('handles an empty search', () => {
   expect(validateSearch({})).toEqual({ function: undefined, tab: undefined })
 })
 
+it('keeps traceView=timeline when present', () => {
+  expect(validateSearch({ traceView: 'timeline' })).toEqual({ function: undefined, tab: undefined, traceView: 'timeline' })
+})
+
+it('drops any traceView value other than "timeline"', () => {
+  expect(validateSearch({ traceView: 'list' })).toEqual({ function: undefined, tab: undefined, traceView: undefined })
+  expect(validateSearch({ traceView: 'nope' })).toEqual({ function: undefined, tab: undefined, traceView: undefined })
+})
+
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -176,6 +185,39 @@ it('corrects the URL off the Checks tab (via replace) when check results clear w
   await waitFor(() => expect(router.state.location.search.tab).toBeUndefined())
   // replace, not push: the correction must not add a Back-able history entry
   expect(router.history.length).toBe(historyLenBefore)
+})
+
+it('pushes traceView=timeline into the URL when Timeline is clicked on the Trace tab, and clears it when List is clicked', async () => {
+  const router = await renderApp('/?function=order-lookup&tab=trace')
+  await screen.findByRole('tab', { name: 'Trace' })
+  const historyLenBefore = router.history.length
+
+  await userEvent.click(screen.getByRole('button', { name: 'Timeline' }))
+
+  expect(router.state.location.search.traceView).toBe('timeline')
+  expect(router.history.length).toBe(historyLenBefore + 1)
+
+  await userEvent.click(screen.getByRole('button', { name: 'List' }))
+
+  expect(router.state.location.search.traceView).toBeUndefined()
+})
+
+it('opens directly on the timeline view when the URL already names it', async () => {
+  await renderApp('/?function=order-lookup&tab=trace&traceView=timeline')
+
+  expect(await screen.findByRole('button', { name: 'Timeline' })).toHaveAttribute('data-active', 'true')
+})
+
+it('strips traceView from the URL (via replace) when navigating off the Trace tab', async () => {
+  const router = await renderApp('/?function=order-lookup&tab=trace&traceView=timeline')
+  await screen.findByRole('button', { name: 'Timeline' })
+  const historyLenBefore = router.history.length
+
+  fireEvent.mouseDown(screen.getByRole('tab', { name: 'Report' }), { button: 0 })
+
+  await waitFor(() => expect(router.state.location.search.traceView).toBeUndefined())
+  // replace, not push: the correction must not add a Back-able history entry
+  expect(router.history.length).toBe(historyLenBefore + 1) // +1 for the Report tab click itself, +0 more for the correction
 })
 
 it('selects the newly created function after Add function, not the first one in the list', async () => {
