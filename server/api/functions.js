@@ -60,6 +60,9 @@ function fieldError(fields, currentId = null) {
   if ('memoryMb' in fields && !(Number.isFinite(fields.memoryMb) && fields.memoryMb > 0)) {
     return 'memoryMb must be a positive number';
   }
+  if ('autoTrace' in fields && typeof fields.autoTrace !== 'boolean') {
+    return 'autoTrace must be a boolean';
+  }
   // Required for the HTTP trigger's routing-by-name to be unambiguous, but
   // enforced unconditionally (not just when a trigger is involved) — the
   // simpler, single rule to reason about.

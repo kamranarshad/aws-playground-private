@@ -61,6 +61,24 @@ test('function CRUD with validation', async () => {
   assert.strictEqual(r.status, 404);
 });
 
+test('autoTrace defaults to false on create and can be toggled via update', () => {
+  let r = api.createFunction({ name: 'autotrace-fn', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  assert.strictEqual(r.status, 201);
+  assert.strictEqual(r.body.autoTrace, false);
+  const id = r.body.id;
+
+  r = api.updateFunction(id, { autoTrace: true });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(r.body.autoTrace, true);
+
+  r = api.updateFunction(id, { autoTrace: 'yes' });
+  assert.strictEqual(r.status, 400);
+  // rejected patch must not apply
+  const unaffected = api.listFunctions().body.functions.find((f) => f.id === id);
+  assert.strictEqual(unaffected.autoTrace, true);
+});
+
 test('getInvokeTrace returns 404 for an unknown function, null trace when none recorded, and the persisted trace otherwise', { skip: noPy }, async () => {
   let r = api.createFunction({ name: 'trace-fn', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
