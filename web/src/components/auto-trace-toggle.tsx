@@ -18,7 +18,7 @@ export function AutoTraceToggle({ fn }: { fn: FunctionDef }) {
       <input
         type="checkbox"
         className="accent-primary"
-        checked={fn.autoTrace}
+        checked={fn.autoTrace ?? false}
         onChange={(e) => update.mutate({ id: fn.id, patch: { autoTrace: e.target.checked } })}
       />
       Auto-trace
