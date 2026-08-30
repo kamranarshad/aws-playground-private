@@ -1,7 +1,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('node:fs');
 const path = require('node:path');
 const { invoke } = require('../server/invoker');
+const { hasOwnTracingSetup } = require('../server/auto-trace-detect');
 const { hasRuntime } = require('./helpers');
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
@@ -141,4 +143,23 @@ test('invoke() injects OTLP env vars pointed at the trace receiver', async () =>
   assert.match(r.response.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, /^http:\/\/127\.0\.0\.1:\d+\/v1\/traces$/);
   assert.strictEqual(r.response.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL, 'http/protobuf');
   assert.match(r.response.OTEL_RESOURCE_ATTRIBUTES, /^faas\.invocation_id=/);
+});
+
+test('autoTrace does not interfere with a handler that already sets up its own tracing (otel-span)',
+  { skip: fs.existsSync(path.join(FIXTURES, 'typescript/otel-span/dist/index.js')) ? false : 'fixture dist not built' },
+  async () => {
+  const otelSpanDir = path.join(FIXTURES, 'typescript/otel-span');
+  assert.strictEqual(hasOwnTracingSetup(otelSpanDir), true, 'precondition: otel-span must declare its own tracing');
+
+  const r = await invoke(base('typescript/otel-span', {
+    runtime: 'node', handler: 'dist/index.handler', autoTrace: true, id: 'fn-autotrace-skip-test',
+  }));
+  assert.strictEqual(r.ok, true);
+  // otel-span's own manual pipeline produces exactly 5 spans (see its own
+  // fixture source) -- if auto-tracing had incorrectly layered on top
+  // instead of being skipped, this would differ (e.g. the handler's own
+  // setGlobalTracerProvider silently rejected because the bootstrap won
+  // the registration race -- exactly the failure mode detection exists to
+  // prevent).
+  assert.strictEqual(r.trace.spans.length, 5);
 });

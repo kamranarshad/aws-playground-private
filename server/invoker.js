@@ -4,10 +4,12 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { findVenvPython } = require('./detect');
+const { hasOwnTracingSetup } = require('./auto-trace-detect');
 const traceReceiver = require('./trace-receiver');
 const traceCollector = require('./trace-collector');
 
 const HARNESS_DIR = path.join(__dirname, '..', 'harnesses');
+const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
 
 // The host environment is NOT inherited — only this allowlist crosses over,
 // so a handler can't accidentally pick up your shell's AWS credentials.
@@ -24,13 +26,13 @@ const BASE_ENV_KEYS = [
   'AWS_CA_BUNDLE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
 ];
 
-function command(opts, harnessArgs) {
+function command(opts, harnessArgs, nodeRequireArgs = []) {
   if (opts.runtime === 'python') {
     const interp = findVenvPython(opts.dir) || 'python3';
     return { cmd: interp, args: [path.join(HARNESS_DIR, 'python', 'harness.py'), ...harnessArgs] };
   }
   if (opts.runtime === 'node') {
-    return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
+    return { cmd: process.execPath, args: [...nodeRequireArgs, path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
   }
   if (opts.runtime === 'provided') {
     return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'provided', 'harness.mjs'), ...harnessArgs] };
@@ -92,7 +94,10 @@ async function invoke(opts) {
   const harnessArgs = ['--handler', opts.handler, '--result-file', resultFile,
     '--timeout-ms', String(timeoutMs), '--memory-mb', String(memoryMb),
     '--request-id', requestId];
-  const { cmd, args } = command(opts, harnessArgs);
+  const nodeRequireArgs = (opts.runtime === 'node' && opts.autoTrace && !hasOwnTracingSetup(opts.dir))
+    ? ['--require', AUTO_TRACE_BOOTSTRAP]
+    : [];
+  const { cmd, args } = command(opts, harnessArgs, nodeRequireArgs);
   const otlpEndpoint = await traceReceiver.endpoint();
   const env = buildEnv(opts, memoryMb, requestId, otlpEndpoint);
 

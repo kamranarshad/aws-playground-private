@@ -77,6 +77,7 @@ async function invokeFunction(input) {
     } else {
       result = await invoke({
         id: fn.id,
+        autoTrace: fn.autoTrace,
         name: fn.name,
         dir: fn.path,
         runtime: fn.runtime,
