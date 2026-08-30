@@ -7,11 +7,13 @@ import { afterEach, expect, it, vi } from 'vitest'
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
 
 import { ResultPanel } from '@/components/result-panel'
+import type { TraceView } from '@/components/trace-tab'
 import type { InvokeResult, ResultTab } from '@/lib/types'
 
-function ControlledResultPanel(props: Omit<ComponentProps<typeof ResultPanel>, 'activeTab' | 'onActiveTabChange'>) {
+function ControlledResultPanel(props: Omit<ComponentProps<typeof ResultPanel>, 'activeTab' | 'onActiveTabChange' | 'traceView' | 'onTraceViewChange'>) {
   const [tab, setTab] = useState<ResultTab>('response')
-  return <ResultPanel {...props} activeTab={tab} onActiveTabChange={setTab} />
+  const [traceView, setTraceView] = useState<TraceView>('list')
+  return <ResultPanel {...props} activeTab={tab} onActiveTabChange={setTab} traceView={traceView} onTraceViewChange={setTraceView} />
 }
 
 function stubClipboard() {
@@ -254,6 +256,30 @@ it('renders captured spans in the Trace tab', async () => {
   render(<ControlledResultPanel result={withSpans} />)
   await userEvent.click(screen.getByText('Trace'))
   expect(screen.getByText('do-work')).toBeInTheDocument()
+})
+
+it('opens on the timeline view when traceView is controlled to "timeline"', async () => {
+  const withSpans: InvokeResult = {
+    ...ok,
+    trace: {
+      pending: false,
+      spans: [{
+        traceId: 'aa', spanId: 'bb', parentSpanId: null, name: 'do-work',
+        startTimeUnixNano: '1000000000', endTimeUnixNano: '1005000000', attributes: {},
+      }],
+    },
+  }
+  function ControlledAtTimeline() {
+    const [tab, setTab] = useState<ResultTab>('trace')
+    return (
+      <ResultPanel
+        result={withSpans} activeTab={tab} onActiveTabChange={setTab}
+        traceView="timeline" onTraceViewChange={() => {}}
+      />
+    )
+  }
+  render(<ControlledAtTimeline />)
+  expect(await screen.findByTestId('trace-bar-bb')).toBeInTheDocument()
 })
 
 // Radix keeps the selected tab value internally, so when checkResults goes

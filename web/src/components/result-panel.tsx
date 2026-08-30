@@ -7,7 +7,7 @@ import { CopyButton } from '@/components/copy-button'
 import { HttpStatusBadge } from '@/components/http-status-badge'
 import { JsonTree } from '@/components/json-tree'
 import { LogViewer } from '@/components/log-viewer'
-import { TraceTab } from '@/components/trace-tab'
+import { TraceTab, type TraceView } from '@/components/trace-tab'
 import type { AssertionRun } from '@/lib/assertions'
 import { cn } from '@/lib/utils'
 import type { InvokeResult, ResultTab } from '@/lib/types'
@@ -82,12 +82,16 @@ function ChecksList({ run }: { run: AssertionRun }) {
   )
 }
 
-export function ResultPanel({ result, checkResults, historyTab, activeTab, onActiveTabChange }: {
+export function ResultPanel({
+  result, checkResults, historyTab, activeTab, onActiveTabChange, traceView, onTraceViewChange,
+}: {
   result: InvokeResult | null
   checkResults?: AssertionRun | null
   historyTab?: ReactNode
   activeTab: ResultTab
   onActiveTabChange: (tab: ResultTab) => void
+  traceView: TraceView
+  onTraceViewChange: (view: TraceView) => void
 }) {
   // Minified: the copy is a handoff to curl, an editor, or a test fixture, and
   // the tree already covers reading it here. Memoised because a response can be
@@ -182,7 +186,12 @@ export function ResultPanel({ result, checkResults, historyTab, activeTab, onAct
         </Pane>
       </TabsContent>
       <TabsContent value="trace" className="min-h-0 flex-1">
-        <TraceTab key={result?.report.requestId ?? 'empty'} spans={result?.trace?.spans ?? []} />
+        <TraceTab
+          key={result?.report.requestId ?? 'empty'}
+          spans={result?.trace?.spans ?? []}
+          view={traceView}
+          onViewChange={onTraceViewChange}
+        />
       </TabsContent>
       {checkResults != null && (
         <TabsContent value="checks" className="min-h-0 flex-1">
