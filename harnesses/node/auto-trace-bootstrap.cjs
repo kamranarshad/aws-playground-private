@@ -44,4 +44,4 @@ registerInstrumentations({
 // asynchronous export -- the same reason every manual example needs an
 // explicit forceFlush(), except here it's the playground's own bootstrap
 // doing it instead of the user's handler code.
-globalThis.__awsPlaygroundFlushTracing = () => provider.forceFlush();
+globalThis.__awsPlaygroundFlushTracing = () => provider.forceFlush().catch(() => {});

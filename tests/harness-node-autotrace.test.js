@@ -50,3 +50,15 @@ test('the same handler with autoTrace off produces no spans', async () => {
     assert.strictEqual(r.trace.spans.length, 0);
   });
 });
+
+test('autoTrace stays on but a dead OTLP collector does not break the invoke', async () => {
+  await withTestServer(async (url) => {
+    const r = await invoke({
+      id: 'fn-autotrace-dead-collector', name: 'autotrace-dead-collector', dir: FIXTURE,
+      runtime: 'node', handler: 'index.handler', event: { url }, autoTrace: true,
+      env: { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://127.0.0.1:1' },
+    });
+    assert.strictEqual(r.ok, true, `expected ok:true even with a dead collector, got: ${JSON.stringify(r.error)}`);
+    assert.strictEqual(r.response.body, 'pong');
+  });
+});

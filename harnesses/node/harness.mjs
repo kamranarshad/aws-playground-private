@@ -83,11 +83,11 @@ try {
     // else: 3-arg callback style — wait for the callback
   });
   const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-  await globalThis.__awsPlaygroundFlushTracing?.();
+  try { await globalThis.__awsPlaygroundFlushTracing?.(); } catch {}
   writeResult({ ok: true, phase: 'invoke', response: response ?? null, durationMs, initMs });
 } catch (err) {
   const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-  await globalThis.__awsPlaygroundFlushTracing?.();
+  try { await globalThis.__awsPlaygroundFlushTracing?.(); } catch {}
   writeResult({ ok: false, phase: 'invoke', durationMs, error: shape(err) });
 }
 process.exit(0);
