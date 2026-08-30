@@ -1,17 +1,18 @@
-import { useState } from 'react'
 import { TracePanel } from '@/components/trace-panel'
 import { TraceWaterfall } from '@/components/trace-waterfall'
 import { cn } from '@/lib/utils'
 import type { Span } from '@/lib/types'
 
-type TraceView = 'list' | 'timeline'
+export type TraceView = 'list' | 'timeline'
 
 const VIEW_BUTTON =
   'rounded px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm'
 
-export function TraceTab({ spans }: { spans: Span[] }) {
-  const [view, setView] = useState<TraceView>('list')
-
+export function TraceTab({ spans, view, onViewChange }: {
+  spans: Span[]
+  view: TraceView
+  onViewChange: (view: TraceView) => void
+}) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex justify-end gap-1 border-b px-2 py-1">
@@ -19,7 +20,7 @@ export function TraceTab({ spans }: { spans: Span[] }) {
           type="button"
           data-active={view === 'list'}
           className={cn(VIEW_BUTTON)}
-          onClick={() => setView('list')}
+          onClick={() => onViewChange('list')}
         >
           List
         </button>
@@ -27,7 +28,7 @@ export function TraceTab({ spans }: { spans: Span[] }) {
           type="button"
           data-active={view === 'timeline'}
           className={cn(VIEW_BUTTON)}
-          onClick={() => setView('timeline')}
+          onClick={() => onViewChange('timeline')}
         >
           Timeline
         </button>
