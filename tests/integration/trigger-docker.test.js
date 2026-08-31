@@ -6,9 +6,13 @@ const os = require('node:os');
 const path = require('node:path');
 const { hasRuntime } = require('../helpers');
 const {
-  SQSClient, CreateQueueCommand, SendMessageCommand, GetQueueAttributesCommand,
+  SQSClient, CreateQueueCommand, PurgeQueueCommand, SendMessageCommand,
+  GetQueueAttributesCommand,
 } = require('@aws-sdk/client-sqs');
-const { DynamoDBClient, CreateTableCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBClient, CreateTableCommand, DeleteTableCommand, DescribeTableCommand,
+  ListTablesCommand, PutItemCommand,
+} = require('@aws-sdk/client-dynamodb');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const s3Trigger = require('../../server/trigger/s3');
 
@@ -117,6 +121,18 @@ async function retryUntilReachable(action, attempts = 20) {
   }
 }
 
+// ElasticMQ keeps its queues for the lifetime of the container, not the
+// lifetime of a test run, so a queue carries whatever earlier runs left on it.
+// The disable case below is the sharp edge: it deliberately leaves its message
+// unconsumed, so without a purge it poisons its own next run -- the count is 1
+// the first time and 2 the second.
+async function freshQueue(client, queueName) {
+  const { QueueUrl } = await retryUntilReachable(() =>
+    client.send(new CreateQueueCommand({ QueueName: queueName })));
+  await client.send(new PurgeQueueCommand({ QueueUrl }));
+  return QueueUrl;
+}
+
 test('enabling a trigger invokes the function when a message arrives, deletes it, and tags history',
   { skip: ready ? false : 'docker daemon, elasticmq image, or python3 not available' }, async () => {
   const created = api.createFunction({ name: 'trig-e2e', path: path.join(FIXTURES, 'python/hello'),
@@ -125,8 +141,7 @@ test('enabling a trigger invokes the function when a message arrives, deletes it
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-queue', enabled: true } }).body;
 
   const client = sqsClient();
-  const { QueueUrl } = await retryUntilReachable(() =>
-    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-queue' })));
+  const QueueUrl = await freshQueue(client, 'trigger-e2e-queue');
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: JSON.stringify({ hello: 'world' }) }));
 
   const entry = await waitForTriggerEntry(fn.id);
@@ -152,8 +167,7 @@ test('disabling a trigger stops consuming — the message is left on the queue',
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-disable-queue', enabled: true } }).body;
 
   const client = sqsClient();
-  const { QueueUrl } = await retryUntilReachable(() =>
-    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-disable-queue' })));
+  const QueueUrl = await freshQueue(client, 'trigger-e2e-disable-queue');
 
   fn = api.updateFunction(created.body.id,
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-disable-queue', enabled: false } }).body;
@@ -178,12 +192,13 @@ test('resumeAll resumes a previously enabled trigger after a simulated restart',
     { trigger: { type: 'sqs', queueName: 'trigger-e2e-resume-queue', enabled: true } }).body;
 
   const client = sqsClient();
-  const { QueueUrl } = await retryUntilReachable(() =>
-    client.send(new CreateQueueCommand({ QueueName: 'trigger-e2e-resume-queue' })));
+  const QueueUrl = await freshQueue(client, 'trigger-e2e-resume-queue');
 
   manager.stopAll(); // simulate shutdown
 
-  await manager.resumeAll(api.invokeFunction); // simulate a fresh process reading functions.json
+  // Options object, not the bare function: passing the function leaves
+  // deps.invokeFunction undefined and the poll loop silently never fires.
+  await manager.resumeAll({ invokeFunction: api.invokeFunction }); // simulate a fresh process reading functions.json
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: 'after-restart' }));
 
   const entry = await waitForTriggerEntry(fn.id);
@@ -206,19 +221,40 @@ function dynamoClient() {
 // the trigger is what starts ElasticMQ, these tests must start DynamoDB
 // Local themselves first, create the table, and only then enable the
 // trigger.
-async function ensureTable(tableName) {
+// DynamoDB Local persists to a named docker volume, so a table and its stream
+// outlive the run that created them. Adopting an existing one is not safe: a
+// stream shard from a previous day still reports ENABLED and open, and the
+// poller still reports 'polling' against it, but a LATEST iterator on it never
+// yields the records being written -- so the trigger looks healthy and
+// silently delivers nothing. Recreating the table gives every run a fresh
+// stream, and clears whatever a crashed earlier run left behind.
+async function freshTable(tableName) {
   await localServices.start('dynamodb', { auto: false });
   const client = dynamoClient();
+
+  await retryUntilReachable(() => client.send(new ListTablesCommand({})));
   try {
-    await retryUntilReachable(() => client.send(new CreateTableCommand({
-      TableName: tableName,
-      AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
-      KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
-      BillingMode: 'PAY_PER_REQUEST',
-    })));
+    await client.send(new DeleteTableCommand({ TableName: tableName }));
   } catch (err) {
-    if (!err.name?.includes('ResourceInUseException')) throw err;
+    if (!err.name?.includes('ResourceNotFoundException')) throw err;
   }
+  // DynamoDB Local reports the delete before the name is reusable.
+  for (let i = 0; i < 40; i++) {
+    try {
+      await client.send(new DescribeTableCommand({ TableName: tableName }));
+      await sleep(250);
+    } catch (err) {
+      if (err.name?.includes('ResourceNotFoundException')) break;
+      throw err;
+    }
+  }
+
+  await retryUntilReachable(() => client.send(new CreateTableCommand({
+    TableName: tableName,
+    AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+    KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    BillingMode: 'PAY_PER_REQUEST',
+  })));
   return client;
 }
 
@@ -226,7 +262,7 @@ test('enabling a dynamodb trigger invokes the function on a real stream record a
   { skip: readyDynamo ? false : 'docker daemon, dynamodb-local image, or python3 not available' }, async () => {
   const created = api.createFunction({ name: 'trig-e2e-ddb', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
-  const client = await ensureTable('trigger-e2e-table');
+  const client = await freshTable('trigger-e2e-table');
   const fn = api.updateFunction(created.body.id,
     { trigger: { type: 'dynamodb', tableName: 'trigger-e2e-table', enabled: true } }).body;
 
@@ -283,7 +319,7 @@ test('disabling a dynamodb trigger stops consuming — no new history entry is r
   { skip: readyDynamo ? false : 'docker daemon, dynamodb-local image, or python3 not available' }, async () => {
   const created = api.createFunction({ name: 'trig-e2e-ddb-disable', path: path.join(FIXTURES, 'python/hello'),
     runtime: 'python', handler: 'app.handler' });
-  const client = await ensureTable('trigger-e2e-ddb-disable-table');
+  const client = await freshTable('trigger-e2e-ddb-disable-table');
   let fn = api.updateFunction(created.body.id,
     { trigger: { type: 'dynamodb', tableName: 'trigger-e2e-ddb-disable-table', enabled: true } }).body;
 

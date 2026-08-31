@@ -8,7 +8,6 @@ process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'aws
 const traceReceiver = require('../../server/trace/receiver');
 const traceCollector = require('../../server/trace/collector');
 
-const { trace } = require('@opentelemetry/api');
 const { resourceFromAttributes, detectResources, envDetector } = require('@opentelemetry/resources');
 const { TracerProvider, SimpleSpanProcessor } = require('@opentelemetry/sdk-trace');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');

@@ -45,7 +45,8 @@ function run(args, cwd) {
   // rollup's platform-specific native binary), breaking the web build
   // outright. web/'s install is independent of the root's optional-deps
   // choice, so that var is stripped here.
-  const { npm_config_omit, ...env } = process.env;
+  // Destructured only to drop it; the underscore marks it as deliberately unused.
+  const { npm_config_omit: _omitted, ...env } = process.env;
   const res = spawnSync('npm', args, {
     cwd, env, stdio: 'inherit', shell: process.platform === 'win32',
   });

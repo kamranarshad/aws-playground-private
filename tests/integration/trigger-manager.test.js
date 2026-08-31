@@ -356,3 +356,33 @@ test('manager.sync threads an injected invokeFunction down to the driver', async
     localServices.start = originalLocalServicesStart;
   }
 });
+
+// The invokeFunction dependency is injected rather than lazily required, so
+// anything that forwards it has to pass the option *object* and not the bare
+// function. Passing the function meant deps.invokeFunction was undefined and
+// the poll loop called undefined(...) -- caught by runLoop and turned into an
+// error status, so the only visible symptom was a trigger that quietly never
+// fired. Nothing asserted the plumbing until this.
+test('resumeAll forwards invokeFunction through to the driver', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let received;
+    sqs.start = (fn, { onStatus, invokeFunction }) => {
+      received = invokeFunction;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    store.create({ name: 'fwd', path: '/tmp/fwd', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q-fwd', enabled: true } });
+
+    const invokeFunction = async () => ({ status: 200, body: {} });
+    await manager.resumeAll({ invokeFunction });
+
+    assert.strictEqual(received, invokeFunction,
+      'the driver did not receive the injected invokeFunction');
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    manager.stopAll();
+  }
+});
