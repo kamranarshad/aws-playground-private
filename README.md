@@ -313,6 +313,8 @@ function).
 
 ## Development
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit together.
+
     npm install         # installs and builds the web UI (web/dist)
     npm start           # server, opens a browser; npm start -- --no-open to skip
     npm run dev         # web UI dev server with hot reload (also serves the API)
