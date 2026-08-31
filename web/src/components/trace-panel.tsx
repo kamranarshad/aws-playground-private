@@ -2,11 +2,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { layoutSpans, spanDurationMs } from '@/lib/trace-layout'
 import type { Span } from '@/lib/types'
 
-export function TracePanel({ spans }: { spans: Span[] }) {
+export function TracePanel({ spans, error }: { spans: Span[]; error?: string | null }) {
   if (spans.length === 0) {
     return (
       <div className="p-3 font-mono text-xs text-muted-foreground">
-        No spans received — export to OTEL_EXPORTER_OTLP_TRACES_ENDPOINT from your handler to see spans here.
+        {error ?? 'No spans received — export to OTEL_EXPORTER_OTLP_TRACES_ENDPOINT from your handler to see spans here.'}
       </div>
     )
   }

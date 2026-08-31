@@ -1,12 +1,29 @@
-const { DynamoDBClient, DescribeTableCommand, UpdateTableCommand } = require('@aws-sdk/client-dynamodb');
-const {
-  DynamoDBStreamsClient, DescribeStreamCommand, GetShardIteratorCommand, GetRecordsCommand,
-} = require('@aws-sdk/client-dynamodb-streams');
+const { requireOptional } = require('../optional-deps');
 const { entry, AWS_DUMMY_CREDS } = require('../services/registry');
 const inFlight = require('../api/in-flight');
 
 const POLL_IDLE_MS = 2000;
 const ERROR_BACKOFF_MS = 2000;
+
+const DYNAMODB_MISSING_MESSAGE =
+  'DynamoDB Streams triggers need `@aws-sdk/client-dynamodb`; run `npm i @aws-sdk/client-dynamodb` to enable them.';
+const DYNAMODB_STREAMS_MISSING_MESSAGE =
+  'DynamoDB Streams triggers need `@aws-sdk/client-dynamodb-streams`; run `npm i @aws-sdk/client-dynamodb-streams` to enable them.';
+
+// Both @aws-sdk/client-dynamodb and @aws-sdk/client-dynamodb-streams are
+// optionalDependencies -- loaded on first use so a checkout without them can
+// still boot and use every other trigger type.
+let _dynamoSdk;
+function dynamoSdk() {
+  if (!_dynamoSdk) _dynamoSdk = requireOptional('@aws-sdk/client-dynamodb', DYNAMODB_MISSING_MESSAGE);
+  return _dynamoSdk;
+}
+
+let _streamsSdk;
+function streamsSdk() {
+  if (!_streamsSdk) _streamsSdk = requireOptional('@aws-sdk/client-dynamodb-streams', DYNAMODB_STREAMS_MISSING_MESSAGE);
+  return _streamsSdk;
+}
 
 function defaultSleep(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -85,6 +102,8 @@ function buildDynamoDbEvent(records, streamArn) {
 }
 
 function buildClients() {
+  const { DynamoDBClient } = dynamoSdk();
+  const { DynamoDBStreamsClient } = streamsSdk();
   const svc = entry('dynamodb');
   const credentials = {
     accessKeyId: AWS_DUMMY_CREDS.AWS_ACCESS_KEY_ID,
@@ -99,6 +118,7 @@ function buildClients() {
 // The table must already exist (there's no key schema to invent one from,
 // unlike SQS's auto-created queue) — only the stream itself is ensured.
 async function ensureStreamEnabled(dynamo, tableName) {
+  const { DescribeTableCommand, UpdateTableCommand } = dynamoSdk();
   const { Table } = await dynamo.send(new DescribeTableCommand({ TableName: tableName }));
   if (Table.StreamSpecification?.StreamEnabled) return Table.LatestStreamArn;
   const { TableDescription } = await dynamo.send(new UpdateTableCommand({
@@ -112,6 +132,7 @@ async function ensureStreamEnabled(dynamo, tableName) {
 // without an EndingSequenceNumber. A concurrent multi-shard reshard is a
 // documented non-goal, not something this walks ParentShardId lineage for.
 async function resolveOpenShardIterator(streams, streamArn) {
+  const { DescribeStreamCommand, GetShardIteratorCommand } = streamsSdk();
   const { StreamDescription } = await streams.send(new DescribeStreamCommand({ StreamArn: streamArn }));
   const shards = StreamDescription.Shards ?? [];
   const openShard = [...shards].reverse().find((s) => !s.SequenceNumberRange?.EndingSequenceNumber);
@@ -128,6 +149,7 @@ async function resolveOpenShardIterator(streams, streamArn) {
 function makeReceiver(streams, streamArn) {
   let shardIterator = null;
   return async function receive() {
+    const { GetRecordsCommand } = streamsSdk();
     if (!shardIterator) shardIterator = await resolveOpenShardIterator(streams, streamArn);
     let result;
     try {
