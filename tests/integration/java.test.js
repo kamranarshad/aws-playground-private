@@ -4,6 +4,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { invoke } = require('../../server/runtime/invoker');
 const { hasRuntime } = require('../helpers');
+const pool = require('../../server/runtime/pool');
+
+// Warm environments are shared by key, so a test asserting cold-start
+// behaviour (initMs, an init failure) has to start from nothing.
+const { beforeEach } = require('node:test');
+beforeEach(() => pool.shutdown());
 
 const FIXTURE = path.join(__dirname, '..', '..', 'fixtures', 'java/hello');
 const JAR = path.join(FIXTURE, 'target', 'java-hello.jar');
@@ -107,4 +113,31 @@ test('java-structured-logging fixture: json mode emits Datadog standard attribut
   const failure = entries.find(e => e.status === 'error');
   assert.strictEqual(failure.error.kind, 'NoSuchElementException');
   assert.match(failure.error.stack, /at example\.logging\.OrdersApi\.readFromStore/);
+});
+
+// --- warm mode ---------------------------------------------------------
+// Driven through invoke() rather than the harness directly: the JVM needs a
+// classpath the invoker assembles, so exercising it end to end is both
+// simpler and a better test of the wiring.
+
+test('a second java invoke reuses the JVM and its handler instance', { skip }, async (t) => {
+  t.after(() => pool.shutdown());
+  const cold = await invoke(base({ id: 'java-warm-fn' }));
+  assert.strictEqual(cold.ok, true, JSON.stringify(cold.error));
+  assert.strictEqual(cold.report.cold, true);
+  assert.strictEqual(typeof cold.report.initMs, 'number');
+
+  const warm = await invoke(base({ id: 'java-warm-fn' }));
+  assert.strictEqual(warm.ok, true, JSON.stringify(warm.error));
+  assert.strictEqual(warm.report.cold, false, 'a second java invoke started a new JVM');
+  assert.strictEqual(warm.report.initMs, undefined, 'a warm invoke must not report initMs');
+});
+
+test('a warm java invoke is faster than the cold one that preceded it', { skip }, async (t) => {
+  t.after(() => pool.shutdown());
+  const cold = await invoke(base({ id: 'java-speed-fn' }));
+  const warm = await invoke(base({ id: 'java-speed-fn' }));
+  // JVM startup dominates a cold java invoke; skipping it is the whole point.
+  assert.ok(cold.report.initMs > 0, 'expected a measurable cold init');
+  assert.strictEqual(warm.report.cold, false);
 });

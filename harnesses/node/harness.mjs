@@ -107,10 +107,21 @@ try {
   handlerFn = await resolveHandler();
   initMs = Number(process.hrtime.bigint() - harnessStart) / 1e6;
 } catch (err) {
-  // An init failure is terminal for this process in both modes: there is no
-  // handler to serve any request with.
-  writeResult(resultFile, { ok: false, phase: 'init', durationMs: 0, error: shape(err) });
-  if (warm) process.stdout.write(`\0AWSPLAY-END:${requestId}\0`);
+  const envelope = { ok: false, phase: 'init', durationMs: 0, error: shape(err) };
+  if (!warm) {
+    writeResult(resultFile, envelope);
+    process.exit(0);
+  }
+  // In warm mode the parent is waiting on a sentinel for the request *it*
+  // sent, not for the one named on the command line, so the init failure has
+  // to be reported as the answer to a real request. There is no handler to
+  // serve a second one with, so exit after answering.
+  for await (const req of requests(process.stdin)) {
+    writeResult(req.resultFile, envelope);
+    await flushStdio();
+    process.stdout.write(`\0AWSPLAY-END:${req.requestId}\0`);
+    break;
+  }
   process.exit(0);
 }
 

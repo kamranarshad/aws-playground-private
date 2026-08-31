@@ -12,7 +12,7 @@ const pool = require('./pool');
 // Runtimes whose harness understands --warm and serves a request loop. The
 // rest still get a fresh process per invoke, which is exactly what they did
 // before; a runtime joins this set in the commit that converts its harness.
-const WARM_RUNTIMES = new Set(['node', 'python']);
+const WARM_RUNTIMES = new Set(['node', 'python', 'java']);
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
@@ -210,7 +210,8 @@ async function invoke(opts) {
     try {
       environment = await pool.acquire(poolOpts);
       const cold = environment.cold;
-      const { logs, envelope: got } = await environment.send({ event: opts.event ?? {}, timeoutMs });
+      const { logs, envelope: got } = await environment.send(
+        { event: opts.event ?? {}, timeoutMs, requestId });
       run = { logs, envelope: got, cold };
     } catch (err) {
       // A spawn failure surfaces here rather than as an 'error' event, since

@@ -183,7 +183,11 @@ class Env {
     this.idleTimer.unref?.();
   }
 
-  send({ event, timeoutMs }) {
+  // requestId comes from the caller: the handler sees it as its Context's
+  // awsRequestId, and the invoker reports the same value and correlates
+  // history and spans by it, so minting a second one here would make the id
+  // the handler sees disagree with the id everything else uses.
+  send({ event, timeoutMs, requestId = crypto.randomUUID() }) {
     // The log sentinel cannot disambiguate interleaved output, so this asserts
     // the one-invoke-per-function guard rather than trusting it.
     if (this.busy) return Promise.reject(new Error('this environment is already serving an invoke'));
@@ -192,7 +196,6 @@ class Env {
     this.refBusy();
     clearTimeout(this.idleTimer);
 
-    const requestId = crypto.randomUUID();
     const resultFile = path.join(os.tmpdir(), `awsplay-${requestId}.json`);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {

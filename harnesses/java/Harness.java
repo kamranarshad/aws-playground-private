@@ -29,6 +29,28 @@ import java.util.UUID;
 public class Harness {
     static final Gson GSON = new GsonBuilder().serializeNulls().create();
 
+    static final String SENTINEL_PREFIX = "\0AWSPLAY-END:";
+    static final String SENTINEL_SUFFIX = "\0";
+
+    // Reads one length-prefixed frame from stdin, or null at end of stream.
+    // Length-prefixed rather than line-delimited: an event JSON may contain a
+    // literal newline inside a string, which a line reader would split in half.
+    static String readFrame(InputStream in) throws Exception {
+        StringBuilder header = new StringBuilder();
+        int c;
+        while ((c = in.read()) != -1 && c != '\n') header.append((char) c);
+        if (c == -1 && header.length() == 0) return null;
+        int need = Integer.parseInt(header.toString().trim());
+        byte[] body = new byte[need];
+        int read = 0;
+        while (read < need) {
+            int n = in.read(body, read, need - read);
+            if (n == -1) return null;
+            read += n;
+        }
+        return new String(body, StandardCharsets.UTF_8);
+    }
+
     public static void main(String[] argv) throws Exception {
         long harnessStart = System.nanoTime();
         Map<String, String> args = parseArgs(argv);
@@ -37,8 +59,7 @@ public class Harness {
         long timeoutMs = Long.parseLong(args.getOrDefault("--timeout-ms", "30000"));
         int memoryMb = Integer.parseInt(args.getOrDefault("--memory-mb", "128"));
         String requestId = args.getOrDefault("--request-id", UUID.randomUUID().toString());
-
-        String eventJson = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
+        boolean warm = args.containsKey("--warm");
 
         String className = handlerSpec;
         String methodName = "handleRequest";
@@ -48,6 +69,10 @@ public class Harness {
             methodName = handlerSpec.substring(sep + 2);
         }
 
+        // Resolved once. In warm mode the cost of loading the class and
+        // constructing the handler is the initMs reported on the first
+        // response only; later invokes reuse this exact instance, which is
+        // what makes instance state persist the way it does on Lambda.
         Object target = null;
         Method method;
         try {
@@ -59,14 +84,62 @@ public class Harness {
                 target = cls.getDeclaredConstructor().newInstance();
             }
         } catch (Throwable t) {
-            writeResult(resultFile, envelope(false, "init", null, error(t), 0, null));
+            Map<String, Object> initError = envelope(false, "init", null, error(t), 0, null);
+            if (!warm) {
+                writeResult(resultFile, initError);
+                return;
+            }
+            // The parent waits on a sentinel for the request *it* sent, not for
+            // the one named on the command line, so report the init failure as
+            // the answer to a real request. There is no handler to serve a
+            // second one with.
+            String initFrame = readFrame(System.in);
+            if (initFrame != null) {
+                Map<?, ?> req = GSON.fromJson(initFrame, Map.class);
+                writeResult(String.valueOf(req.get("resultFile")), initError);
+                System.out.flush();
+                System.err.flush();
+                System.out.print(SENTINEL_PREFIX + req.get("requestId") + SENTINEL_SUFFIX);
+                System.out.flush();
+            }
             return;
         }
 
+        double initMs = (System.nanoTime() - harnessStart) / 1e6;
+
+        if (!warm) {
+            String eventJson = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);
+            runOne(method, target, eventJson, resultFile, requestId, timeoutMs, memoryMb, initMs);
+            return;
+        }
+
+        boolean first = true;
+        String frame;
+        while ((frame = readFrame(System.in)) != null) {
+            Map<?, ?> req = GSON.fromJson(frame, Map.class);
+            String rid = String.valueOf(req.get("requestId"));
+            String rfile = String.valueOf(req.get("resultFile"));
+            long rtimeout = (long) Double.parseDouble(String.valueOf(req.get("timeoutMs")));
+            int rmemory = (int) Double.parseDouble(String.valueOf(req.get("memoryMb")));
+            String eventJson = GSON.toJson(req.get("event"));
+            runOne(method, target, eventJson, rfile, rid, rtimeout, rmemory,
+                first ? Double.valueOf(initMs) : null);
+            first = false;
+            // Flush before the sentinel: the parent cuts this invoke's logs at
+            // the marker, so anything still buffered would land in the next.
+            System.out.flush();
+            System.err.flush();
+            System.out.print(SENTINEL_PREFIX + rid + SENTINEL_SUFFIX);
+            System.out.flush();
+        }
+    }
+
+    static void runOne(Method method, Object target, String eventJson, String resultFile,
+                       String requestId, long timeoutMs, int memoryMb, Double initMs)
+            throws Exception {
         long deadline = System.currentTimeMillis() + timeoutMs;
         Class<?>[] pts = method.getParameterTypes();
         long start = System.nanoTime();
-        double initMs = (start - harnessStart) / 1e6;
         try {
             Object responseTree;
             if (pts.length == 3 && InputStream.class.isAssignableFrom(pts[0])) {
@@ -178,9 +251,17 @@ public class Harness {
         Files.write(Paths.get(path), GSON.toJson(payload).getBytes(StandardCharsets.UTF_8));
     }
 
+    // Handles valueless flags (--warm) as well as --key value pairs: pairing
+    // strictly two-by-two would drop a trailing flag, or worse, swallow the
+    // following argument as its value and desync everything after it.
     static Map<String, String> parseArgs(String[] argv) {
         Map<String, String> out = new HashMap<>();
-        for (int i = 0; i + 1 < argv.length; i += 2) out.put(argv[i], argv[i + 1]);
+        for (int i = 0; i < argv.length; i++) {
+            if (!argv[i].startsWith("--")) continue;
+            boolean hasValue = i + 1 < argv.length && !argv[i + 1].startsWith("--");
+            out.put(argv[i], hasValue ? argv[i + 1] : "true");
+            if (hasValue) i++;
+        }
         return out;
     }
 

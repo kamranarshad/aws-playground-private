@@ -127,13 +127,23 @@ def main():
         # Terminal in both modes: there is no handler to serve anything with.
         kind = ("Runtime.MalformedHandlerName" if isinstance(e, ImportError)
                 and "expected" in str(e) else type(e).__name__)
-        write_result(args.result_file, {
+        envelope = {
             "ok": False, "phase": "init", "durationMs": 0,
             "error": {"type": kind, "message": str(e),
-                      "stackTrace": traceback.format_exc().splitlines()}})
-        if args.warm:
-            sys.stdout.write(SENTINEL_PREFIX + args.request_id + SENTINEL_SUFFIX)
+                      "stackTrace": traceback.format_exc().splitlines()}}
+        if not args.warm:
+            write_result(args.result_file, envelope)
+            return
+        # The parent waits on a sentinel for the request *it* sent, not for
+        # the one named on the command line, so report the init failure as the
+        # answer to a real request. There is no handler to serve a second one.
+        for req in read_requests(sys.stdin.buffer):
+            write_result(req["resultFile"], envelope)
             sys.stdout.flush()
+            sys.stderr.flush()
+            sys.stdout.write(SENTINEL_PREFIX + req["requestId"] + SENTINEL_SUFFIX)
+            sys.stdout.flush()
+            break
         return
 
     init_ms = (time.monotonic() - harness_start) * 1000
