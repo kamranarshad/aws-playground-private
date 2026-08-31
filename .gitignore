@@ -20,3 +20,9 @@ web/src/routeTree.gen.ts
 
 # Local gstack tooling state (daemon pid/port, auth token, browse logs)
 .gstack/
+
+# Built by scripts/prepare.js and the fixture install; shipped in the npm
+# tarball but never committed.
+harnesses/java/harness.jar
+fixtures/**/target/
+fixtures/typescript/*/dist/

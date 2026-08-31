@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds harness.jar with Gson shaded in. Requires JDK 11+ and network
-# (first run only, to download Gson from Maven Central). The resulting
-# harness.jar is committed so users and CI never need this script.
+# (first run only, to download Gson from Maven Central). Run automatically
+# by scripts/prepare.js -- the jar ships in the npm tarball but is not
+# committed, so a source checkout builds it here.
 set -euo pipefail
 cd "$(dirname "$0")"
 GSON_VERSION=2.11.0

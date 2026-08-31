@@ -55,6 +55,30 @@ function run(args, cwd) {
   }
 }
 
+// The harness jar ships in the npm tarball but is not committed, so a source
+// checkout builds it here. A missing JDK is not an error: the Java tests
+// already skip without one, and every other runtime still works. Never fatal
+// -- exiting here would let a missing JDK block the whole install.
+function buildJavaHarness(root) {
+  const jar = path.join(root, 'harnesses', 'java', 'harness.jar');
+  if (fs.existsSync(jar)) return;
+  const build = path.join(root, 'harnesses', 'java', 'build.sh');
+  if (!fs.existsSync(build)) return;
+  const probe = spawnSync('javac', ['-version'], {
+    stdio: 'ignore', shell: process.platform === 'win32',
+  });
+  if (probe.status !== 0) {
+    console.error('aws-playground: no JDK found — skipping the Java harness build. '
+      + 'Java functions will be unavailable; every other runtime works.');
+    return;
+  }
+  const res = spawnSync('sh', [build], { cwd: root, stdio: 'inherit' });
+  if (res.status !== 0) {
+    console.error('aws-playground: the Java harness build failed — Java functions '
+      + 'will be unavailable; every other runtime works.');
+  }
+}
+
 function main() {
   const root = path.join(__dirname, '..');
   const plan = planPrepare({ root, env: process.env });
@@ -69,6 +93,7 @@ function main() {
   const web = path.join(root, 'web');
   if (plan.install) run([plan.install], web);
   run(['run', 'build'], web);
+  buildJavaHarness(root);
 }
 
 if (require.main === module) main();
