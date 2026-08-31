@@ -1,8 +1,20 @@
-const { SQSClient, CreateQueueCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+const { requireOptional } = require('../optional-deps');
 const { awsClientOptions } = require('../services/registry');
 const defaultStore = require('../store');
 const defaultLocalServices = require('../services');
 const poller = require('./poller');
+
+const SQS_MISSING_MESSAGE =
+  'SQS triggers need `@aws-sdk/client-sqs`; run `npm i @aws-sdk/client-sqs` to enable them.';
+
+// @aws-sdk/client-sqs is an optionalDependency -- loaded on first use (not at
+// module load) so a checkout without it can still boot and use every other
+// trigger type.
+let _sqsSdk;
+function sqsSdk() {
+  if (!_sqsSdk) _sqsSdk = requireOptional('@aws-sdk/client-sqs', SQS_MISSING_MESSAGE);
+  return _sqsSdk;
+}
 
 function buildSqsEvent(message, queueName) {
   return {
@@ -26,15 +38,18 @@ function buildSqsEvent(message, queueName) {
 }
 
 function buildClient() {
+  const { SQSClient } = sqsSdk();
   return new SQSClient({ ...awsClientOptions('elasticmq'), region: 'elasticmq' });
 }
 
 async function ensureQueue(client, queueName) {
+  const { CreateQueueCommand } = sqsSdk();
   const r = await client.send(new CreateQueueCommand({ QueueName: queueName }));
   return r.QueueUrl;
 }
 
 async function receiveMessage(client, queueUrl, { signal } = {}) {
+  const { ReceiveMessageCommand } = sqsSdk();
   const r = await client.send(new ReceiveMessageCommand({
     QueueUrl: queueUrl,
     MaxNumberOfMessages: 1,
@@ -46,6 +61,7 @@ async function receiveMessage(client, queueUrl, { signal } = {}) {
 }
 
 async function deleteMessage(client, queueUrl, receiptHandle) {
+  const { DeleteMessageCommand } = sqsSdk();
   await client.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }));
 }
 

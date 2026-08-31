@@ -8,8 +8,9 @@ export type TraceView = 'list' | 'timeline'
 const VIEW_BUTTON =
   'rounded px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm'
 
-export function TraceTab({ spans, view, onViewChange }: {
+export function TraceTab({ spans, error, view, onViewChange }: {
   spans: Span[]
+  error?: string | null
   view: TraceView
   onViewChange: (view: TraceView) => void
 }) {
@@ -34,7 +35,9 @@ export function TraceTab({ spans, view, onViewChange }: {
         </button>
       </div>
       <div className="min-h-0 flex-1">
-        {view === 'list' ? <TracePanel spans={spans} /> : <TraceWaterfall spans={spans} />}
+        {view === 'list'
+          ? <TracePanel spans={spans} error={error} />
+          : <TraceWaterfall spans={spans} error={error} />}
       </div>
     </div>
   )

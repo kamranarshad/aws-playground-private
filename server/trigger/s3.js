@@ -1,10 +1,22 @@
 const http = require('http');
-const { S3Client, CreateBucketCommand, PutBucketNotificationConfigurationCommand } = require('@aws-sdk/client-s3');
+const { requireOptional } = require('../optional-deps');
 const { awsClientOptions } = require('../services/registry');
 const defaultLocalServices = require('../services');
 
 const PORT = 9501;
 const HOST = '127.0.0.1';
+
+const S3_MISSING_MESSAGE =
+  'S3 triggers need `@aws-sdk/client-s3`; run `npm i @aws-sdk/client-s3` to enable them.';
+
+// @aws-sdk/client-s3 is an optionalDependency -- loaded on first use, so the
+// process-lifetime webhook listener below (createListener, which never
+// touches the SDK) still starts fine without it.
+let _s3Sdk;
+function s3Sdk() {
+  if (!_s3Sdk) _s3Sdk = requireOptional('@aws-sdk/client-s3', S3_MISSING_MESSAGE);
+  return _s3Sdk;
+}
 
 const NOTIFICATION_ID = 'PLAYGROUND';
 const NOTIFICATION_ARN = `arn:minio:sqs::${NOTIFICATION_ID}:webhook`;
@@ -78,10 +90,12 @@ function dispatch(raw, { routesFor, invokeFunction }) {
 }
 
 function buildClient() {
+  const { S3Client } = s3Sdk();
   return new S3Client({ ...awsClientOptions('minio'), region: 'us-east-1', forcePathStyle: true });
 }
 
 async function ensureBucket(client, bucket) {
+  const { CreateBucketCommand } = s3Sdk();
   try {
     await client.send(new CreateBucketCommand({ Bucket: bucket }));
   } catch (err) {
@@ -90,6 +104,7 @@ async function ensureBucket(client, bucket) {
 }
 
 async function syncBucketNotification(client, bucket, hasWatchers) {
+  const { PutBucketNotificationConfigurationCommand } = s3Sdk();
   await client.send(new PutBucketNotificationConfigurationCommand({
     Bucket: bucket,
     NotificationConfiguration: {

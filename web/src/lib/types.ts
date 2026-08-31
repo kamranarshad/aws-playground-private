@@ -109,6 +109,10 @@ export interface Span {
 export interface Trace {
   spans: Span[]
   pending: boolean
+  // Set when auto-trace was requested but couldn't start (e.g. the OTel
+  // auto-instrumentation packages aren't installed) -- the handler still ran,
+  // it just produced no spans, and this says why.
+  error?: string | null
 }
 
 export interface CheckResult {

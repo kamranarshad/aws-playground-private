@@ -20,8 +20,17 @@ function planPrepare({ root, env }) {
 }
 
 function run(args, cwd) {
+  // npm exports its own flags as npm_config_* env vars for lifecycle scripts,
+  // and spawnSync inherits process.env by default -- so `npm install
+  // --omit=optional` at the root (skipping the root's optional AWS SDK/OTel
+  // packages) would otherwise leak into this nested install for web/ and
+  // make IT skip its own, unrelated build-tool optionalDependencies (e.g.
+  // rollup's platform-specific native binary), breaking the web build
+  // outright. web/'s install is independent of the root's optional-deps
+  // choice, so that var is stripped here.
+  const { npm_config_omit, ...env } = process.env;
   const res = spawnSync('npm', args, {
-    cwd, stdio: 'inherit', shell: process.platform === 'win32',
+    cwd, env, stdio: 'inherit', shell: process.platform === 'win32',
   });
   if (res.status !== 0) {
     console.error(`aws-playground: \`npm ${args.join(' ')}\` failed in ${cwd}`);

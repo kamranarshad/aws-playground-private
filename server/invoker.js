@@ -11,6 +11,33 @@ const traceCollector = require('./trace-collector');
 const HARNESS_DIR = path.join(__dirname, '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
 
+// Everything harnesses/node/auto-trace-bootstrap.cjs requires -- all
+// optionalDependencies (see package.json). That file is loaded via --require
+// in a brand-new child process, before the harness itself runs, so a missing
+// package there crashes the child with a bare stack trace and no result
+// file: invoker would report every field of that as an unhelpful "Runtime
+// exited without providing a result". Checking resolvability here, in the
+// parent, lets us skip --require and report *why* tracing didn't happen
+// instead, while still running the handler normally.
+const AUTO_TRACE_PACKAGES = [
+  '@opentelemetry/api',
+  '@opentelemetry/context-async-hooks',
+  '@opentelemetry/resources',
+  '@opentelemetry/sdk-trace',
+  '@opentelemetry/exporter-trace-otlp-proto',
+  '@opentelemetry/instrumentation',
+  '@opentelemetry/auto-instrumentations-node',
+];
+
+function autoTraceUnavailableMessage() {
+  const missing = AUTO_TRACE_PACKAGES.filter((pkg) => {
+    try { require.resolve(pkg); return false; } catch { return true; }
+  });
+  if (missing.length === 0) return null;
+  return `Auto-trace needs ${missing.map((p) => `\`${p}\``).join(', ')}; `
+    + `run \`npm i ${missing.join(' ')}\` to enable it.`;
+}
+
 // The host environment is NOT inherited — only this allowlist crosses over,
 // so a handler can't accidentally pick up your shell's AWS credentials.
 // Network plumbing is the exception: on a proxied or TLS-inspecting network
@@ -94,7 +121,9 @@ async function invoke(opts) {
   const harnessArgs = ['--handler', opts.handler, '--result-file', resultFile,
     '--timeout-ms', String(timeoutMs), '--memory-mb', String(memoryMb),
     '--request-id', requestId];
-  const nodeRequireArgs = (opts.runtime === 'node' && opts.autoTrace && !hasOwnTracingSetup(opts.dir))
+  const wantsAutoTrace = opts.runtime === 'node' && opts.autoTrace && !hasOwnTracingSetup(opts.dir);
+  const autoTraceError = wantsAutoTrace ? autoTraceUnavailableMessage() : null;
+  const nodeRequireArgs = (wantsAutoTrace && !autoTraceError)
     ? ['--require', AUTO_TRACE_BOOTSTRAP]
     : [];
   const { cmd, args } = command(opts, harnessArgs, nodeRequireArgs);
@@ -175,7 +204,10 @@ async function invoke(opts) {
     out.report.initMs = Math.round(envelope.initMs * 100) / 100;
   }
   const { spans } = traceCollector.snapshotAndStartWindow(requestId);
-  out.trace = { spans, pending: true };
+  // No spans will ever arrive when auto-trace couldn't start -- pending:
+  // false so the UI's trace poll (which relies on pending to know when to
+  // stop) doesn't keep hitting the trace endpoint forever waiting on them.
+  out.trace = autoTraceError ? { spans, pending: false, error: autoTraceError } : { spans, pending: true };
   return out;
 }
 

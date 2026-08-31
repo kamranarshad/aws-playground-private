@@ -189,6 +189,7 @@ export function ResultPanel({
         <TraceTab
           key={result?.report.requestId ?? 'empty'}
           spans={result?.trace?.spans ?? []}
+          error={result?.trace?.error}
           view={traceView}
           onViewChange={onTraceViewChange}
         />
