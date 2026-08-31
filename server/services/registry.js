@@ -5,6 +5,8 @@
 // composition); 'plain' = ordinary endpoint (redis, postgres).
 // The AWS-API services share the dummy access/secret the playground
 // injects — the same values you type into a console or client.
+const { PORTS } = require('../ports');
+
 const AWS_CREDENTIALS = [
   { label: 'Access key', value: 'playground' },
   { label: 'Secret key', value: 'playground123' },
@@ -19,19 +21,20 @@ const REGISTRY = {
     container: 'aws-playground-minio',
     runArgs: [
       '-v', 'aws-playground-minio-data:/data',
-      '-p', '127.0.0.1:9400:9000',
-      '-p', '127.0.0.1:9401:9001',
+      '-p', `127.0.0.1:${PORTS.minio}:9000`,
+      '-p', `127.0.0.1:${PORTS.minioConsole}:9001`,
       '-e', 'MINIO_ROOT_USER=playground',
       '-e', 'MINIO_ROOT_PASSWORD=playground123',
       '-e', 'MINIO_NOTIFY_WEBHOOK_ENABLE_PLAYGROUND=on',
-      '-e', 'MINIO_NOTIFY_WEBHOOK_ENDPOINT_PLAYGROUND=http://host.docker.internal:9501/',
+      // Points at server/trigger/s3.js's listener -- see PORTS.s3Webhook.
+      '-e', `MINIO_NOTIFY_WEBHOOK_ENDPOINT_PLAYGROUND=http://host.docker.internal:${PORTS.s3Webhook}/`,
       '--add-host=host.docker.internal:host-gateway',
       'minio/minio', 'server', '/data', '--console-address', ':9001',
     ],
-    ready: { type: 'http', target: 'http://127.0.0.1:9400/minio/health/live' },
-    endpoint: 'http://127.0.0.1:9400',
-    consoleUrl: 'http://127.0.0.1:9401',
-    env: { AWS_ENDPOINT_URL_S3: 'http://127.0.0.1:9400' },
+    ready: { type: 'http', target: `http://127.0.0.1:${PORTS.minio}/minio/health/live` },
+    endpoint: `http://127.0.0.1:${PORTS.minio}`,
+    consoleUrl: `http://127.0.0.1:${PORTS.minioConsole}`,
+    env: { AWS_ENDPOINT_URL_S3: `http://127.0.0.1:${PORTS.minio}` },
     credentials: AWS_CREDENTIALS,
   },
   elasticmq: {
@@ -60,14 +63,14 @@ const REGISTRY = {
     container: 'aws-playground-dynamodb',
     runArgs: [
       '-v', 'aws-playground-dynamodb-data:/home/dynamodblocal/data',
-      '-p', '127.0.0.1:9402:8000',
+      '-p', `127.0.0.1:${PORTS.dynamodb}:8000`,
       'amazon/dynamodb-local',
       '-jar', 'DynamoDBLocal.jar', '-sharedDb', '-dbPath', '/home/dynamodblocal/data',
     ],
-    ready: { type: 'http', target: 'http://127.0.0.1:9402/' },
-    endpoint: 'http://127.0.0.1:9402',
+    ready: { type: 'http', target: `http://127.0.0.1:${PORTS.dynamodb}/` },
+    endpoint: `http://127.0.0.1:${PORTS.dynamodb}`,
     consoleUrl: null,
-    env: { AWS_ENDPOINT_URL_DYNAMODB: 'http://127.0.0.1:9402' },
+    env: { AWS_ENDPOINT_URL_DYNAMODB: `http://127.0.0.1:${PORTS.dynamodb}` },
     credentials: AWS_CREDENTIALS,
   },
   redis: {
@@ -78,13 +81,13 @@ const REGISTRY = {
     container: 'aws-playground-redis',
     runArgs: [
       '-v', 'aws-playground-redis-data:/data',
-      '-p', '127.0.0.1:9403:6379',
+      '-p', `127.0.0.1:${PORTS.redis}:6379`,
       'redis:alpine', 'redis-server', '--appendonly', 'yes',
     ],
-    ready: { type: 'tcp', target: '127.0.0.1:9403' },
-    endpoint: 'redis://127.0.0.1:9403',
+    ready: { type: 'tcp', target: `127.0.0.1:${PORTS.redis}` },
+    endpoint: `redis://127.0.0.1:${PORTS.redis}`,
     consoleUrl: null,
-    env: { REDIS_URL: 'redis://127.0.0.1:9403' },
+    env: { REDIS_URL: `redis://127.0.0.1:${PORTS.redis}` },
     credentials: [],
   },
   postgres: {
@@ -95,19 +98,19 @@ const REGISTRY = {
     container: 'aws-playground-postgres',
     runArgs: [
       '-v', 'aws-playground-postgres-data:/var/lib/postgresql',
-      '-p', '127.0.0.1:9404:5432',
+      '-p', `127.0.0.1:${PORTS.postgres}:5432`,
       '-e', 'POSTGRES_USER=playground',
       '-e', 'POSTGRES_PASSWORD=playground123',
       '-e', 'POSTGRES_DB=playground',
       'postgres:alpine',
     ],
-    ready: { type: 'tcp', target: '127.0.0.1:9404' },
-    endpoint: 'postgresql://127.0.0.1:9404',
+    ready: { type: 'tcp', target: `127.0.0.1:${PORTS.postgres}` },
+    endpoint: `postgresql://127.0.0.1:${PORTS.postgres}`,
     consoleUrl: null,
     env: {
-      DATABASE_URL: 'postgresql://playground:playground123@127.0.0.1:9404/playground',
+      DATABASE_URL: `postgresql://playground:playground123@127.0.0.1:${PORTS.postgres}/playground`,
       PGHOST: '127.0.0.1',
-      PGPORT: '9404',
+      PGPORT: String(PORTS.postgres),
       PGUSER: 'playground',
       PGPASSWORD: 'playground123',
       PGDATABASE: 'playground',

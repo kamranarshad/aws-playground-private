@@ -1,6 +1,8 @@
 const http = require('http');
 
-const PORT = 9500;
+const { PORTS } = require('../ports');
+
+const PORT = PORTS.httpTrigger;
 const HOST = '127.0.0.1';
 const JSON_HEADERS = { 'content-type': 'application/json' };
 

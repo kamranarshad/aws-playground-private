@@ -3,7 +3,9 @@ const { requireOptional } = require('../optional-deps');
 const { awsClientOptions } = require('../services/registry');
 const defaultLocalServices = require('../services');
 
-const PORT = 9501;
+const { PORTS } = require('../ports');
+
+const PORT = PORTS.s3Webhook;
 const HOST = '127.0.0.1';
 
 const S3_MISSING_MESSAGE =
@@ -190,8 +192,8 @@ const s3Routes = new Map();
 const s3Triggered = new Map(); // functionId -> bucket
 const s3Status = new Map(); // functionId -> { state, lastError, lastPolledAt }
 
-// Because that listener is started outside this module, a failed bind (port
-// 9501 already taken — likely whenever a second playground instance is
+// Because that listener is started outside this module, a failed bind (the
+// webhook port already taken — likely whenever a second playground instance is
 // running, which bin/cli.js's port scan explicitly supports) would otherwise
 // be invisible here and every S3 trigger would keep reporting 'listening'
 // while nothing can ever reach it. bin/cli.js reports the failure in through
