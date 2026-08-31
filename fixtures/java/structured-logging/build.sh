@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the java-structured-logging fixture as a fat jar (aws-lambda-java-core
 # shaded in, as real Lambda deployment jars are). target/java-structured-logging.jar
-# is committed so tests never need this script.
+# is built by scripts/install-fixtures.js, not committed.
 set -euo pipefail
 cd "$(dirname "$0")"
 CORE_VERSION=1.2.3
