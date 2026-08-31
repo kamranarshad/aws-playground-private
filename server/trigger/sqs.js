@@ -48,6 +48,7 @@ async function ensureQueue(client, queueName) {
   return r.QueueUrl;
 }
 
+/** @param {any} client @param {string} queueUrl @param {{ signal?: AbortSignal }} [opts] */
 async function receiveMessage(client, queueUrl, { signal } = {}) {
   const { ReceiveMessageCommand } = sqsSdk();
   const r = await client.send(new ReceiveMessageCommand({

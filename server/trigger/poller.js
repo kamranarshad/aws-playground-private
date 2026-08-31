@@ -3,6 +3,7 @@ const inFlight = require('../api/in-flight');
 const POLL_IDLE_MS = 2000;
 const ERROR_BACKOFF_MS = 2000;
 
+/** @param {number} ms @param {AbortSignal} [signal] */
 function defaultSleep(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error('aborted'));
@@ -18,6 +19,18 @@ function defaultSleep(ms, signal) {
 // unlike SQS's long `WaitTimeSeconds` (which IS its idle wait), GetRecords
 // returns immediately on an empty batch, so it needs `sleepOnEmpty` to avoid
 // hot-looping the API.
+/**
+ * @param {{
+ *   fn: any, signal: AbortSignal, onStatus?: (patch: Partial<import('../types').PollerStatus>) => void,
+ *   receive: (opts: { signal: AbortSignal }) => Promise<any>,
+ *   ack?: ((batch: any) => Promise<void>) | null,
+ *   buildEvent: (batch: any) => any,
+ *   buildSource: (batch: any) => any,
+ *   invokeFunction: (input: any) => Promise<any>,
+ *   sleepOnEmpty?: boolean, idleMs?: number, errorBackoffMs?: number,
+ *   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>,
+ * }} opts
+ */
 async function runLoop({ fn, signal, onStatus = () => {},
   receive, ack, buildEvent, buildSource, invokeFunction,
   sleepOnEmpty = false,
@@ -70,6 +83,18 @@ async function runLoop({ fn, signal, onStatus = () => {},
 // runLoop. A setup failure (or anything runLoop itself throws) is reported
 // as an error status rather than an unhandled rejection, unless the poller
 // was already stopped.
+/**
+ * @param {any} fn
+ * @param {{
+ *   onStatus: (patch: Partial<import('../types').PollerStatus>) => void,
+ *   setup: () => Promise<{ receive: (opts: { signal: AbortSignal }) => Promise<any>,
+ *                          ack?: ((batch: any) => Promise<void>) | null }>,
+ *   buildEvent: (batch: any) => any,
+ *   buildSource: (batch: any) => any,
+ *   sleepOnEmpty?: boolean,
+ *   invokeFunction: (input: any) => Promise<any>,
+ * }} opts
+ */
 function start(fn, { onStatus, setup, buildEvent, buildSource, sleepOnEmpty, invokeFunction }) {
   const controller = new AbortController();
   (async () => {

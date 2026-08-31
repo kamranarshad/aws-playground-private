@@ -55,6 +55,7 @@ async function invokeFunction(input) {
     }
     const serviceEnv = localServices.composeEnv(enabledServices);
 
+    /** @type {import('../types').InvokeOutcome} */
     let result;
     let buildInfo = null;
     if (fn.buildCommand) {

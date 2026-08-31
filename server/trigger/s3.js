@@ -165,6 +165,10 @@ function createRequestHandler({ routesFor, invokeFunction }) {
 // for the life of the process (unlike server/trigger/http.js's listener,
 // which the trigger manager starts/stops based on trigger state), so it
 // needs no singleton bookkeeping here.
+/**
+ * @param {{ routesFor?: (bucket: string) => any, invokeFunction?: (input: any) => Promise<any>,
+ *          port?: number, host?: string }} [opts]
+ */
 function createListener({ routesFor, invokeFunction, port = PORT, host = HOST } = {}) {
   return new Promise((resolve, reject) => {
     const server = http.createServer(createRequestHandler({ routesFor, invokeFunction }));

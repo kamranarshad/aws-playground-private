@@ -93,6 +93,7 @@ function projectDirProblem(dir) {
 }
 
 function buildEnv(opts, memoryMb, requestId, otlpEndpoint) {
+  /** @type {Record<string, string>} */
   const env = {};
   for (const k of BASE_ENV_KEYS) if (process.env[k]) env[k] = process.env[k];
   env.AWS_LAMBDA_FUNCTION_NAME = opts.name || 'playground';
@@ -135,6 +136,7 @@ async function invoke(opts) {
   const run = dirProblem ? { exit: null, logs: '', timedOut: false, dirProblem } : await new Promise((resolve) => {
     let logs = '';
     let timedOut = false;
+    /** @type {import('child_process').ChildProcessWithoutNullStreams} */
     let child;
     try {
       child = spawn(cmd, args, {
@@ -165,6 +167,7 @@ async function invoke(opts) {
   try { envelope = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch {}
   try { fs.unlinkSync(resultFile); } catch {}
 
+  /** @type {import('./types').InvokeOutcome} */
   let out;
   if (run.timedOut) {
     out = { ok: false, phase: 'invoke', error: {

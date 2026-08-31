@@ -55,7 +55,10 @@ server.unref();
 
 const readyPromise = new Promise((resolve, reject) => {
   server.once('error', reject);
-  server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+  // Always an AddressInfo here: the socket is bound to a TCP port, never a
+  // unix path, so the string arm of address()'s union is unreachable.
+  server.listen(0, '127.0.0.1', () => resolve(
+    /** @type {import('net').AddressInfo} */ (server.address()).port));
 });
 // A rejection here must not crash the whole playground process via an
 // unhandled rejection -- endpoint() below turns a listen failure into

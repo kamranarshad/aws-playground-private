@@ -3,6 +3,10 @@ const { docker, status, statusAll, waitReady } = require('./docker');
 
 // knownState lets a caller that just probed docker (setSelection) skip a
 // second probe for the same container. Omit it and start() checks itself.
+/**
+ * @param {string} name
+ * @param {{ waitReady?: boolean, auto?: boolean, knownState?: string }} [opts]
+ */
 async function start(name, { waitReady: wait = true, auto = false, knownState } = {}) {
   const svc = entry(name);
   // Any explicit (non-auto) start promotes the service to user-managed:
@@ -62,7 +66,7 @@ function cancelStop(name) {
 // its own stale need) never scheduled one either, and the service it started
 // kept running until some unrelated future selection happened to reap it.
 // Queueing calls means every call's bookkeeping sees the true current state.
-let selectionChain = Promise.resolve();
+let selectionChain = /** @type {Promise<any>} */ (Promise.resolve());
 
 function setSelection(needed, opts) {
   const run = selectionChain.then(() => runSetSelection(needed, opts));
@@ -70,6 +74,11 @@ function setSelection(needed, opts) {
   return run;
 }
 
+/**
+ * @param {Iterable<string>} needed
+ * @param {{ waitReady?: boolean }} [opts]
+ * @returns {Promise<{ started: string[], scheduledStop: string[] }>}
+ */
 async function runSetSelection(needed, { waitReady: wait = true } = {}) {
   const need = new Set(needed);
   const started = [];

@@ -67,7 +67,9 @@ async function startWebServer({ distDir, port, host }) {
       const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
       const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, {
         method: req.method,
-        headers: req.headers,
+        // IncomingHttpHeaders allows string[] values, which HeadersInit's
+        // type does not -- undici accepts them at runtime regardless.
+        headers: /** @type {any} */ (req.headers),
         body: hasBody ? Readable.toWeb(req) : undefined,
         duplex: hasBody ? 'half' : undefined,
       });
@@ -83,7 +85,7 @@ async function startWebServer({ distDir, port, host }) {
 
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, host, resolve);
+    server.listen(port, host, () => resolve(undefined));
   });
   return server;
 }

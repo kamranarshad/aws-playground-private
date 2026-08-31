@@ -34,5 +34,11 @@ jobs:
       - name: Typecheck web
         run: npm --prefix web run typecheck
 
+      # checkJs over the CommonJS server. Not a full strict-mode migration --
+      # it catches the shape drift that the web's mirrored types would
+      # otherwise only reveal at runtime.
+      - name: Typecheck server
+        run: npm run typecheck:server
+
       - name: Lint
         run: npm run lint

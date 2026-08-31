@@ -19,7 +19,8 @@
     "test": "npm run test:server && npm run test:web",
     "test:server": "node --test --test-concurrency=1 tests/*.test.js",
     "test:web": "npm --prefix web run test",
-    "lint": "oxlint --react-plugin ."
+    "lint": "oxlint --react-plugin .",
+    "typecheck:server": "tsc -p server/tsconfig.json"
   },
   "files": [
     "bin",
@@ -30,7 +31,8 @@
   ],
   "devDependencies": {
     "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
-    "oxlint": "^1.79.0"
+    "oxlint": "^1.79.0",
+    "typescript": "^5.9.0"
   },
   "optionalDependencies": {
     "@aws-sdk/client-dynamodb": "^3.1118.0",
