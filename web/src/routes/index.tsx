@@ -135,7 +135,7 @@ export function App() {
 
   const selected = functions.find((f) => f.id === selectedId) ?? null
 
-  function runInvoke(functionId: string) {
+  function runInvoke(functionId: string, { forceCold = false } = {}) {
     let event: unknown
     try {
       event = JSON.parse(drafts[functionId] ?? '{}')
@@ -143,7 +143,7 @@ export function App() {
       toast.error('Event is not valid JSON')
       return
     }
-    invoke.mutate({ functionId, event }, {
+    invoke.mutate({ functionId, event, forceCold }, {
       onSuccess: (r) => {
         setResult(r)
         // A script already in the box gets checked automatically against
@@ -206,6 +206,7 @@ export function App() {
                     onEventTextChange={(text) =>
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
+                    onInvokeCold={() => runInvoke(selected.id, { forceCold: true })}
                     invoking={invoke.isPending}
                     onScriptChange={onScriptChange}
                     hasResult={!!result}

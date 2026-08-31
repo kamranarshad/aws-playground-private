@@ -26,6 +26,9 @@ export interface InvokePayload {
   envVars?: Record<string, string>
   timeoutMs?: number
   memoryMb?: number
+  /** Discard the warm execution environment before running, so module scope
+   *  and /tmp start empty the way they do on a real cold start. */
+  forceCold?: boolean
 }
 
 export const api = {

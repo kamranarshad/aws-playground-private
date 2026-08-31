@@ -137,6 +137,24 @@ export function ResultPanel({
               {result.ok ? 'OK' : result.error?.type ?? 'ERROR'}
               {' · '}{result.report.durationMs}ms
             </Badge>
+            {result.report.cold !== undefined && (
+              // Warm-by-default is otherwise invisible, and an unexplained 3ms
+              // after a 400ms is more confusing than useful.
+              <Badge
+                variant="outline"
+                title={result.report.cold
+                  ? 'A new execution environment was started for this invoke'
+                  : 'This invoke reused the previous execution environment, like a warm Lambda'}
+                className={cn(
+                  'font-mono text-[10px] uppercase',
+                  result.report.cold
+                    ? 'border-transparent bg-brand/15 text-brand'
+                    : 'border-transparent bg-success/15 text-success',
+                )}
+              >
+                {result.report.cold ? 'cold' : 'warm'}
+              </Badge>
+            )}
           </div>
         )}
       </div>
@@ -179,6 +197,8 @@ export function ResultPanel({
               `Duration: ${result.report.durationMs} ms\n` +
               `Billed Duration: ${result.report.billedMs} ms\n` +
               `Memory Size: ${result.report.memoryMb} MB\n` +
+              (result.report.cold != null
+                ? `Start: ${result.report.cold ? 'Cold' : 'Warm'}\n` : '') +
               (result.report.initMs != null ? `Init Duration: ${result.report.initMs} ms\n` : '') +
               (result.report.buildMs != null ? `Build Duration: ${result.report.buildMs} ms\n` : '') +
               (result.report.timedOut ? 'Status: TIMED OUT\n' : '')

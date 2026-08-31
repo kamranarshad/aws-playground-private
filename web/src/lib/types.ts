@@ -95,6 +95,8 @@ export interface Report {
   billedMs: number
   memoryMb: number
   timedOut: boolean
+  /** false when this invoke reused a warm execution environment. */
+  cold?: boolean
   buildMs?: number
   initMs?: number
 }

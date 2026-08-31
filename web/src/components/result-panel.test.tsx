@@ -359,3 +359,43 @@ it('falls back to the Response tab when the Checks tab disappears mid-selection'
   expect(screen.getByRole('tab', { name: 'Response' })).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByText('statusCode')).toBeInTheDocument()
 })
+
+// --- cold/warm ---------------------------------------------------------
+
+const coldResult: InvokeResult = {
+  ...ok,
+  report: { ...ok.report, cold: true, initMs: 412 },
+}
+
+const warmResult: InvokeResult = {
+  ...ok,
+  report: { ...ok.report, cold: false },
+}
+
+it('labels a cold invoke and reports its init duration', async () => {
+  const user = userEvent.setup()
+  render(<ControlledResultPanel result={coldResult} />)
+
+  expect(screen.getByText('cold')).toBeInTheDocument()
+  await user.click(screen.getByRole('tab', { name: /report/i }))
+  expect(screen.getByText(/Start: Cold/)).toBeInTheDocument()
+  expect(screen.getByText(/Init Duration: 412 ms/)).toBeInTheDocument()
+})
+
+it('labels a warm invoke and shows no init duration', async () => {
+  const user = userEvent.setup()
+  render(<ControlledResultPanel result={warmResult} />)
+
+  expect(screen.getByText('warm')).toBeInTheDocument()
+  expect(screen.queryByText('cold')).not.toBeInTheDocument()
+  await user.click(screen.getByRole('tab', { name: /report/i }))
+  expect(screen.getByText(/Start: Warm/)).toBeInTheDocument()
+  expect(screen.queryByText(/Init Duration/)).not.toBeInTheDocument()
+})
+
+it('shows no cold/warm badge for a result that predates the field', () => {
+  render(<ControlledResultPanel result={ok} />)
+
+  expect(screen.queryByText('cold')).not.toBeInTheDocument()
+  expect(screen.queryByText('warm')).not.toBeInTheDocument()
+})

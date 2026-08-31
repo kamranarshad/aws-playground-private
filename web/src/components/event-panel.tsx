@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } 
 import CodeMirror, { EditorView, keymap, Prec } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
-import { GripHorizontal, ListChecks, Play, Save } from 'lucide-react'
+import { GripHorizontal, ListChecks, Play, Save, Snowflake } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CopyIcon } from '@/components/copy-icon'
@@ -33,11 +33,12 @@ const DEFAULT_SCRIPT_PANEL_HEIGHT = 96
 const MIN_SCRIPT_PANEL_HEIGHT = 48
 const MAX_SCRIPT_PANEL_HEIGHT = 400
 
-export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invoking, onScriptChange, hasResult, onRunChecks }: {
+export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, onInvokeCold, invoking, onScriptChange, hasResult, onRunChecks }: {
   fn: FunctionDef
   eventText: string
   onEventTextChange: (text: string) => void
   onInvoke: () => void
+  onInvokeCold: () => void
   invoking: boolean
   onScriptChange: (script: string) => void
   hasResult: boolean
@@ -181,6 +182,15 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
           <Button size="sm" onClick={onInvoke} disabled={!!jsonError || invoking}>
             <Play className="size-3.5" /> {invoking ? 'Invoking…' : 'Invoke'}
             <kbd className="ml-1 font-mono text-[10px] opacity-70">⌘⏎</kbd>
+          </Button>
+          {/* Invokes reuse the previous execution environment by default, like
+              a warm Lambda. This throws it away first, so module-scope state
+              and /tmp start empty. */}
+          <Button variant="ghost" size="sm" onClick={onInvokeCold}
+            disabled={!!jsonError || invoking}
+            aria-label="Cold start"
+            title="Discard the warm execution environment and start fresh">
+            <Snowflake className="size-3.5" /> Cold
           </Button>
         </div>
       </div>

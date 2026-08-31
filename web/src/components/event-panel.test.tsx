@@ -73,7 +73,7 @@ it('invokes on Cmd+Enter from inside the JSON editor, instead of inserting a bla
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={onEventTextChange}
-      onInvoke={onInvoke} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={onInvoke} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -103,7 +103,7 @@ it('does not also trigger a window-level Cmd+Enter listener above it', () => {
     render(
       <EventPanel
         fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-        onInvoke={onInvoke} invoking={false} onScriptChange={vi.fn()}
+        onInvoke={onInvoke} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
         hasResult={false} onRunChecks={vi.fn()}
       />,
       { wrapper: Wrapper },
@@ -122,7 +122,7 @@ it('hides "Copy as curl" when the function has no HTTP trigger', () => {
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -135,7 +135,7 @@ it('hides "Copy as curl" when the function\'s HTTP trigger is configured but dis
   render(
     <EventPanel
       fn={fn} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -150,7 +150,7 @@ it('copies a curl command built from the current event when the HTTP trigger is 
   render(
     <EventPanel
       fn={fn} eventText={JSON.stringify(event)} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -168,7 +168,7 @@ it('shows "Copy as curl" for a playground.json-declared HTTP trigger', async () 
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -182,7 +182,7 @@ it('saves whatever is currently in the inline script editor alongside a named ev
   render(
     <EventPanel
       fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -207,7 +207,7 @@ it('omits assertionScript when the inline script editor is left blank', async ()
   render(
     <EventPanel
       fn={makeFn()} eventText={'{"a":1}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -232,7 +232,7 @@ it('seeds the inline script editor when a saved event is loaded from the dropdow
   render(
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={onEventTextChange}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={onScriptChange}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={onScriptChange}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -255,7 +255,7 @@ it('clears the inline script editor when a template is loaded instead', async ()
   render(
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={onScriptChange}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={onScriptChange}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -285,7 +285,7 @@ it('keeps the inline script when the JSON body is hand-edited', async () => {
   render(
     <EventPanel
       fn={makeFn({ savedEvents: [saved] })} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={onScriptChange}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={onScriptChange}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -306,7 +306,7 @@ it('labels the inline script editor for assistive tech', () => {
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -319,7 +319,7 @@ it('disables Run checks until there is a script and a result', () => {
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -334,7 +334,7 @@ it('enables Run checks once a script is typed and a result exists, and passes th
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={true} onRunChecks={onRunChecks}
     />,
     { wrapper: Wrapper },
@@ -354,7 +354,7 @@ it('stays disabled with a non-blank script if there is no result yet', async () 
   render(
     <EventPanel
       fn={makeFn()} eventText={'{}'} onEventTextChange={vi.fn()}
-      onInvoke={vi.fn()} invoking={false} onScriptChange={vi.fn()}
+      onInvoke={vi.fn()} onInvokeCold={vi.fn()} invoking={false} onScriptChange={vi.fn()}
       hasResult={false} onRunChecks={vi.fn()}
     />,
     { wrapper: Wrapper },
@@ -364,4 +364,20 @@ it('stays disabled with a non-blank script if there is no result yet', async () 
   await user.keyboard('expect(1).toBe(1)')
 
   expect(screen.getByRole('button', { name: /run checks/i })).toBeDisabled()
+})
+
+it('asks for a cold start when the Cold button is used', async () => {
+  const user = userEvent.setup()
+  const onInvoke = vi.fn()
+  const onInvokeCold = vi.fn()
+  render(
+    <EventPanel
+      fn={makeFn()} eventText="{}" onEventTextChange={vi.fn()}
+      onInvoke={onInvoke} onInvokeCold={onInvokeCold} invoking={false}
+      onScriptChange={vi.fn()} hasResult={false} onRunChecks={vi.fn()}
+    />, { wrapper: Wrapper })
+
+  await user.click(screen.getByRole('button', { name: 'Cold start' }))
+  expect(onInvokeCold).toHaveBeenCalledTimes(1)
+  expect(onInvoke).not.toHaveBeenCalled()
 })
