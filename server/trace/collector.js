@@ -8,9 +8,20 @@ function windowMs() {
 // requestId -> { functionId, spans, closesAt }
 const buffers = new Map();
 const timers = new Map();
+// instanceId -> requestId currently being served by that execution
+// environment. A warm process sets its OTLP resource attributes once, at
+// startup, so spans cannot carry a per-invoke id -- they carry the stable
+// environment id instead and are resolved through here. Safe because the
+// in-flight guard means an environment serves one invoke at a time.
+const instanceRequests = new Map();
 
-function open(requestId, functionId) {
-  buffers.set(requestId, { functionId, spans: [], closesAt: null });
+function open(requestId, functionId, instanceId) {
+  buffers.set(requestId, { functionId, spans: [], closesAt: null, instanceId });
+  if (instanceId) instanceRequests.set(instanceId, requestId);
+}
+
+function requestForInstance(instanceId) {
+  return instanceRequests.get(instanceId) ?? null;
 }
 
 // Called whenever a span batch for this requestId arrives. If the invoke
@@ -56,9 +67,13 @@ function peek(requestId) {
 // which is what removes a full read-parse-rewrite of the function's whole
 // history file from every single invoke's tail end.
 function close(requestId) {
+  const buf = buffers.get(requestId);
+  if (buf?.instanceId && instanceRequests.get(buf.instanceId) === requestId) {
+    instanceRequests.delete(buf.instanceId);
+  }
   buffers.delete(requestId);
   const timer = timers.get(requestId);
   if (timer) { clearTimeout(timer); timers.delete(requestId); }
 }
 
-module.exports = { open, ingest, snapshotAndStartWindow, peek, close, windowMs };
+module.exports = { open, ingest, snapshotAndStartWindow, peek, close, windowMs, requestForInstance };

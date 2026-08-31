@@ -18,6 +18,7 @@ function fakeDeps(over = {}) {
     },
     s3Trigger: { createListener: async () => ({ stop: () => {} }), ...over.s3Trigger },
     localServices: { stopAutoStarted: async () => [], ...over.localServices },
+    pool: { shutdown: async () => {}, ...over.pool },
     invokeFunction: async () => ({ status: 200, body: {} }),
   };
 }
@@ -63,4 +64,11 @@ test('a resumeAll failure does not prevent the listener from binding', async () 
   }));
   assert.strictEqual(listenerStarted, true);
   await bootstrap.stop();
+});
+
+test('stop shuts the warm environment pool down', async () => {
+  let shutdowns = 0;
+  await bootstrap.start(fakeDeps({ pool: { shutdown: async () => { shutdowns++; } } }));
+  await bootstrap.stop();
+  assert.strictEqual(shutdowns, 1, 'warm handler processes were left running');
 });

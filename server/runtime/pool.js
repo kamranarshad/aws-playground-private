@@ -22,7 +22,11 @@ function idleMs() {
 // timeoutMs is deliberately absent: the parent enforces it per invoke, so
 // changing it does not require a different process.
 function keyFor(opts) {
-  const env = Object.entries(opts.env ?? {}).sort(([a], [b]) => (a < b ? -1 : 1));
+  const env = Object.entries(opts.env ?? {})
+    // Excluded because it *is* the key: the invoker stamps the environment's
+    // own id in here after hashing, so including it would be circular.
+    .filter(([k]) => k !== 'OTEL_RESOURCE_ATTRIBUTES')
+    .sort(([a], [b]) => (a < b ? -1 : 1));
   return crypto.createHash('sha256').update(JSON.stringify([
     opts.id, opts.runtime, opts.dir, opts.handler,
     opts.memoryMb, opts.jarPath ?? null, opts.autoTrace === true, env,
@@ -65,6 +69,11 @@ class Env {
     this.child.stdout.on('data', onOutput);
     this.child.stderr.on('data', onOutput);
     this.child.stdin.on('error', () => {});
+    // An idle environment must not hold the event loop open -- otherwise any
+    // process that has ever invoked a function refuses to exit. The refs go
+    // back on for the duration of a send, so an in-flight invoke still keeps
+    // the process alive long enough to finish.
+    this.unrefIdle();
     this.child.on('error', (err) => this.die(err));
     this.child.on('close', (code) => this.die(
       new Error(`the handler process exited (code ${code})`)));
@@ -92,6 +101,9 @@ class Env {
         this.debounce = setTimeout(() => evict(this.key), 100);
         this.debounce.unref?.();
       });
+      // Like the child itself, the watcher must not keep a process that is
+      // otherwise finished from exiting.
+      this.watcher.unref?.();
     } catch (err) {
       this.unwatchable = true;
       console.warn(`aws-playground: cannot watch ${this.dir} for changes (${err.message}); `
@@ -142,6 +154,22 @@ class Env {
     } catch {}
   }
 
+  // stdio are net.Sockets at runtime and do have ref/unref, but the stream
+  // types they are declared as do not.
+  unrefIdle() {
+    this.child.unref();
+    for (const s of [this.child.stdout, this.child.stderr, this.child.stdin]) {
+      /** @type {any} */ (s)?.unref?.();
+    }
+  }
+
+  refBusy() {
+    this.child.ref();
+    for (const s of [this.child.stdout, this.child.stderr, this.child.stdin]) {
+      /** @type {any} */ (s)?.ref?.();
+    }
+  }
+
   touch() {
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => evict(this.key), idleMs());
@@ -154,6 +182,7 @@ class Env {
     if (this.busy) return Promise.reject(new Error('this environment is already serving an invoke'));
     if (this.dead) return Promise.reject(new Error('the handler process is no longer running'));
     this.busy = true;
+    this.refBusy();
     clearTimeout(this.idleTimer);
 
     const requestId = crypto.randomUUID();
@@ -174,6 +203,7 @@ class Env {
       }
     }).finally(() => {
       if (this.dead) return;
+      this.unrefIdle();
       // No watch means no way to know the source changed, so never reuse.
       if (this.unwatchable) evict(this.key);
       else this.touch();

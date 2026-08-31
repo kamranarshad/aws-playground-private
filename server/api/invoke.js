@@ -4,6 +4,7 @@ const envfile = require('../runtime/envfile');
 const localServices = require('../services');
 const { runBuild } = require('../runtime/build');
 const { invoke } = require('../runtime/invoker');
+const pool = require('../runtime/pool');
 const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const { effectiveServices, unknownServiceError } = require('./services');
@@ -54,6 +55,8 @@ async function invokeFunction(input) {
     let buildInfo = null;
     if (fn.buildCommand) {
       buildInfo = await runBuild({ dir: fn.path, command: fn.buildCommand });
+      // A build by definition changed the artifacts a warm environment loaded.
+      pool.evictForFunction(fn.id);
     }
     if (buildInfo && !buildInfo.ok) {
       result = failureResult({
@@ -81,6 +84,7 @@ async function invokeFunction(input) {
         },
         timeoutMs: input.timeoutMs ?? fn.timeoutMs,
         memoryMb: input.memoryMb ?? fn.memoryMb,
+        forceCold: input.forceCold === true,
         jarPath: fn.jarPath || findJar(fn.path),
       });
       if (buildInfo) {

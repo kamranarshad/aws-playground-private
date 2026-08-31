@@ -7,6 +7,12 @@ const { findVenvPython } = require('./detect');
 const { hasOwnTracingSetup } = require('../trace/auto-trace-detect');
 const traceReceiver = require('../trace/receiver');
 const traceCollector = require('../trace/collector');
+const pool = require('./pool');
+
+// Runtimes whose harness understands --warm and serves a request loop. The
+// rest still get a fresh process per invoke, which is exactly what they did
+// before; a runtime joins this set in the commit that converts its harness.
+const WARM_RUNTIMES = new Set(['node']);
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
@@ -107,21 +113,59 @@ function buildEnv(opts, memoryMb, requestId, otlpEndpoint) {
   if (otlpEndpoint) {
     env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = otlpEndpoint;
     env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = 'http/protobuf';
+    // Cold only. A warm process outlives the invoke, so stamping a per-invoke
+    // id here would make every later invoke's spans report the first one's;
+    // the caller replaces this with faas.instance for warm runtimes.
     env.OTEL_RESOURCE_ATTRIBUTES = `faas.invocation_id=${requestId}`;
   }
   Object.assign(env, opts.env || {});
   return env;
 }
 
+// One process per invoke. Kept as its own function so the warm path and this
+// one stay visibly the same shape, and so a runtime can be converted to the
+// request loop without touching the other's behaviour.
+function spawnOnce({ cmd, args, env, dir, event, timeoutMs }) {
+  return new Promise((resolve) => {
+    let logs = '';
+    let timedOut = false;
+    let child;
+    try {
+      child = spawn(cmd, args, { cwd: dir, env, detached: process.platform !== 'win32' });
+    } catch (err) {
+      // spawn throws synchronously for some cwd failures (e.g. ENOTDIR) instead
+      // of emitting 'error', which would escape as an unhandled rejection.
+      resolve({ exit: null, logs, timedOut, spawnError: err });
+      return;
+    }
+    child.on('error', (err) => resolve({ exit: null, logs, timedOut, spawnError: err }));
+    child.stdout.on('data', (d) => { logs += d; });
+    child.stderr.on('data', (d) => { logs += d; });
+    child.stdin.on('error', () => {});
+    child.stdin.end(JSON.stringify(event ?? {}));
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === 'win32') child.kill('SIGKILL');
+        else process.kill(-child.pid, 'SIGKILL');
+      } catch {}
+    }, timeoutMs);
+    child.on('close', (code) => { clearTimeout(timer); resolve({ exit: code, logs, timedOut }); });
+  });
+}
+
 async function invoke(opts) {
   const requestId = crypto.randomUUID();
-  traceCollector.open(requestId, opts.id);
   const timeoutMs = opts.timeoutMs ?? 30000;
   const memoryMb = opts.memoryMb ?? 128;
   const resultFile = path.join(os.tmpdir(), `awsplay-${requestId}.json`);
+  // --result-file/--request-id still go on the command line so a harness that
+  // is started cold (or crashes before its first request) has somewhere to
+  // report an init failure. In warm mode each request carries its own.
+  const warm = WARM_RUNTIMES.has(opts.runtime) && !opts.disableWarm;
   const harnessArgs = ['--handler', opts.handler, '--result-file', resultFile,
     '--timeout-ms', String(timeoutMs), '--memory-mb', String(memoryMb),
-    '--request-id', requestId];
+    '--request-id', requestId, ...(warm ? ['--warm'] : [])];
   const wantsAutoTrace = opts.runtime === 'node' && opts.autoTrace && !hasOwnTracingSetup(opts.dir);
   const autoTraceError = wantsAutoTrace ? autoTraceUnavailableMessage() : null;
   const nodeRequireArgs = (wantsAutoTrace && !autoTraceError)
@@ -133,39 +177,55 @@ async function invoke(opts) {
 
   const startedAt = Date.now();
   const dirProblem = projectDirProblem(opts.dir);
-  const run = dirProblem ? { exit: null, logs: '', timedOut: false, dirProblem } : await new Promise((resolve) => {
-    let logs = '';
-    let timedOut = false;
-    /** @type {import('child_process').ChildProcessWithoutNullStreams} */
-    let child;
+  const poolOpts = {
+    id: opts.id, runtime: opts.runtime, dir: opts.dir, handler: opts.handler,
+    env, memoryMb, jarPath: opts.jarPath ?? null, autoTrace: opts.autoTrace === true,
+    command: { cmd, args },
+  };
+  // A warm process reports the environment it belongs to rather than a single
+  // invoke, and the collector resolves that back to whichever invoke is in
+  // flight. keyFor ignores this var precisely so setting it here is not
+  // circular.
+  const instanceId = warm ? pool.keyFor(poolOpts) : null;
+  if (instanceId && env.OTEL_RESOURCE_ATTRIBUTES) {
+    env.OTEL_RESOURCE_ATTRIBUTES = `faas.instance=${instanceId}`;
+  }
+  traceCollector.open(requestId, opts.id, instanceId);
+  // An explicit cold start discards whatever was cached before acquiring, so
+  // the next invoke genuinely re-runs module initialisation.
+  if (opts.forceCold) pool.evict(pool.keyFor(poolOpts));
+
+  let run;
+  if (dirProblem) {
+    run = { logs: '', dirProblem, cold: true };
+  } else if (!warm) {
+    // One process per invoke: the original path, still used by every runtime
+    // whose harness has not been converted to a request loop.
+    run = await spawnOnce({ cmd, args, env, dir: opts.dir, event: opts.event, timeoutMs });
+    try { run.envelope = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch {}
+    try { fs.unlinkSync(resultFile); } catch {}
+    run.cold = true;
+  } else {
+    let environment = null;
     try {
-      child = spawn(cmd, args, {
-        cwd: opts.dir, env, detached: process.platform !== 'win32' });
+      environment = await pool.acquire(poolOpts);
+      const cold = environment.cold;
+      const { logs, envelope: got } = await environment.send({ event: opts.event ?? {}, timeoutMs });
+      run = { logs, envelope: got, cold };
     } catch (err) {
-      // spawn throws synchronously for some cwd failures (e.g. ENOTDIR) instead
-      // of emitting 'error', which would escape as an unhandled rejection.
-      resolve({ exit: null, logs, timedOut, spawnError: err });
-      return;
+      // A spawn failure surfaces here rather than as an 'error' event, since
+      // the pool owns the child process now.
+      run = {
+        logs: '',
+        cold: environment ? environment.cold : true,
+        timedOut: err.timedOut === true,
+        spawnError: err.timedOut ? undefined : err,
+      };
     }
-    child.on('error', (err) => resolve({ exit: null, logs, timedOut, spawnError: err }));
-    child.stdout.on('data', (d) => { logs += d; });
-    child.stderr.on('data', (d) => { logs += d; });
-    child.stdin.on('error', () => {});
-    child.stdin.end(JSON.stringify(opts.event ?? {}));
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        if (process.platform === 'win32') child.kill('SIGKILL');
-        else process.kill(-child.pid, 'SIGKILL');
-      } catch {}
-    }, timeoutMs);
-    child.on('close', (code) => { clearTimeout(timer); resolve({ exit: code, logs, timedOut }); });
-  });
+  }
   const wallMs = Date.now() - startedAt;
 
-  let envelope = null;
-  try { envelope = JSON.parse(fs.readFileSync(resultFile, 'utf8')); } catch {}
-  try { fs.unlinkSync(resultFile); } catch {}
+  const envelope = run.envelope ?? null;
 
   /** @type {import('../types').InvokeOutcome} */
   let out;
@@ -187,7 +247,8 @@ async function invoke(opts) {
   } else if (!envelope) {
     out = { ok: false, phase: 'invoke', error: {
       type: 'Runtime.ExitError',
-      message: `Runtime exited without providing a result (exit code ${run.exit})`,
+      message: 'Runtime exited without providing a result'
+        + (run.exit === undefined || run.exit === null ? '' : ` (exit code ${run.exit})`),
       stackTrace: [] } };
   } else {
     out = { ok: envelope.ok, phase: envelope.phase,
@@ -201,7 +262,10 @@ async function invoke(opts) {
     durationMs: Math.round(durationMs * 100) / 100,
     billedMs: Math.max(1, Math.ceil(durationMs)),
     memoryMb,
-    timedOut: run.timedOut,
+    timedOut: run.timedOut === true,
+    // Which kind of invoke this was. Warm-by-default is otherwise invisible,
+    // and an unexplained 3ms after a 400ms is more confusing than useful.
+    cold: run.cold === true,
   };
   if (envelope?.initMs != null) {
     out.report.initMs = Math.round(envelope.initMs * 100) / 100;

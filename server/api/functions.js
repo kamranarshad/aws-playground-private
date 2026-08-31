@@ -4,6 +4,7 @@ const { detectProject } = require('../runtime/detect');
 const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const manager = require('../trigger/manager');
+const pool = require('../runtime/pool');
 const { invokeFunction } = require('./invoke');
 
 const RUNTIMES = schema.RUNTIMES;
@@ -36,6 +37,9 @@ function updateFunction(id, patch) {
   if (err) return { status: 400, body: { error: err } };
   const fn = store.update(id, p);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
+  // The key would usually change anyway, but not for fields it excludes --
+  // an edited function must never keep serving from the old configuration.
+  pool.evictForFunction(id);
   manager.sync(fn, { invokeFunction });
   return { status: 200, body: fn };
 }
@@ -45,6 +49,8 @@ function deleteFunction(id) {
     return { status: 409, body: { error: 'an invoke is already in flight for this function' } };
   }
   manager.stop(id);
+  // A deleted function must not leave a handler process running.
+  pool.evictForFunction(id);
   if (!store.remove(id)) return { status: 404, body: { error: 'function not found' } };
   history.clear(id);
   return { status: 204 };

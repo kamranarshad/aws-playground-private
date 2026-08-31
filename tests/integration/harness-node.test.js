@@ -393,11 +393,12 @@ test('a handler error does not kill the warm environment', async () => {
 });
 
 test('a warm handler keeps /tmp writes between invokes', async () => {
+  // A fresh marker per run: a fixed path would survive between test runs and
+  // make the first invoke report the previous run's file.
+  const marker = path.join(os.tmpdir(), `awsplay-tmp-probe-${randomUUID()}.txt`);
   const dir = projectWith(`
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-const marker = path.join(os.tmpdir(), 'awsplay-warm-tmp-probe.txt');
+const marker = ${JSON.stringify(marker)};
 export const handler = async () => {
   const existed = fs.existsSync(marker);
   fs.writeFileSync(marker, 'x');

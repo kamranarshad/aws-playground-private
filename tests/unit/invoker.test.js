@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const { invoke } = require('../../server/runtime/invoker');
 const { hasOwnTracingSetup } = require('../../server/trace/auto-trace-detect');
@@ -142,6 +143,22 @@ test('invoke() injects OTLP env vars pointed at the trace receiver', async () =>
   assert.strictEqual(r.ok, true);
   assert.match(r.response.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT, /^http:\/\/127\.0\.0\.1:\d+\/v1\/traces$/);
   assert.strictEqual(r.response.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL, 'http/protobuf');
+  // A warm runtime reports the execution environment it belongs to, not a
+  // single invoke: its resource attributes are fixed when the process starts,
+  // so a per-invoke id there would make every later invoke's spans report the
+  // first one's. server/trace/collector.js resolves the instance back to
+  // whichever invoke is in flight. Cold runtimes still get the invoke id.
+  assert.match(r.response.OTEL_RESOURCE_ATTRIBUTES, /^faas\.instance=/);
+});
+
+test('a cold runtime still reports the invoke id directly', async (t) => {
+  t.after(() => require('../../server/runtime/pool').shutdown());
+  const r = await invoke(base('javascript/env-echo', {
+    runtime: 'node', handler: 'index.handler', id: 'fn-trace-env-cold',
+    disableWarm: true,
+    event: { keys: ['OTEL_RESOURCE_ATTRIBUTES'] },
+  }));
+  assert.strictEqual(r.ok, true);
   assert.match(r.response.OTEL_RESOURCE_ATTRIBUTES, /^faas\.invocation_id=/);
 });
 
@@ -162,4 +179,57 @@ test('autoTrace does not interfere with a handler that already sets up its own t
   // the registration race -- exactly the failure mode detection exists to
   // prevent).
   assert.strictEqual(r.trace.spans.length, 5);
+});
+
+// --- warm execution environments ---------------------------------------
+
+const pool = require('../../server/runtime/pool');
+
+test('a second invoke of the same function is warm and reports no initMs', async (t) => {
+  t.after(() => pool.shutdown());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-inv-warm-'));
+  fs.writeFileSync(path.join(dir, 'index.mjs'),
+    'let n = 0;\nexport const handler = async () => ({ n: ++n });\n');
+  const base = { id: 'warm-fn', runtime: 'node', dir, handler: 'index.handler', event: {} };
+
+  const cold = await invoke(base);
+  assert.strictEqual(cold.ok, true, JSON.stringify(cold.error));
+  assert.strictEqual(cold.report.cold, true);
+  assert.strictEqual(typeof cold.report.initMs, 'number');
+
+  const warm = await invoke(base);
+  assert.strictEqual(warm.report.cold, false);
+  assert.strictEqual(warm.report.initMs, undefined);
+  assert.deepStrictEqual(warm.response, { n: 2 }, 'module scope was not reused');
+});
+
+test('forceCold discards the environment and starts fresh', async (t) => {
+  t.after(() => pool.shutdown());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-inv-cold-'));
+  fs.writeFileSync(path.join(dir, 'index.mjs'),
+    'let n = 0;\nexport const handler = async () => ({ n: ++n });\n');
+  const base = { id: 'cold-fn', runtime: 'node', dir, handler: 'index.handler', event: {} };
+
+  await invoke(base);
+  const forced = await invoke({ ...base, forceCold: true });
+  assert.strictEqual(forced.report.cold, true);
+  assert.deepStrictEqual(forced.response, { n: 1 }, 'forceCold reused the old process');
+});
+
+test('editing the handler makes the next invoke cold', async (t) => {
+  t.after(() => pool.shutdown());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-inv-edit-'));
+  const file = path.join(dir, 'index.mjs');
+  fs.writeFileSync(file, 'export const handler = async () => ({ v: 1 });\n');
+  const base = { id: 'edit-fn', runtime: 'node', dir, handler: 'index.handler', event: {} };
+
+  const first = await invoke(base);
+  assert.deepStrictEqual(first.response, { v: 1 });
+
+  fs.writeFileSync(file, 'export const handler = async () => ({ v: 2 });\n');
+  await new Promise((r) => setTimeout(r, 500));
+
+  const second = await invoke(base);
+  assert.strictEqual(second.report.cold, true, 'a source edit did not force a cold start');
+  assert.deepStrictEqual(second.response, { v: 2 }, 'the warm environment served stale code');
 });

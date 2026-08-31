@@ -1,6 +1,7 @@
 const defaultTriggerManager = require('./trigger/manager');
 const defaultS3Trigger = require('./trigger/s3');
 const defaultLocalServices = require('./services');
+const defaultPool = require('./runtime/pool');
 const { invokeFunction: defaultInvokeFunction } = require('./api/invoke');
 
 // Everything that has to happen for the playground to be *running* rather
@@ -22,6 +23,7 @@ async function start(overrides = {}) {
     triggerManager: overrides.triggerManager ?? defaultTriggerManager,
     s3Trigger: overrides.s3Trigger ?? defaultS3Trigger,
     localServices: overrides.localServices ?? defaultLocalServices,
+    pool: overrides.pool ?? defaultPool,
     invokeFunction: overrides.invokeFunction ?? defaultInvokeFunction,
   };
 
@@ -46,6 +48,9 @@ async function stop() {
   if (!started) return [];
   started = false;
   deps.triggerManager.stopAll();
+  // Warm environments are live child processes; quitting without reaping them
+  // leaves orphans, the same problem stopAutoStarted solves for containers.
+  try { await deps.pool.shutdown(); } catch {}
   try { listener?.stop?.(); } catch {}
   listener = null;
   try {

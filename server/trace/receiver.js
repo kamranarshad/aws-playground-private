@@ -11,6 +11,7 @@ const { decodeProtobuf, decodeJson } = require('./otlp-decode');
 const traceCollector = require('./collector');
 
 const FAAS_INVOCATION_ID = 'faas.invocation_id';
+const FAAS_INSTANCE = 'faas.instance';
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -42,7 +43,13 @@ const server = http.createServer(async (req, res) => {
     return res.end(`could not decode OTLP request: ${err.message}`);
   }
   for (const { resourceAttributes, spans } of groups) {
-    const requestId = resourceAttributes[FAAS_INVOCATION_ID];
+    // A cold process is told its request id directly. A warm one cannot be --
+    // its resource attributes are fixed at startup -- so it reports the
+    // environment it belongs to and the collector resolves the invoke.
+    const direct = resourceAttributes[FAAS_INVOCATION_ID];
+    const instance = resourceAttributes[FAAS_INSTANCE];
+    const requestId = typeof direct === 'string' ? direct
+      : (typeof instance === 'string' ? traceCollector.requestForInstance(instance) : null);
     if (typeof requestId === 'string') traceCollector.ingest(requestId, spans);
   }
   res.writeHead(200, { 'content-type': 'application/json' });
