@@ -1,63 +1,8 @@
 const { SQSClient, CreateQueueCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
-const { entry, AWS_DUMMY_CREDS } = require('../services/registry');
-const inFlight = require('../api/in-flight');
-
-const POLL_IDLE_MS = 2000;
-const ERROR_BACKOFF_MS = 2000;
-
-function defaultSleep(ms, signal) {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) return reject(new Error('aborted'));
-    const t = setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new Error('aborted')); }, { once: true });
-  });
-}
-
-async function runLoop({ fn, signal, onStatus = () => {},
-  receive, remove, invokeFunction,
-  idleMs = POLL_IDLE_MS, errorBackoffMs = ERROR_BACKOFF_MS, sleep = defaultSleep }) {
-  while (!signal.aborted) {
-    if (inFlight.has(fn.id)) {
-      onStatus({ state: 'idle', lastError: null });
-      try { await sleep(idleMs, signal); } catch { break; }
-      continue;
-    }
-    let message;
-    try {
-      onStatus({ state: 'polling', lastError: null });
-      message = await receive({ signal });
-    } catch (err) {
-      if (signal.aborted) break;
-      onStatus({ state: 'error', lastError: err.message });
-      try { await sleep(errorBackoffMs, signal); } catch { break; }
-      continue;
-    }
-    onStatus({ state: 'polling', lastError: null, lastPolledAt: Date.now() });
-    if (!message) continue;
-    const event = buildSqsEvent(message, fn.trigger.queueName);
-    let result;
-    try {
-      result = await invokeFunction({
-        functionId: fn.id,
-        event,
-        source: { type: 'trigger', messageId: message.MessageId },
-      });
-    } catch (err) {
-      onStatus({ state: 'error', lastError: `invoke failed: ${err.message}` });
-    }
-    // A non-200 result means the invoke never actually ran (e.g. a 409 guard
-    // for an in-flight manual invoke, or a 404 for a deleted function) — leave
-    // the message on the queue for the next visibility-timeout cycle instead
-    // of silently losing it. A thrown error (result stays undefined) still
-    // deletes, per the established behavior above.
-    if (result !== undefined && result.status !== 200) continue;
-    try {
-      await remove(message.ReceiptHandle);
-    } catch (err) {
-      onStatus({ state: 'error', lastError: `delete failed: ${err.message}` });
-    }
-  }
-}
+const { awsClientOptions } = require('../services/registry');
+const defaultStore = require('../store');
+const defaultLocalServices = require('../services');
+const poller = require('./poller');
 
 function buildSqsEvent(message, queueName) {
   return {
@@ -81,15 +26,7 @@ function buildSqsEvent(message, queueName) {
 }
 
 function buildClient() {
-  const svc = entry('elasticmq');
-  return new SQSClient({
-    endpoint: svc.endpoint,
-    region: 'elasticmq',
-    credentials: {
-      accessKeyId: AWS_DUMMY_CREDS.AWS_ACCESS_KEY_ID,
-      secretAccessKey: AWS_DUMMY_CREDS.AWS_SECRET_ACCESS_KEY,
-    },
-  });
+  return new SQSClient({ ...awsClientOptions('elasticmq'), region: 'elasticmq' });
 }
 
 async function ensureQueue(client, queueName) {
@@ -113,27 +50,99 @@ async function deleteMessage(client, queueUrl, receiptHandle) {
 }
 
 function start(fn, { onStatus }) {
-  const controller = new AbortController();
-  (async () => {
-    try {
+  return poller.start(fn, {
+    onStatus,
+    setup: async () => {
       const client = buildClient();
       const queueUrl = await ensureQueue(client, fn.trigger.queueName);
-      await runLoop({
-        fn,
-        signal: controller.signal,
-        onStatus,
+      return {
         receive: (opts) => receiveMessage(client, queueUrl, opts),
-        remove: (receiptHandle) => deleteMessage(client, queueUrl, receiptHandle),
-        invokeFunction: require('../api/invoke').invokeFunction,
-      });
-    } catch (err) {
-      if (!controller.signal.aborted) onStatus({ state: 'error', lastError: err.message });
+        ack: (message) => deleteMessage(client, queueUrl, message.ReceiptHandle),
+      };
+    },
+    buildEvent: (message) => buildSqsEvent(message, fn.trigger.queueName),
+    buildSource: (message) => ({ type: 'trigger', messageId: message.MessageId }),
+    invokeFunction: require('../api/invoke').invokeFunction,
+  });
+}
+
+// functionId -> { queueName, stop, status } — one SQS poller per function.
+// Private to this module; the manager only ever sees it through sync/stop/status.
+const running = new Map();
+
+function status(functionId) {
+  return running.get(functionId)?.status;
+}
+
+function statusAll() {
+  const out = {};
+  for (const [id, r] of running) out[id] = r.status;
+  return out;
+}
+
+function stop(functionId) {
+  const r = running.get(functionId);
+  if (!r) return;
+  r.stop();
+  running.delete(functionId);
+}
+
+async function startFor(fn, { store, localServices }) {
+  const st = { state: 'polling', lastError: null, lastPolledAt: null };
+  const record = {
+    queueName: fn.trigger.queueName,
+    status: st,
+    cancelled: false,
+    stop: () => { record.cancelled = true; },
+  };
+  running.set(fn.id, record);
+  try {
+    const started = await localServices.start('elasticmq', { auto: false });
+    if (record.cancelled) return;
+    if (!store.get(fn.id)) {
+      // Function was deleted while ElasticMQ was starting up; a concurrent
+      // stop(id) was a no-op since nothing was in `running` yet. Clean up
+      // instead of starting a poller for a function that no longer exists.
+      running.delete(fn.id);
+      return;
     }
-  })();
-  return { stop: () => controller.abort() };
+    if (!started.ok) {
+      Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
+      return;
+    }
+    const handle = module.exports.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    if (record.cancelled) {
+      handle.stop();
+      return;
+    }
+    record.stop = handle.stop;
+  } catch (err) {
+    if (!record.cancelled) Object.assign(st, { state: 'error', lastError: err.message });
+  }
+}
+
+// Idempotent: a no-op re-sync of an already-running, unchanged, non-error
+// queue is safe to call as often as the caller likes.
+async function sync(fn, trigger, deps = {}) {
+  const store = deps.store ?? defaultStore;
+  const localServices = deps.localServices ?? defaultLocalServices;
+  const shouldRun = !!trigger.enabled;
+  const current = running.get(fn.id);
+  if (!shouldRun) {
+    if (current) stop(fn.id);
+    return;
+  }
+  if (current && current.queueName === trigger.queueName && current.status.state !== 'error') return;
+  if (current) stop(fn.id);
+  // startFor (and everything it calls) reads fn.trigger.queueName directly
+  // off the object it's given — pass the resolved effective trigger through
+  // fn so a playground.json-only sqs trigger (where fn.trigger itself may be
+  // null or different) still reaches the right queue.
+  await startFor({ ...fn, trigger }, { store, localServices });
 }
 
 module.exports = {
-  buildSqsEvent, runLoop, POLL_IDLE_MS, ERROR_BACKOFF_MS,
-  buildClient, ensureQueue, receiveMessage, deleteMessage, start,
+  type: 'sqs',
+  sync, stop, status, statusAll,
+  buildSqsEvent, buildClient, ensureQueue, receiveMessage, deleteMessage, start,
 };

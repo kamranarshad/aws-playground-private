@@ -131,6 +131,23 @@ function entry(name) {
   return svc;
 }
 
+// Shared client-construction options for the three trigger drivers that talk
+// to a local AWS-API service directly (sqs.js, dynamodb.js, s3.js): the
+// service's endpoint plus the dummy credentials every AWS SDK client needs
+// configured even though these local endpoints never check them. Callers
+// still supply their own `region` (and any client-specific option, like S3's
+// forcePathStyle) since those vary per client, not per endpoint.
+function awsClientOptions(serviceName) {
+  const svc = entry(serviceName);
+  return {
+    endpoint: svc.endpoint,
+    credentials: {
+      accessKeyId: AWS_DUMMY_CREDS.AWS_ACCESS_KEY_ID,
+      secretAccessKey: AWS_DUMMY_CREDS.AWS_SECRET_ACCESS_KEY,
+    },
+  };
+}
+
 function names() {
   return Object.keys(REGISTRY);
 }
@@ -162,4 +179,6 @@ function composeEnv(names) {
   return env;
 }
 
-module.exports = { REGISTRY, entry, names, labelFor, envFor, composeEnv, AWS_DUMMY_CREDS };
+module.exports = {
+  REGISTRY, entry, names, labelFor, envFor, composeEnv, AWS_DUMMY_CREDS, awsClientOptions,
+};
