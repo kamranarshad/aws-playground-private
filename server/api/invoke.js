@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const store = require('../persistence/store');
 const { findJar } = require('../runtime/detect');
 const envfile = require('../runtime/envfile');
@@ -8,6 +7,7 @@ const { invoke } = require('../runtime/invoker');
 const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const { effectiveServices, unknownServiceError } = require('./services');
+const { failureResult } = require('./invoke-result');
 
 async function invokeFunction(input) {
   const { functionId, source } = input || {};
@@ -30,18 +30,12 @@ async function invokeFunction(input) {
       const states = await localServices.statusAll().catch(() => null);
       const notRunning = enabledServices.find(name => states?.get(name) !== 'running');
       if (notRunning) {
-        const result = {
-          ok: false,
+        const result = failureResult({
           phase: 'service',
-          error: {
-            type: 'Service.NotRunning',
-            message: `${localServices.labelFor(notRunning)} is not running — start it from the Local services menu or disable it for this function`,
-            stackTrace: [],
-          },
-          logs: '',
-          report: { requestId: crypto.randomUUID(), durationMs: 0, billedMs: 0,
-            memoryMb: input.memoryMb ?? fn.memoryMb, timedOut: false },
-        };
+          type: 'Service.NotRunning',
+          message: `${localServices.labelFor(notRunning)} is not running — start it from the Local services menu or disable it for this function`,
+          memoryMb: input.memoryMb ?? fn.memoryMb,
+        });
         try {
           history.append(fn.id, {
             handler: input.handler ?? fn.handler, event: input.event ?? {},
@@ -62,19 +56,14 @@ async function invokeFunction(input) {
       buildInfo = await runBuild({ dir: fn.path, command: fn.buildCommand });
     }
     if (buildInfo && !buildInfo.ok) {
-      result = {
-        ok: false,
+      result = failureResult({
         phase: 'build',
-        error: {
-          type: 'Build.Failed',
-          message: `Build command failed (exit ${buildInfo.exitCode ?? 'n/a'}): ${fn.buildCommand}`,
-          stackTrace: [],
-        },
+        type: 'Build.Failed',
+        message: `Build command failed (exit ${buildInfo.exitCode ?? 'n/a'}): ${fn.buildCommand}`,
+        memoryMb: input.memoryMb ?? fn.memoryMb,
         logs: buildInfo.output,
-        report: { requestId: crypto.randomUUID(), durationMs: 0, billedMs: 0,
-          memoryMb: input.memoryMb ?? fn.memoryMb, timedOut: false,
-          buildMs: buildInfo.durationMs },
-      };
+        report: { buildMs: buildInfo.durationMs },
+      });
     } else {
       result = await invoke({
         id: fn.id,
