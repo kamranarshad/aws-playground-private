@@ -1,44 +1,10 @@
-export type Runtime = 'python' | 'node' | 'java' | 'provided'
+export type {
+  Runtime, SavedEvent, FunctionTrigger, FunctionDef, Ports,
+} from '@aws-playground/server/types'
+import type { FunctionTrigger, Ports, Runtime } from '@aws-playground/server/types'
 
 export type ResultTab = 'response' | 'logs' | 'report' | 'trace' | 'checks' | 'history'
 export const RESULT_TABS: ResultTab[] = ['response', 'logs', 'report', 'trace', 'checks', 'history']
-
-export interface SavedEvent {
-  name: string
-  event: unknown
-  assertionScript?: string
-}
-
-export type FunctionTrigger =
-  | { type: 'sqs'; queueName: string; enabled: boolean }
-  | { type: 'http'; enabled: boolean }
-  | { type: 'dynamodb'; tableName: string; enabled: boolean }
-  | {
-      type: 's3'
-      bucket: string
-      events: ('ObjectCreated' | 'ObjectRemoved')[]
-      prefix?: string
-      suffix?: string
-      enabled: boolean
-    }
-
-export interface FunctionDef {
-  id: string
-  name: string
-  path: string
-  runtime: Runtime
-  handler: string
-  timeoutMs: number
-  memoryMb: number
-  jarPath: string | null
-  env: Record<string, string>
-  envFile: string
-  buildCommand: string
-  localServices: string[]
-  trigger: FunctionTrigger | null
-  savedEvents: SavedEvent[]
-  autoTrace: boolean
-}
 
 export interface ServiceCredential {
   label: string
@@ -72,16 +38,6 @@ export type TriggersStatus = Record<string, TriggerStatus>
 export interface RuntimeHealth {
   available: boolean
   version: string | null
-}
-
-export interface Ports {
-  httpTrigger: number
-  s3Webhook: number
-  minio: number
-  minioConsole: number
-  dynamodb: number
-  redis: number
-  postgres: number
 }
 
 export interface Health {

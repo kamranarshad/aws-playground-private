@@ -42,6 +42,37 @@ test('packed tarball boots and serves the API',
     const health = await fetch(`http://127.0.0.1:${port}/api/health`);
     assert.strictEqual(health.status, 200);
     assert.ok('runtimes' in await health.json());
+
+    // Health alone only proves the server module loaded. An actual invoke is
+    // what proves the packed layout still resolves the harness directory --
+    // the thing that breaks if server/ ever gets bundled into the web build
+    // instead of being required from disk at runtime.
+    const handlerDir = path.join(work, 'handler');
+    fs.mkdirSync(handlerDir, { recursive: true });
+    fs.writeFileSync(path.join(handlerDir, 'index.js'),
+      'exports.handler = async (event) => ({ echoed: event.hello });\n');
+
+    const created = await fetch(`http://127.0.0.1:${port}/api/functions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'packed', path: handlerDir, runtime: 'node', handler: 'index.handler',
+      }),
+    });
+    // Read the body once: an eagerly-evaluated assertion message that calls
+    // .text() would consume it before .json() ever runs.
+    const fn = await created.json();
+    assert.strictEqual(created.status, 201, `create failed: ${JSON.stringify(fn)}`);
+
+    const invoked = await fetch(`http://127.0.0.1:${port}/api/invoke`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ functionId: fn.id, event: { hello: 'world' } }),
+    });
+    assert.strictEqual(invoked.status, 200);
+    const result = await invoked.json();
+    assert.ok(result.ok, `invoke failed in the packed tarball: ${JSON.stringify(result.error)}`);
+    assert.deepStrictEqual(result.response, { echoed: 'world' });
   } finally {
     child.kill('SIGKILL');
     fs.rmSync(work, { recursive: true, force: true });

@@ -10,6 +10,10 @@
   "engines": {
     "node": ">=22.12.0"
   },
+  "workspaces": [
+    "server",
+    "web"
+  ],
   "scripts": {
     "start": "node bin/cli.js",
     "dev": "npm --prefix web run dev",

@@ -9,6 +9,12 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { nodeVersionOk, nodeVersionMessage } = require('../server/runtime/node-version');
 
+// `web` is a workspace of the root package, so a plain `npm install` at the
+// root has already installed its dependencies (hoisted into the root
+// node_modules). Re-running an install inside web/ would duplicate all of
+// them into a nested tree for no benefit, so this only decides whether the
+// deps still need fetching at all -- which they do only when the root install
+// was skipped, e.g. a tarball with no web/ source.
 function planPrepare({ root, env }) {
   if (env.AWS_PLAYGROUND_SKIP_WEB_BUILD) {
     return { skip: 'AWS_PLAYGROUND_SKIP_WEB_BUILD is set' };
@@ -16,7 +22,18 @@ function planPrepare({ root, env }) {
   if (!fs.existsSync(path.join(root, 'web', 'package.json'))) {
     return { skip: 'no web/ source in this package' };
   }
+  if (isWorkspaceInstall(root)) return { install: null };
   return { install: env.CI ? 'ci' : 'install' };
+}
+
+// Vite resolvable from web/ means the root workspace install already ran.
+function isWorkspaceInstall(root) {
+  try {
+    require.resolve('vite', { paths: [path.join(root, 'web')] });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function run(args, cwd) {
@@ -50,7 +67,7 @@ function main() {
     process.exit(1);
   }
   const web = path.join(root, 'web');
-  run([plan.install], web);
+  if (plan.install) run([plan.install], web);
   run(['run', 'build'], web);
 }
 

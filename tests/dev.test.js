@@ -6,7 +6,11 @@ const os = require('node:os');
 const path = require('node:path');
 
 const WEB = path.join(__dirname, '..', 'web');
-const hasDeps = fs.existsSync(path.join(WEB, 'node_modules', 'vite'));
+// Vite hoists to the root node_modules under workspaces, so probe by
+// resolution rather than by a fixed path.
+const hasDeps = (() => {
+  try { require.resolve('vite', { paths: [WEB] }); return true; } catch { return false; }
+})();
 
 test('vite dev server serves the app shell and the API',
   { skip: hasDeps ? false : 'web/node_modules missing - run npm --prefix web install first' },
