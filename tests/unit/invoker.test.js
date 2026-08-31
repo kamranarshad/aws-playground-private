@@ -233,3 +233,19 @@ test('editing the handler makes the next invoke cold', async (t) => {
   assert.strictEqual(second.report.cold, true, 'a source edit did not force a cold start');
   assert.deepStrictEqual(second.response, { v: 2 }, 'the warm environment served stale code');
 });
+
+test('a second python invoke is warm and reuses module scope', { skip: noPy }, async (t) => {
+  t.after(() => require('../../server/runtime/pool').shutdown());
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pyinv-'));
+  fs.writeFileSync(path.join(dir, 'app.py'),
+    'calls = 0\n\n\ndef handler(event, context):\n    global calls\n    calls += 1\n    return {"calls": calls}\n');
+  const base = { id: 'py-warm-fn', runtime: 'python', dir, handler: 'app.handler', event: {} };
+
+  const cold = await invoke(base);
+  assert.strictEqual(cold.ok, true, JSON.stringify(cold.error));
+  assert.strictEqual(cold.report.cold, true);
+
+  const warm = await invoke(base);
+  assert.strictEqual(warm.report.cold, false);
+  assert.deepStrictEqual(warm.response, { calls: 2 }, 'python module scope was not reused');
+});

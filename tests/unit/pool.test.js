@@ -37,7 +37,6 @@ function opts(over = {}) {
     id: 'fn1', runtime: 'node', dir: os.tmpdir(), handler: 'index.handler',
     env: { PATH: process.env.PATH }, memoryMb: 128, jarPath: null, autoTrace: false,
     command: { cmd: process.execPath, args: [FAKE] },
-    watch: false,
     ...over,
   };
 }
@@ -45,7 +44,7 @@ function opts(over = {}) {
 afterEach(async () => { await pool.shutdown(); });
 
 test('a second invoke reuses the same process', async () => {
-  const o = opts({ watch: true, dir: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool-')) });
+  const o = opts({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool-')) });
   const a = await pool.acquire(o);
   const first = await a.send({ event: { n: 1 }, timeoutMs: 5000 });
   assert.strictEqual(first.envelope.response.calls, 1);
@@ -59,7 +58,7 @@ test('a second invoke reuses the same process', async () => {
 });
 
 test('each invoke gets only its own logs', async () => {
-  const o = opts({ watch: true, dir: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool2-')) });
+  const o = opts({ dir: fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool2-')) });
   const env = await pool.acquire(o);
   const first = await env.send({ event: { n: 1 }, timeoutMs: 5000 });
   const second = await env.send({ event: { n: 2 }, timeoutMs: 5000 });
@@ -71,8 +70,8 @@ test('each invoke gets only its own logs', async () => {
 
 test('a changed env value is a different environment', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool3-'));
-  await (await pool.acquire(opts({ watch: true, dir }))).send({ event: { n: 1 }, timeoutMs: 5000 });
-  const changed = await pool.acquire(opts({ watch: true, dir, env: { PATH: process.env.PATH, A: '1' } }));
+  await (await pool.acquire(opts({ dir }))).send({ event: { n: 1 }, timeoutMs: 5000 });
+  const changed = await pool.acquire(opts({ dir, env: { PATH: process.env.PATH, A: '1' } }));
   assert.strictEqual(changed.cold, true, 'an env change reused the old environment');
   assert.strictEqual(pool.size(), 2);
 });
@@ -92,8 +91,8 @@ test('handler, memory, jar, autoTrace and dir all change the key', () => {
 
 test('evictForFunction drops every environment for that function', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pool4-'));
-  await (await pool.acquire(opts({ watch: true, dir }))).send({ event: { n: 1 }, timeoutMs: 5000 });
-  await (await pool.acquire(opts({ watch: true, dir, env: { PATH: process.env.PATH, A: '1' } })))
+  await (await pool.acquire(opts({ dir }))).send({ event: { n: 1 }, timeoutMs: 5000 });
+  await (await pool.acquire(opts({ dir, env: { PATH: process.env.PATH, A: '1' } })))
     .send({ event: { n: 1 }, timeoutMs: 5000 });
   assert.strictEqual(pool.size(), 2);
   pool.evictForFunction('fn1');
@@ -116,32 +115,42 @@ test('a crashed child is evicted rather than handed out again', async () => {
   assert.strictEqual(pool.size(), 0);
 });
 
-test('an environment whose directory cannot be watched is evicted after every invoke', async () => {
-  const env = await pool.acquire(opts({ watch: false }));
-  await env.send({ event: { n: 1 }, timeoutMs: 5000 });
-  assert.strictEqual(pool.size(), 0,
-    'without a watch the only safe behaviour is always-cold');
-});
-
-test('editing a file in the project directory evicts the environment', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-watch-'));
+test('editing a file in the project directory forces the next invoke cold', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-fp-'));
   fs.writeFileSync(path.join(dir, 'index.mjs'), 'export const handler = () => 1;\n');
-  const env = await pool.acquire(opts({ dir, watch: true }));
+  const env = await pool.acquire(opts({ dir }));
   await env.send({ event: { n: 1 }, timeoutMs: 5000 });
-  assert.strictEqual(pool.size(), 1);
+  assert.strictEqual((await pool.acquire(opts({ dir }))).cold, false, 'unchanged source should stay warm');
 
-  fs.writeFileSync(path.join(dir, 'index.mjs'), 'export const handler = () => 2;\n');
-  await new Promise((r) => setTimeout(r, 500));
-  assert.strictEqual(pool.size(), 0, 'a source edit did not evict the environment');
+  // The mtime has second-or-better resolution but two writes inside the same
+  // millisecond would fingerprint identically, so change the size too.
+  fs.writeFileSync(path.join(dir, 'index.mjs'), 'export const handler = () => 2; // edited\n');
+  const next = await pool.acquire(opts({ dir }));
+  assert.strictEqual(next.cold, true, 'a source edit did not force a cold start');
 });
 
-test('node_modules churn does not evict', async () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-watch2-'));
-  fs.mkdirSync(path.join(dir, 'node_modules'));
-  const env = await pool.acquire(opts({ dir, watch: true }));
+test('a new source file forces the next invoke cold', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-fp2-'));
+  fs.writeFileSync(path.join(dir, 'index.mjs'), 'export const handler = () => 1;\n');
+  const env = await pool.acquire(opts({ dir }));
   await env.send({ event: { n: 1 }, timeoutMs: 5000 });
 
+  fs.writeFileSync(path.join(dir, 'helper.mjs'), 'export const x = 1;\n');
+  assert.strictEqual((await pool.acquire(opts({ dir }))).cold, true);
+});
+
+test('derived directories do not count as source changes', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-fp3-'));
+  fs.writeFileSync(path.join(dir, 'index.mjs'), 'export const handler = () => 1;\n');
+  const env = await pool.acquire(opts({ dir }));
+  await env.send({ event: { n: 1 }, timeoutMs: 5000 });
+
+  // Exactly what a runtime writes into the project on import/install.
+  fs.mkdirSync(path.join(dir, 'node_modules'));
   fs.writeFileSync(path.join(dir, 'node_modules', 'x.js'), 'noise');
-  await new Promise((r) => setTimeout(r, 500));
-  assert.strictEqual(pool.size(), 1, 'a node_modules write should not cost a cold start');
+  fs.mkdirSync(path.join(dir, '__pycache__'));
+  fs.writeFileSync(path.join(dir, '__pycache__', 'app.pyc'), 'noise');
+
+  assert.strictEqual((await pool.acquire(opts({ dir }))).cold, false,
+    'runtime-written directories should not cost a cold start');
 });

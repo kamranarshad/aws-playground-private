@@ -14,6 +14,48 @@ const { encodeRequest, splitAtSentinel } = require('./protocol');
 // discovering it by accident.
 const DEFAULT_IDLE_MS = 300000;
 
+// Written by a runtime rather than by the user, so a change here is not a
+// source change. Skipping them also keeps the fingerprint walk cheap.
+const DERIVED = new Set(['node_modules', '__pycache__', '.git', '.venv', 'venv', 'target']);
+
+// Bounded so a pathologically large project cannot make every invoke slow.
+const MAX_FINGERPRINT_FILES = 5000;
+
+// A cheap content fingerprint of the user's source: path, size and mtime of
+// every non-derived file.
+//
+// This replaced an fs.watch approach that could not work. Importing a handler
+// makes the runtime touch its own source -- python's import machinery emits a
+// rename event for the very file it is reading -- so a watcher fires on the
+// act of starting the handler and cannot tell that apart from a real edit.
+// Comparing content is unambiguous, deterministic and platform-independent.
+function fingerprint(dir) {
+  const parts = [];
+  let count = 0;
+  const walk = (d, rel) => {
+    if (count >= MAX_FINGERPRINT_FILES) return;
+    let entries;
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (DERIVED.has(e.name) || e.name.startsWith('.')) continue;
+      const child = path.join(d, e.name);
+      const childRel = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) { walk(child, childRel); continue; }
+      if (++count > MAX_FINGERPRINT_FILES) return;
+      try {
+        const st = fs.statSync(child);
+        parts.push(`${childRel}:${st.size}:${st.mtimeMs}`);
+      } catch {}
+    }
+  };
+  walk(dir, '');
+  return crypto.createHash('sha1').update(parts.sort().join('\n')).digest('hex');
+}
+
 function idleMs() {
   const parsed = parseInt(process.env.AWS_PLAYGROUND_WARM_IDLE_MS, 10);
   return Number.isFinite(parsed) ? parsed : DEFAULT_IDLE_MS;
@@ -51,11 +93,8 @@ class Env {
     this.dead = false;
     this.buf = '';
     this.pending = null;
-    this.watcher = null;
     this.idleTimer = null;
-    // Without a watch the only safe behaviour is a cold start every invoke:
-    // slower, but it can never serve code the user has already changed.
-    this.unwatchable = false;
+    this.sourceFingerprint = fingerprint(opts.dir);
 
     this.child = spawn(opts.command.cmd, opts.command.args, {
       cwd: opts.dir,
@@ -74,41 +113,10 @@ class Env {
     // back on for the duration of a send, so an in-flight invoke still keeps
     // the process alive long enough to finish.
     this.unrefIdle();
-    this.child.on('error', (err) => this.die(err));
-    this.child.on('close', (code) => this.die(
-      new Error(`the handler process exited (code ${code})`)));
+    this.child.on('error', (err) => this.die(Object.assign(err, { spawnFailed: true })));
+    this.child.on('close', (code) => this.die(Object.assign(
+      new Error(`the handler process exited (code ${code})`), { exitCode: code })));
 
-    if (opts.watch === false) this.unwatchable = true;
-    else this.startWatching();
-  }
-
-  // Real Lambda has no notion of the code changing under a warm environment;
-  // locally it changes constantly, and serving the previous version would make
-  // the tool actively wrong. This is the one deliberate break from Lambda.
-  startWatching() {
-    try {
-      const own = path.basename(this.dir);
-      this.watcher = fs.watch(this.dir, { recursive: true }, (_event, filename) => {
-        const name = String(filename ?? '');
-        // macOS emits an extra event naming the watched directory itself for
-        // any descendant change. It says nothing about *what* changed, and a
-        // real edit always also emits an event naming the actual file, so
-        // acting on it would evict on node_modules churn for no reason. Guard
-        // against a genuine file that happens to share the directory's name.
-        if (name === own && !fs.existsSync(path.join(this.dir, name))) return;
-        if (name.includes('node_modules') || path.basename(name).startsWith('.')) return;
-        clearTimeout(this.debounce);
-        this.debounce = setTimeout(() => evict(this.key), 100);
-        this.debounce.unref?.();
-      });
-      // Like the child itself, the watcher must not keep a process that is
-      // otherwise finished from exiting.
-      this.watcher.unref?.();
-    } catch (err) {
-      this.unwatchable = true;
-      console.warn(`aws-playground: cannot watch ${this.dir} for changes (${err.message}); `
-        + 'this function will cold start every invoke so it never runs stale code.');
-    }
   }
 
   tryResolve() {
@@ -134,6 +142,9 @@ class Env {
     if (this.dead) return;
     this.dead = true;
     const pending = this.pending;
+    // Whatever the handler printed before taking the process down is the only
+    // evidence of why it died, so it has to survive the rejection.
+    if (pending) err.logs = this.buf;
     this.settle();
     envs.delete(this.key);
     this.teardown();
@@ -142,10 +153,6 @@ class Env {
 
   teardown() {
     clearTimeout(this.idleTimer);
-    clearTimeout(this.debounce);
-    // A leaked recursive watcher is a real descriptor leak.
-    try { this.watcher?.close(); } catch {}
-    this.watcher = null;
     try {
       if (this.child.pid) {
         if (process.platform === 'win32') this.child.kill('SIGKILL');
@@ -204,9 +211,7 @@ class Env {
     }).finally(() => {
       if (this.dead) return;
       this.unrefIdle();
-      // No watch means no way to know the source changed, so never reuse.
-      if (this.unwatchable) evict(this.key);
-      else this.touch();
+      this.touch();
     });
   }
 }
@@ -215,8 +220,15 @@ async function acquire(opts) {
   const key = keyFor(opts);
   const existing = envs.get(key);
   if (existing && !existing.dead) {
-    existing.cold = false;
-    return existing;
+    // The one deliberate break from Lambda: locally the source changes under a
+    // warm environment constantly, and serving the previous version would make
+    // the tool actively wrong. Checked here rather than watched, because the
+    // act of importing a handler touches its own source file.
+    if (fingerprint(opts.dir) === existing.sourceFingerprint) {
+      existing.cold = false;
+      return existing;
+    }
+    evict(key);
   }
   const env = new Env(key, opts);
   envs.set(key, env);

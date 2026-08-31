@@ -50,4 +50,54 @@ function writeScenario(scenarioPath, map) {
   fs.renameSync(tmp, scenarioPath);
 }
 
-module.exports = { hasRuntime, writeDockerShim, writeScenario };
+// Drives a harness in --warm mode: several invokes through one process,
+// using the same framing server/runtime/pool.js uses. Returns each invoke's
+// envelope and, separately, the logs the parent would have attributed to it.
+async function driveWarmHarness({ cmd, args, cwd, events, env }) {
+  const { spawn } = require('node:child_process');
+  const os = require('node:os');
+  const { randomUUID } = require('node:crypto');
+  const { encodeRequest, sentinelFor } = require('../server/runtime/protocol');
+
+  const results = [];
+  const logs = [];
+  const child = spawn(cmd, args, {
+    cwd, env: env ?? { PATH: process.env.PATH, HOME: process.env.HOME },
+  });
+  let buf = '';
+  try {
+    for (const event of events) {
+      const requestId = randomUUID();
+      const resultFile = path.join(os.tmpdir(), `awsplay-warmtest-${requestId}.json`);
+      child.stdin.write(encodeRequest({ requestId, resultFile, event, timeoutMs: 5000, memoryMb: 128 }));
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`no sentinel; buffer so far: ${JSON.stringify(buf)}`)), 15000);
+        const onData = (d) => {
+          buf += d;
+          const marker = sentinelFor(requestId);
+          const at = buf.indexOf(marker);
+          if (at === -1) return;
+          clearTimeout(timer);
+          child.stdout.off('data', onData);
+          logs.push(buf.slice(0, at));
+          buf = buf.slice(at + marker.length);
+          resolve();
+        };
+        child.stdout.on('data', onData);
+        child.on('exit', (code) => {
+          clearTimeout(timer);
+          reject(new Error(`harness exited ${code} before answering; buffer: ${buf}`));
+        });
+      });
+      results.push(JSON.parse(fs.readFileSync(resultFile, 'utf8')));
+      fs.unlinkSync(resultFile);
+    }
+  } finally {
+    child.stdin.end();
+    child.kill('SIGKILL');
+  }
+  return { results, logs };
+}
+
+module.exports = { hasRuntime, writeDockerShim, writeScenario, driveWarmHarness };

@@ -12,7 +12,7 @@ const pool = require('./pool');
 // Runtimes whose harness understands --warm and serves a request loop. The
 // rest still get a fresh process per invoke, which is exactly what they did
 // before; a runtime joins this set in the commit that converts its harness.
-const WARM_RUNTIMES = new Set(['node']);
+const WARM_RUNTIMES = new Set(['node', 'python']);
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
@@ -215,11 +215,16 @@ async function invoke(opts) {
     } catch (err) {
       // A spawn failure surfaces here rather than as an 'error' event, since
       // the pool owns the child process now.
+      // A process that never started is a different problem from one that
+      // died part-way through: the first means the runtime is missing, the
+      // second means the handler took the process down with it.
       run = {
-        logs: '',
+        logs: err.logs ?? '',
         cold: environment ? environment.cold : true,
         timedOut: err.timedOut === true,
-        spawnError: err.timedOut ? undefined : err,
+        exit: err.exitCode,
+        spawnError: err.spawnFailed ? err : undefined,
+        exited: err.exitCode !== undefined,
       };
     }
   }

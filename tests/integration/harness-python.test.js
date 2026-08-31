@@ -70,3 +70,56 @@ test('python runtime reports initMs separately from durationMs', { skip }, async
   assert.strictEqual(envelope.ok, true);
   assert.ok(envelope.initMs >= 0, `expected initMs >= 0, got ${envelope.initMs}`);
 });
+
+// --- warm mode ---------------------------------------------------------
+
+const { driveWarmHarness } = require('../helpers');
+
+function pyProject(source) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pywarm-'));
+  fs.writeFileSync(path.join(dir, 'app.py'), source);
+  return dir;
+}
+
+function warmPython(dir, events) {
+  return driveWarmHarness({
+    cmd: 'python3', args: [HARNESS, '--handler', 'app.handler', '--result-file',
+      path.join(os.tmpdir(), 'unused.json'), '--warm'],
+    cwd: dir, events,
+  });
+}
+
+test('a warm python harness keeps module scope across invokes', { skip }, async () => {
+  const dir = pyProject('calls = 0\n\n\ndef handler(event, context):\n'
+    + '    global calls\n    calls += 1\n    return {"calls": calls}\n');
+  const { results } = await warmPython(dir, [{}, {}, {}]);
+  assert.deepStrictEqual(results.map((r) => r.response), [
+    { calls: 1 }, { calls: 2 }, { calls: 3 },
+  ], 'module scope was not reused — each invoke re-imported the module');
+});
+
+test('only the first warm python invoke reports initMs', { skip }, async () => {
+  const dir = pyProject('def handler(event, context):\n    return {"ok": True}\n');
+  const { results } = await warmPython(dir, [{}, {}]);
+  assert.strictEqual(typeof results[0].initMs, 'number');
+  assert.strictEqual(results[1].initMs, undefined, 'a warm invoke must not report initMs');
+});
+
+test('each warm python invoke gets only its own logs', { skip }, async () => {
+  const dir = pyProject('def handler(event, context):\n'
+    + '    print("run:" + str(event["n"]))\n    return {"n": event["n"]}\n');
+  const { logs } = await warmPython(dir, [{ n: 1 }, { n: 2 }]);
+  assert.match(logs[0], /run:1/);
+  assert.doesNotMatch(logs[0], /run:2/);
+  assert.match(logs[1], /run:2/);
+  assert.doesNotMatch(logs[1], /run:1/, "the second invoke's logs carried the first's output");
+});
+
+test('a python handler error does not kill the warm environment', { skip }, async () => {
+  const dir = pyProject('def handler(event, context):\n'
+    + '    if event.get("boom"):\n        raise ValueError("nope")\n    return {"ok": True}\n');
+  const { results } = await warmPython(dir, [{ boom: true }, {}]);
+  assert.strictEqual(results[0].ok, false);
+  assert.strictEqual(results[0].error.message, 'nope');
+  assert.strictEqual(results[1].ok, true, 'the environment died after a handler error');
+});
