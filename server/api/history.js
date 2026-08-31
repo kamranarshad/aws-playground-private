@@ -1,5 +1,5 @@
-const store = require('../store');
-const history = require('../history');
+const store = require('../persistence/store');
+const history = require('../persistence/history');
 const traceCollector = require('../trace-collector');
 
 function listHistory(functionId) {

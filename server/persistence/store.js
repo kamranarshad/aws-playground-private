@@ -3,7 +3,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { writeFileAtomic } = require('./atomic-write');
-const { ALLOWED_KEYS, DEFAULTS } = require('./schema');
+const { ALLOWED_KEYS, DEFAULTS } = require('../schema');
 
 function dataDir() {
   return process.env.AWS_PLAYGROUND_DATA_DIR || path.join(os.homedir(), '.aws-playground');

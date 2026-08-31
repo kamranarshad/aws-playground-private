@@ -1,7 +1,7 @@
-const store = require('../store');
+const store = require('../persistence/store');
 const schema = require('../schema');
 const { detectProject } = require('../detect');
-const history = require('../history');
+const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const manager = require('../trigger/manager');
 const { invokeFunction } = require('./invoke');

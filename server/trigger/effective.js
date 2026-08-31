@@ -1,4 +1,4 @@
-const projectconfig = require('../projectconfig');
+const projectconfig = require('../persistence/projectconfig');
 
 // A function's trigger, resolved the same way effectiveServices resolves
 // local services: a playground.json declaration wins outright over

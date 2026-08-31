@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const services = require('./services');
-const { coerceTrigger } = require('./schema');
+const services = require('../services');
+const { coerceTrigger } = require('../schema');
 
 // Per-project playground.json. Re-read fresh on every use, like .env.
 // A null `services`/`trigger` means "no file governance" for that key

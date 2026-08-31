@@ -7,7 +7,7 @@ const path = require('node:path');
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-http-data-'));
 
 const httpTrigger = require('../server/trigger/http');
-const store = require('../server/store');
+const store = require('../server/persistence/store');
 const originalCreateListener = httpTrigger.createListener;
 const {
   routeFor, encodeBody, buildHttpEvent, isValidProxyResponse, translateInvokeResult,

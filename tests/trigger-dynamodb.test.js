@@ -26,7 +26,7 @@ function dynamodbAlreadyRunning() {
 }
 
 const dynamodbTrigger = require('../server/trigger/dynamodb');
-const store = require('../server/store');
+const store = require('../server/persistence/store');
 const localServices = require('../server/services');
 const originalLocalServicesStart = localServices.start;
 const originalStart = dynamodbTrigger.start;

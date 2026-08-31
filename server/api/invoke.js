@@ -1,11 +1,11 @@
 const crypto = require('crypto');
-const store = require('../store');
+const store = require('../persistence/store');
 const { findJar } = require('../detect');
 const envfile = require('../envfile');
 const localServices = require('../services');
 const { runBuild } = require('../build');
 const { invoke } = require('../invoker');
-const history = require('../history');
+const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const { effectiveServices, unknownServiceError } = require('./services');
 

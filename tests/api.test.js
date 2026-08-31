@@ -208,7 +208,7 @@ test('trigger.type "s3" requires a non-empty bucket and a non-empty valid events
 });
 
 test('a repeated trigger.events value is deduped before it reaches the store', () => {
-  const store = require('../server/store');
+  const store = require('../server/persistence/store');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-api-s3-dedupe-'));
   const r = api.createFunction({ name: 's3-dedupe', path: dir, runtime: 'node',
     trigger: { type: 's3', bucket: 'b', events: ['ObjectCreated', 'ObjectCreated'], enabled: false } });
@@ -281,7 +281,7 @@ test('enabling an HTTP trigger is rejected if another function already has that 
   assert.strictEqual(a.status, 201);
   // A grandfathered duplicate name (created before this validation existed, or
   // via a path that bypasses it) must still be caught here, not just at create time.
-  const store = require('../server/store');
+  const store = require('../server/persistence/store');
   store.create({ name: 'dup-route', path: FIXTURES, runtime: 'node' });
 
   const r = api.updateFunction(a.body.id, { trigger: { type: 'http', enabled: true } });
@@ -433,7 +433,7 @@ test('invoke records history; delete clears it', { skip: noPy }, async () => {
   await api.invokeFunction({ functionId: id, event: {} });
   api.deleteFunction(id);
   assert.strictEqual(api.listHistory(id).status, 404);
-  const history = require('../server/history');
+  const history = require('../server/persistence/history');
   assert.deepStrictEqual(history.list(id), []);
 });
 

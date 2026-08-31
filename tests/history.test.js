@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-hist-'));
-const history = require('../server/history');
+const history = require('../server/persistence/history');
 
 function entry(overrides = {}) {
   return { handler: 'app.handler', event: { a: 1 }, response: { ok: 1 },

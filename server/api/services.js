@@ -1,5 +1,5 @@
-const store = require('../store');
-const projectconfig = require('../projectconfig');
+const store = require('../persistence/store');
+const projectconfig = require('../persistence/projectconfig');
 const localServices = require('../services');
 
 function effectiveServices(fn) {

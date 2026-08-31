@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { read } = require('../server/projectconfig');
+const { read } = require('../server/persistence/projectconfig');
 
 function proj(content) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-pc-'));

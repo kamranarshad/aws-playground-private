@@ -28,7 +28,7 @@ function elasticmqAlreadyRunning() {
 }
 
 const sqs = require('../server/trigger/sqs');
-const store = require('../server/store');
+const store = require('../server/persistence/store');
 const localServices = require('../server/services');
 const manager = require('../server/trigger/manager');
 const httpTrigger = require('../server/trigger/http');

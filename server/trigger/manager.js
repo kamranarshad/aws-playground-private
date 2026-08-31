@@ -1,4 +1,4 @@
-const store = require('../store');
+const store = require('../persistence/store');
 const sqs = require('./sqs');
 const dynamodbTrigger = require('./dynamodb');
 const httpTrigger = require('./http');

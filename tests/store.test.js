@@ -5,7 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-store-'));
-const store = require('../server/store');
+const store = require('../server/persistence/store');
 
 test('create applies defaults and persists to functions.json', () => {
   const fn = store.create({ name: 'fn1', path: '/tmp/fn1', runtime: 'python' });
@@ -76,7 +76,7 @@ test('trigger field defaults to null and round-trips through create/update', () 
   assert.deepStrictEqual(updated.trigger, { type: 'sqs', queueName: 'q2', enabled: false });
 });
 
-const { writeFileAtomic } = require('../server/atomic-write');
+const { writeFileAtomic } = require('../server/persistence/atomic-write');
 
 test('writeFileAtomic replaces the target in one step', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-atomic-'));

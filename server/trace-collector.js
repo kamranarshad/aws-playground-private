@@ -1,4 +1,4 @@
-const history = require('./history');
+const history = require('./persistence/history');
 
 function windowMs() {
   const parsed = parseInt(process.env.AWS_PLAYGROUND_TRACE_WINDOW_MS, 10);

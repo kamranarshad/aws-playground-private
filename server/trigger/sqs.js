@@ -1,6 +1,6 @@
 const { requireOptional } = require('../optional-deps');
 const { awsClientOptions } = require('../services/registry');
-const defaultStore = require('../store');
+const defaultStore = require('../persistence/store');
 const defaultLocalServices = require('../services');
 const poller = require('./poller');
 
