@@ -136,9 +136,9 @@ function createRequestHandler({ resolveFunctionId, invokeFunction }) {
 }
 
 // One shared listener across every function with an enabled HTTP trigger;
-// `resolveFunctionId` is called fresh on every request, so the caller (the
-// trigger manager) can mutate its route table live without restarting this
-// listener.
+// `resolveFunctionId` is called fresh on every request, so the caller (this
+// module's own sync/stop below) can mutate its route table live without
+// restarting this listener.
 function createListener({ resolveFunctionId, invokeFunction, port = PORT, host = HOST, onError }) {
   return new Promise((resolve, reject) => {
     const server = http.createServer(createRequestHandler({ resolveFunctionId, invokeFunction }));
@@ -151,7 +151,90 @@ function createListener({ resolveFunctionId, invokeFunction, port = PORT, host =
   });
 }
 
+// name -> functionId. Read live by the listener on every request, so
+// toggling/renaming a trigger never needs to restart it.
+const httpRoutes = new Map();
+// functionId -> name. Tracks each function's currently-registered name so a
+// rename or disable knows which route entry to remove.
+const httpTriggered = new Map();
+let httpListener = null; // { server, stop } | null
+let httpListenerStarting = null; // in-flight start Promise, deduplicates concurrent enables
+let httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+
+function status(functionId) {
+  return httpTriggered.has(functionId) ? httpStatus : undefined;
+}
+
+function statusAll() {
+  const out = {};
+  for (const id of httpTriggered.keys()) out[id] = httpStatus;
+  return out;
+}
+
+function stopHttpListenerIfIdle() {
+  if (httpRoutes.size === 0 && httpListener) {
+    httpListener.stop();
+    httpListener = null;
+    httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+  }
+}
+
+function stop(functionId) {
+  const name = httpTriggered.get(functionId);
+  if (name === undefined) return;
+  httpRoutes.delete(name);
+  httpTriggered.delete(functionId);
+  stopHttpListenerIfIdle();
+}
+
+async function ensureHttpListenerRunning() {
+  if (httpListener) return;
+  if (httpListenerStarting) return httpListenerStarting;
+  httpListenerStarting = (async () => {
+    try {
+      httpListener = await module.exports.createListener({
+        resolveFunctionId: (name) => httpRoutes.get(name) ?? null,
+        invokeFunction: require('../api/invoke').invokeFunction,
+        onError: (err) => { httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null }; },
+      });
+      if (httpRoutes.size === 0) {
+        // Every function that wanted this listener disabled/deleted its
+        // trigger while the real socket bind was still in flight — the
+        // listener is orphaned the moment it comes up. Tear it down instead
+        // of leaving a live listener with nothing routed to it.
+        httpListener.stop();
+        httpListener = null;
+        httpStatus = { state: 'idle', lastError: null, lastPolledAt: null };
+      } else {
+        httpStatus = { state: 'listening', lastError: null, lastPolledAt: null };
+      }
+    } catch (err) {
+      httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null };
+    } finally {
+      httpListenerStarting = null;
+    }
+  })();
+  return httpListenerStarting;
+}
+
+// Idempotent: safe to call as often as the caller likes for an already
+// fully-registered, unchanged route.
+async function sync(fn, trigger) {
+  // A '/' in the name can never be routed (the listener splits on the first
+  // path segment) — the API refuses to let a *manual* trigger be enabled
+  // against such a name, but a playground.json trigger bypasses that check
+  // entirely. Treat it as inert rather than corrupt the shared route table.
+  if (!trigger.enabled || fn.name.includes('/')) { stop(fn.id); return; }
+  const current = httpTriggered.get(fn.id);
+  if (current !== undefined && current !== fn.name) httpRoutes.delete(current);
+  httpRoutes.set(fn.name, fn.id);
+  httpTriggered.set(fn.id, fn.name);
+  await ensureHttpListenerRunning();
+}
+
 module.exports = {
+  type: 'http',
+  sync, stop, status, statusAll,
   PORT, HOST, routeFor, encodeBody, buildHttpEvent, isValidProxyResponse, translateInvokeResult,
   createRequestHandler, createListener,
 };

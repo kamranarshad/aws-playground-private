@@ -1,7 +1,34 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { buildSqsEvent, runLoop, POLL_IDLE_MS, ERROR_BACKOFF_MS } = require('../server/trigger/sqs');
-const inFlight = require('../server/api/in-flight');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { writeDockerShim, writeScenario } = require('./helpers');
+
+// Hermetic like tests/services.test.js: a shim "docker" for the elasticmq
+// start (localServices.start), and a monkeypatched poller.start for the poll
+// loop itself — real network/docker is exercised by tests/trigger-docker.test.js.
+const SHIM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-sqs-'));
+const { shim: SHIM, scenario: SCENARIO, calls: CALLS } = writeDockerShim(SHIM_DIR);
+process.env.AWS_PLAYGROUND_DOCKER = SHIM;
+process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-sqs-data-'));
+
+function scenario(map) {
+  writeScenario(SCENARIO, map);
+  fs.writeFileSync(CALLS, '');
+}
+
+function elasticmqAlreadyRunning() {
+  scenario({ inspect: { code: 0, stdout: 'true' } });
+}
+
+const sqs = require('../server/trigger/sqs');
+const store = require('../server/store');
+const localServices = require('../server/services');
+const originalLocalServicesStart = localServices.start;
+const originalStart = sqs.start;
+
+const { buildSqsEvent } = sqs;
 
 function message(overrides = {}) {
   return {
@@ -47,140 +74,139 @@ test('buildSqsEvent fills in safe defaults when SQS omits optional attributes', 
   assert.deepStrictEqual(event.Records[0].messageAttributes, {});
 });
 
-test('idle and error backoff default to a couple of seconds', () => {
-  assert.strictEqual(POLL_IDLE_MS, 2000);
-  assert.strictEqual(ERROR_BACKOFF_MS, 2000);
+// Shared in-flight guard / backoff / ack behavior lives in poller.js now and
+// is tested once, generically, in tests/trigger-poller.test.js.
+
+test('sync starts elasticmq and the poll loop when a trigger is enabled', async () => {
+  elasticmqAlreadyRunning();
+  // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stop = () => { stop.called = true; };
+    sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop }; };
+    const fn = store.create({ name: 'f1', path: '/tmp/f1', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q1', enabled: true } });
+
+    await sqs.sync(fn, fn.trigger);
+
+    assert.deepStrictEqual(sqs.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+    sqs.stop(fn.id);
+    assert.strictEqual(stop.called, true);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    sqs.start = originalStart;
+  }
 });
 
-test('runLoop invokes the function for a received message and deletes it', async () => {
-  const controller = new AbortController();
-  const calls = { invoke: [], remove: [] };
-  const receive = async () => ({ MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x', MD5OfBody: 'y' });
-  const remove = async (rh) => { calls.remove.push(rh); controller.abort(); };
-  const invokeFunction = async (input) => { calls.invoke.push(input); return { status: 200 }; };
+test('sync is a no-op when the trigger is already running with the same queue', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let starts = 0;
+    sqs.start = (fn, { onStatus }) => { starts++; onStatus({ state: 'polling', lastError: null }); return { stop: () => {} }; };
+    const fn = store.create({ name: 'f2', path: '/tmp/f2', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q2', enabled: true } });
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } },
-    signal: controller.signal,
-    receive, remove, invokeFunction,
-  });
+    await sqs.sync(fn, fn.trigger);
+    await sqs.sync(fn, fn.trigger);
 
-  assert.strictEqual(calls.invoke.length, 1);
-  assert.strictEqual(calls.invoke[0].functionId, 'fn1');
-  assert.deepStrictEqual(calls.invoke[0].source, { type: 'trigger', messageId: 'm1' });
-  assert.strictEqual(calls.invoke[0].event.Records[0].messageId, 'm1');
-  assert.deepStrictEqual(calls.remove, ['rh1']);
+    assert.strictEqual(starts, 1);
+    sqs.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    sqs.start = originalStart;
+  }
 });
 
-test('runLoop deletes the message even when the invoke fails', async () => {
-  const controller = new AbortController();
-  const removed = [];
-  const receive = async () => ({ MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' });
-  const remove = async (rh) => { removed.push(rh); controller.abort(); };
-  // A handler error still comes back as status 200 (the failure lives in the
-  // body) — only guard responses like 409/404 are non-200, and those are
-  // covered by the dedicated test below.
-  const invokeFunction = async () => ({ status: 200, body: { ok: false, error: { message: 'boom' } } });
+test('sync restarts the loop when the queue name changes', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stopped = [];
+    let n = 0;
+    sqs.start = (fn, { onStatus }) => {
+      n++;
+      const id = n;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => stopped.push(id) };
+    };
+    let fn = store.create({ name: 'f3', path: '/tmp/f3', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q3', enabled: true } });
+    await sqs.sync(fn, fn.trigger);
+    fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q3-renamed', enabled: true } });
+    await sqs.sync(fn, fn.trigger);
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove, invokeFunction,
-  });
-
-  assert.deepStrictEqual(removed, ['rh1']);
+    assert.deepStrictEqual(stopped, [1]);
+    assert.strictEqual(n, 2);
+    sqs.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    sqs.start = originalStart;
+  }
 });
 
-test('runLoop deletes the message even when invokeFunction throws', async () => {
-  const controller = new AbortController();
-  const removed = [];
-  const statuses = [];
-  const receive = async () => ({ MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' });
-  const remove = async (rh) => { removed.push(rh); controller.abort(); };
-  const invokeFunction = async () => { throw new Error('invoke crashed'); };
+test('sync stops the loop when the trigger is disabled', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let stopped = false;
+    sqs.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop: () => { stopped = true; } }; };
+    let fn = store.create({ name: 'f4', path: '/tmp/f4', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q4', enabled: true } });
+    await sqs.sync(fn, fn.trigger);
+    fn = store.update(fn.id, { trigger: { type: 'sqs', queueName: 'q4', enabled: false } });
+    await sqs.sync(fn, fn.trigger);
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove, invokeFunction,
-    onStatus: (s) => statuses.push(s),
-  });
-
-  assert.deepStrictEqual(removed, ['rh1']);
-  assert.ok(statuses.some((s) => s.state === 'error' && s.lastError === 'invoke failed: invoke crashed'));
+    assert.strictEqual(stopped, true);
+    assert.strictEqual(sqs.status(fn.id), undefined);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    sqs.start = originalStart;
+  }
 });
 
-test('runLoop leaves the message on the queue when invokeFunction returns a 409 guard response', async () => {
-  const controller = new AbortController();
-  const removed = [];
-  let receiveCalls = 0;
-  const receive = async () => {
-    receiveCalls++;
-    if (receiveCalls > 1) { controller.abort(); return null; }
-    return { MessageId: 'm1', ReceiptHandle: 'rh1', Body: 'x' };
-  };
-  const remove = async (rh) => { removed.push(rh); };
-  const invokeFunction = async () => ({ status: 409, body: { error: 'in flight' } });
+test('a service start failure is reported as an error status, not thrown', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 125, stdout: 'port is already allocated' } });
+  // Restore the original localServices.start to exercise the real docker-shim failure path
+  // (The docker run command fails before reaching the waitReady check)
+  localServices.start = originalLocalServicesStart;
+  try {
+    const fn = store.create({ name: 'f5', path: '/tmp/f5', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q5', enabled: true } });
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove, invokeFunction,
-  });
+    await sqs.sync(fn, fn.trigger);
 
-  assert.deepStrictEqual(removed, []);
+    const st = sqs.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /port is already allocated/);
+    sqs.stop(fn.id);
+  } finally {
+    // No need to restore here since the next test sets its own monkeypatch
+  }
 });
 
-test('runLoop skips a poll cycle while the function is already in flight', async () => {
-  const controller = new AbortController();
-  inFlight.add('fn1');
-  let receiveCalls = 0;
-  const receive = async () => { receiveCalls++; return null; };
-  const statuses = [];
-  const sleep = async () => { inFlight.delete('fn1'); controller.abort(); };
+test('stop() called while sync() is still starting elasticmq prevents the poller from ever starting', async () => {
+  let resolveStart;
+  localServices.start = () => new Promise((resolve) => { resolveStart = resolve; });
+  try {
+    let sqsStartCalled = false;
+    sqs.start = (fn, { onStatus }) => {
+      sqsStartCalled = true;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    const fn = store.create({ name: 'f6', path: '/tmp/f6', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q6', enabled: true } });
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove: async () => {}, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s), sleep,
-  });
+    const syncPromise = sqs.sync(fn, fn.trigger); // don't await yet — it's stuck on localServices.start
+    sqs.stop(fn.id); // race: stop before elasticmq "finishes starting"
+    resolveStart({ ok: true, state: 'running', output: '' }); // now let it finish
+    await syncPromise;
 
-  assert.strictEqual(receiveCalls, 0);
-  assert.ok(statuses.some((s) => s.state === 'idle'));
-});
-
-test('runLoop backs off and retries after a receive error, without crashing', async () => {
-  const controller = new AbortController();
-  let attempts = 0;
-  const receive = async () => {
-    attempts++;
-    if (attempts === 1) throw new Error('connection refused');
-    controller.abort();
-    return null;
-  };
-  const statuses = [];
-  const sleep = async () => {};
-
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove: async () => {}, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s), sleep,
-  });
-
-  assert.strictEqual(attempts, 2);
-  assert.ok(statuses.some((s) => s.state === 'error' && s.lastError === 'connection refused'));
-});
-
-test('runLoop exits cleanly when aborted mid-receive', async () => {
-  const controller = new AbortController();
-  const receive = async () => {
-    controller.abort();
-    throw new Error('aborted');
-  };
-  const statuses = [];
-
-  await runLoop({
-    fn: { id: 'fn1', trigger: { queueName: 'q1' } }, signal: controller.signal,
-    receive, remove: async () => {}, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s),
-  });
-
-  assert.ok(!statuses.some((s) => s.state === 'error'));
+    assert.strictEqual(sqsStartCalled, false, 'sqs.start must never be called once cancelled');
+    assert.strictEqual(sqs.status(fn.id), undefined);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    sqs.start = originalStart;
+  }
 });

@@ -1,9 +1,37 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const {
-  buildDynamoDbEvent, runLoop, POLL_IDLE_MS, ERROR_BACKOFF_MS,
-} = require('../server/trigger/dynamodb');
-const inFlight = require('../server/api/in-flight');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { writeDockerShim, writeScenario } = require('./helpers');
+
+// Hermetic like tests/services.test.js: a shim "docker" for the dynamodb
+// start (localServices.start), and a monkeypatched poller.start for the poll
+// loop itself — real network/docker is exercised by tests/trigger-docker.test.js.
+const SHIM_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-ddb-'));
+const { shim: SHIM, scenario: SCENARIO, calls: CALLS } = writeDockerShim(SHIM_DIR);
+process.env.AWS_PLAYGROUND_DOCKER = SHIM;
+process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-ddb-data-'));
+
+function scenario(map) {
+  writeScenario(SCENARIO, map);
+  fs.writeFileSync(CALLS, '');
+}
+
+// The docker shim's "inspect" scenario key is container-agnostic (see
+// writeDockerShim in helpers.js), so this works unchanged for the
+// dynamodb-local container too.
+function dynamodbAlreadyRunning() {
+  scenario({ inspect: { code: 0, stdout: 'true' } });
+}
+
+const dynamodbTrigger = require('../server/trigger/dynamodb');
+const store = require('../server/store');
+const localServices = require('../server/services');
+const originalLocalServicesStart = localServices.start;
+const originalStart = dynamodbTrigger.start;
+
+const { buildDynamoDbEvent } = dynamodbTrigger;
 
 function record(overrides = {}) {
   return {
@@ -50,123 +78,117 @@ test('buildDynamoDbEvent turns a whole GetRecords batch into one event, one entr
   assert.strictEqual(event.Records[1].eventName, 'MODIFY');
 });
 
-test('idle and error backoff default to a couple of seconds', () => {
-  assert.strictEqual(POLL_IDLE_MS, 2000);
-  assert.strictEqual(ERROR_BACKOFF_MS, 2000);
+// Shared in-flight guard / backoff / sleep-on-empty behavior lives in
+// poller.js now and is tested once, generically, in tests/trigger-poller.test.js.
+
+test('sync starts dynamodb-local and the poll loop when a trigger is enabled', async () => {
+  dynamodbAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stop = () => { stop.called = true; };
+    dynamodbTrigger.start = (fn, { onStatus }) => { onStatus({ state: 'polling', lastError: null }); return { stop }; };
+    const fn = store.create({ name: 'd1', path: '/tmp/d1', runtime: 'node',
+      trigger: { type: 'dynamodb', tableName: 'tbl1', enabled: true } });
+
+    await dynamodbTrigger.sync(fn, fn.trigger);
+
+    assert.deepStrictEqual(dynamodbTrigger.status(fn.id), { state: 'polling', lastError: null, lastPolledAt: null });
+    dynamodbTrigger.stop(fn.id);
+    assert.strictEqual(stop.called, true);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    dynamodbTrigger.start = originalStart;
+  }
 });
 
-test('runLoop invokes the function with every record from a single receive() batch', async () => {
-  const controller = new AbortController();
-  const calls = { invoke: [] };
-  const receive = async () => {
-    controller.abort();
-    return { records: [record({ eventID: 'e1' }), record({ eventID: 'e2' })], streamArn: 'arn1' };
-  };
-  const invokeFunction = async (input) => { calls.invoke.push(input); return { status: 200 }; };
+test('sync is a no-op when the dynamodb trigger is already running against the same table', async () => {
+  dynamodbAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let starts = 0;
+    dynamodbTrigger.start = (fn, { onStatus }) => {
+      starts++; onStatus({ state: 'polling', lastError: null }); return { stop: () => {} };
+    };
+    const fn = store.create({ name: 'd2', path: '/tmp/d2', runtime: 'node',
+      trigger: { type: 'dynamodb', tableName: 'tbl2', enabled: true } });
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } },
-    signal: controller.signal,
-    receive, invokeFunction,
-  });
+    await dynamodbTrigger.sync(fn, fn.trigger);
+    await dynamodbTrigger.sync(fn, fn.trigger);
 
-  assert.strictEqual(calls.invoke.length, 1);
-  assert.strictEqual(calls.invoke[0].functionId, 'fn1');
-  assert.deepStrictEqual(calls.invoke[0].source, { type: 'trigger', recordCount: 2 });
-  assert.strictEqual(calls.invoke[0].event.Records.length, 2);
-  assert.strictEqual(calls.invoke[0].event.Records[0].eventSourceARN, 'arn1');
+    assert.strictEqual(starts, 1);
+    dynamodbTrigger.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    dynamodbTrigger.start = originalStart;
+  }
 });
 
-test('runLoop sleeps and retries when a receive() batch is empty, without invoking', async () => {
-  const controller = new AbortController();
-  let receiveCalls = 0;
-  const receive = async () => { receiveCalls++; return { records: [], streamArn: 'arn1' }; };
-  let invokeCalls = 0;
-  const invokeFunction = async () => { invokeCalls++; return { status: 200 }; };
-  const sleep = async () => { controller.abort(); };
+test('sync restarts the dynamodb poller when the table name changes', async () => {
+  dynamodbAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const stopped = [];
+    let n = 0;
+    dynamodbTrigger.start = (fn, { onStatus }) => {
+      n++;
+      const id = n;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => stopped.push(id) };
+    };
+    let fn = store.create({ name: 'd3', path: '/tmp/d3', runtime: 'node',
+      trigger: { type: 'dynamodb', tableName: 'tbl3', enabled: true } });
+    await dynamodbTrigger.sync(fn, fn.trigger);
+    fn = store.update(fn.id, { trigger: { type: 'dynamodb', tableName: 'tbl3-renamed', enabled: true } });
+    await dynamodbTrigger.sync(fn, fn.trigger);
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } }, signal: controller.signal,
-    receive, invokeFunction, sleep,
-  });
-
-  assert.strictEqual(receiveCalls, 1);
-  assert.strictEqual(invokeCalls, 0);
+    assert.deepStrictEqual(stopped, [1]);
+    assert.strictEqual(n, 2);
+    dynamodbTrigger.stop(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    dynamodbTrigger.start = originalStart;
+  }
 });
 
-test('runLoop skips a poll cycle while the function is already in flight', async () => {
-  const controller = new AbortController();
-  inFlight.add('fn1');
-  let receiveCalls = 0;
-  const receive = async () => { receiveCalls++; return { records: [], streamArn: 'arn1' }; };
-  const statuses = [];
-  const sleep = async () => { inFlight.delete('fn1'); controller.abort(); };
+test('sync stops the dynamodb poller when the trigger is disabled', async () => {
+  dynamodbAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    let stopped = false;
+    dynamodbTrigger.start = (fn, { onStatus }) => {
+      onStatus({ state: 'polling', lastError: null }); return { stop: () => { stopped = true; } };
+    };
+    let fn = store.create({ name: 'd4', path: '/tmp/d4', runtime: 'node',
+      trigger: { type: 'dynamodb', tableName: 'tbl4', enabled: true } });
+    await dynamodbTrigger.sync(fn, fn.trigger);
+    fn = store.update(fn.id, { trigger: { type: 'dynamodb', tableName: 'tbl4', enabled: false } });
+    await dynamodbTrigger.sync(fn, fn.trigger);
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } }, signal: controller.signal,
-    receive, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s), sleep,
-  });
-
-  assert.strictEqual(receiveCalls, 0);
-  assert.ok(statuses.some((s) => s.state === 'idle'));
+    assert.strictEqual(stopped, true);
+    assert.strictEqual(dynamodbTrigger.status(fn.id), undefined);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+    dynamodbTrigger.start = originalStart;
+  }
 });
 
-test('runLoop backs off and retries after a receive error, without crashing', async () => {
-  const controller = new AbortController();
-  let attempts = 0;
-  const receive = async () => {
-    attempts++;
-    if (attempts === 1) throw new Error('ExpiredIteratorException');
-    controller.abort();
-    return { records: [], streamArn: 'arn1' };
-  };
-  const statuses = [];
-  const sleep = async () => {};
+test('a dynamodb-local start failure is reported as an error status, not thrown', async () => {
+  scenario({ inspect: { code: 1, stdout: '' }, run: { code: 125, stdout: 'port is already allocated' } });
+  // Restore the real localServices.start to exercise the real docker-shim
+  // failure path (the docker run command fails before ever reaching
+  // waitReady, so this is fast — the next test re-mocks it immediately).
+  localServices.start = originalLocalServicesStart;
+  try {
+    const fn = store.create({ name: 'd5', path: '/tmp/d5', runtime: 'node',
+      trigger: { type: 'dynamodb', tableName: 'tbl5', enabled: true } });
 
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } }, signal: controller.signal,
-    receive, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s), sleep,
-  });
+    await dynamodbTrigger.sync(fn, fn.trigger);
 
-  assert.strictEqual(attempts, 2);
-  assert.ok(statuses.some((s) => s.state === 'error' && s.lastError === 'ExpiredIteratorException'));
-});
-
-test('runLoop exits cleanly when aborted mid-receive', async () => {
-  const controller = new AbortController();
-  const receive = async () => {
-    controller.abort();
-    throw new Error('aborted');
-  };
-  const statuses = [];
-
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } }, signal: controller.signal,
-    receive, invokeFunction: async () => ({ status: 200 }),
-    onStatus: (s) => statuses.push(s),
-  });
-
-  assert.ok(!statuses.some((s) => s.state === 'error'));
-});
-
-test('runLoop does not need an ack/remove step — a failed invoke still moves on to the next poll', async () => {
-  const controller = new AbortController();
-  let polls = 0;
-  const receive = async () => {
-    polls++;
-    if (polls === 1) return { records: [record()], streamArn: 'arn1' };
-    controller.abort();
-    return { records: [], streamArn: 'arn1' };
-  };
-  const invokeFunction = async () => ({ status: 500 });
-  const sleep = async () => {};
-
-  await runLoop({
-    fn: { id: 'fn1', trigger: { tableName: 't1' } }, signal: controller.signal,
-    receive, invokeFunction, sleep,
-  });
-
-  assert.strictEqual(polls, 2);
+    const st = dynamodbTrigger.status(fn.id);
+    assert.strictEqual(st.state, 'error');
+    assert.match(st.lastError, /port is already allocated/);
+    dynamodbTrigger.stop(fn.id);
+  } finally {
+    // No need to restore here since the next test sets its own monkeypatch
+  }
 });
