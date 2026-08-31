@@ -217,6 +217,37 @@ screen-sharing the playground doesn't broadcast them. They are still
 stored in plain text in `functions.json` — the masking is shoulder-surfing
 protection, not encryption.
 
+## Warm invokes
+
+Handlers are reused between invokes, the way real Lambda reuses an execution
+environment. Anything outside your handler function — module-level variables,
+`/tmp` files, database connections — persists from one invoke to the next:
+
+```js
+let calls = 0                      // runs once, not per invoke
+export const handler = async () => ({ calls: ++calls })
+//                                    → { calls: 1 }, then 2, then 3
+```
+
+The Report tab labels each invoke **cold** or **warm**, and shows an
+`Init Duration` only on a cold one. Press **Cold** next to Invoke to throw the
+environment away and start fresh.
+
+A cold start also happens automatically when:
+
+- you edit any file in the project (outside `node_modules`, `__pycache__`,
+  `.git`, virtualenvs and `target/`)
+- you change the handler, environment, memory, jar path or auto-tracing
+- a build command runs
+- the invoke times out, or the handler crashes the process
+- the function has been idle for five minutes (`AWS_PLAYGROUND_WARM_IDLE_MS`)
+
+**One thing to know:** if your handler logs *after* it returns — a stray
+`setTimeout`, an unawaited promise — that output shows up in the **next**
+invoke's logs. That is not a bug in the playground; it is exactly what happens
+on real Lambda, and it is one of the things reusing the environment lets you
+notice.
+
 ## Logs
 
 Everything the handler writes to stdout and stderr lands in the Logs tab,
