@@ -107,3 +107,69 @@ test('provided runtime reports initMs separately from durationMs', { skip: noBas
   assert.strictEqual(envelope.ok, true);
   assert.ok(envelope.initMs >= 0, `expected initMs >= 0, got ${envelope.initMs}`);
 });
+
+// --- warm mode ---------------------------------------------------------
+
+const { driveWarmHarness } = require('../helpers');
+
+function bootstrapProject(script) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-provwarm-'));
+  fs.writeFileSync(path.join(dir, 'bootstrap'), script);
+  fs.chmodSync(path.join(dir, 'bootstrap'), 0o755);
+  return dir;
+}
+
+function warmProvided(dir, events) {
+  return driveWarmHarness({
+    cmd: process.execPath,
+    args: [HARNESS, '--handler', 'bootstrap', '--result-file',
+      path.join(os.tmpdir(), 'unused.json'), '--warm'],
+    cwd: dir,
+    events,
+  });
+}
+
+// A real custom runtime is written as a loop around /invocation/next. This is
+// the runtime where warm reuse is not a compromise but the faithful shape.
+const LOOPING_BOOTSTRAP = `#!/usr/bin/env bash
+set -euo pipefail
+while true; do
+  HEADERS="$(mktemp)"
+  EVENT=$(curl -sS -LD "$HEADERS" -X GET "http://$AWS_LAMBDA_RUNTIME_API/2018-06-01/runtime/invocation/next")
+  REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+  echo "serving $REQUEST_ID"
+  curl -sS -X POST \\
+    "http://$AWS_LAMBDA_RUNTIME_API/2018-06-01/runtime/invocation/$REQUEST_ID/response" \\
+    -d "{\\"pid\\": $$, \\"echo\\": $EVENT}" >/dev/null
+done
+`;
+
+test('the bootstrap process survives between warm invokes', { skip: noBash }, async () => {
+  const dir = bootstrapProject(LOOPING_BOOTSTRAP);
+  const { results } = await warmProvided(dir, [{ n: 1 }, { n: 2 }, { n: 3 }]);
+
+  for (const r of results) assert.strictEqual(r.ok, true, JSON.stringify(r.error));
+  const pids = new Set(results.map((r) => r.response.pid));
+  assert.strictEqual(pids.size, 1,
+    `the bootstrap was restarted between invokes (pids: ${[...pids].join(', ')})`);
+  assert.deepStrictEqual(results.map((r) => r.response.echo), [{ n: 1 }, { n: 2 }, { n: 3 }]);
+});
+
+test('only the first warm provided invoke reports initMs', { skip: noBash }, async () => {
+  const dir = bootstrapProject(LOOPING_BOOTSTRAP);
+  const { results } = await warmProvided(dir, [{ n: 1 }, { n: 2 }]);
+  assert.strictEqual(typeof results[0].initMs, 'number');
+  assert.strictEqual(results[1].initMs, undefined, 'a warm invoke must not report initMs');
+});
+
+test('each warm provided invoke gets only its own logs', { skip: noBash }, async () => {
+  const dir = bootstrapProject(LOOPING_BOOTSTRAP);
+  const { results, logs } = await warmProvided(dir, [{ n: 1 }, { n: 2 }]);
+  const ids = results.map((r) => r.report?.requestId);
+  assert.match(logs[0], /serving /);
+  // Each invoke's bootstrap output must land in that invoke's logs, not bleed
+  // into the next one's.
+  assert.strictEqual((logs[1].match(/serving /g) ?? []).length, 1,
+    `the second invoke's logs carried more than its own output: ${JSON.stringify(logs[1])}`);
+  assert.ok(ids.length === 2);
+});

@@ -12,7 +12,10 @@ const pool = require('./pool');
 // Runtimes whose harness understands --warm and serves a request loop. The
 // rest still get a fresh process per invoke, which is exactly what they did
 // before; a runtime joins this set in the commit that converts its harness.
-const WARM_RUNTIMES = new Set(['node', 'python', 'java']);
+// All four now. `provided` is the one where this is not a compromise: a real
+// custom runtime is written as a loop around /invocation/next, so keeping the
+// bootstrap alive is closer to AWS than restarting it per invoke was.
+const WARM_RUNTIMES = new Set(['node', 'python', 'java', 'provided']);
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
