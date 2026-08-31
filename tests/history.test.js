@@ -204,3 +204,22 @@ test('appendSpans no-ops for an unknown functionId, requestId, or falsy function
   assert.doesNotThrow(() => history.appendSpans('fn15', 'no-such-request', [{ name: 'x' }], true));
   assert.strictEqual(history.getByRequestId('fn15', 'req-y').trace, undefined);
 });
+
+test('compaction never leaves a torn history file', () => {
+  const fnId = 'compact-atomic';
+  for (let i = 0; i < 60; i++) {
+    history.append(fnId, { handler: 'h', event: { i }, response: { i }, logs: '', report: {}, ok: true });
+  }
+  const file = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history', `${fnId}.jsonl`);
+
+  // list() trims past MAX_ENTRIES via writeAll. Every line on disk after it
+  // must still be parseable -- a torn rewrite shows up as a trailing
+  // fragment that JSON.parse rejects.
+  history.list(fnId);
+  const lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim());
+  assert.strictEqual(lines.length, history.MAX_ENTRIES);
+  for (const line of lines) assert.doesNotThrow(() => JSON.parse(line));
+  assert.deepStrictEqual(
+    fs.readdirSync(path.dirname(file)).filter((f) => f.endsWith('.tmp')), [],
+    'a .tmp file was left behind');
+});

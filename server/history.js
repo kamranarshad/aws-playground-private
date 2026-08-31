@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { dataDir } = require('./store');
+const { writeFileAtomic } = require('./atomic-write');
 
 const MAX_ENTRIES = 50;
 const MAX_FIELD_BYTES = 64 * 1024;
@@ -58,9 +59,7 @@ function readAll(functionId) {
 }
 
 function writeAll(functionId, oldestFirst) {
-  const file = fileFor(functionId);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, oldestFirst.map(e => JSON.stringify(e)).join('\n') + '\n');
+  writeFileAtomic(fileFor(functionId), oldestFirst.map(e => JSON.stringify(e)).join('\n') + '\n');
 }
 
 function list(functionId) {
