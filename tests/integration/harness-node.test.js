@@ -305,3 +305,106 @@ test('harness does not fail when no auto-tracing hook is defined (the common cas
     fs.rmSync(okDir, { recursive: true, force: true });
   }
 });
+
+// --- warm mode ---------------------------------------------------------
+// One process serving several invokes, driven through the same framing
+// server/runtime/pool.js uses. See server/runtime/protocol.js.
+
+const { spawn } = require('node:child_process');
+const { randomUUID } = require('node:crypto');
+const { encodeRequest, sentinelFor } = require('../../server/runtime/protocol');
+
+async function warmInvokes(dir, handler, events) {
+  const results = [];
+  const logs = [];
+  const child = spawn(process.execPath, [HARNESS, '--handler', handler, '--warm'], {
+    cwd: dir, env: { PATH: process.env.PATH, HOME: process.env.HOME },
+  });
+  let buf = '';
+  try {
+    for (const event of events) {
+      const requestId = randomUUID();
+      const resultFile = path.join(os.tmpdir(), `awsplay-warm-${requestId}.json`);
+      child.stdin.write(encodeRequest({ requestId, resultFile, event, timeoutMs: 5000, memoryMb: 128 }));
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error(`no sentinel; buffer so far: ${JSON.stringify(buf)}`)), 10000);
+        const onData = (d) => {
+          buf += d;
+          const marker = sentinelFor(requestId);
+          const at = buf.indexOf(marker);
+          if (at === -1) return;
+          clearTimeout(timer);
+          child.stdout.off('data', onData);
+          logs.push(buf.slice(0, at));
+          buf = buf.slice(at + marker.length);
+          resolve();
+        };
+        child.stdout.on('data', onData);
+      });
+      results.push(JSON.parse(fs.readFileSync(resultFile, 'utf8')));
+      fs.unlinkSync(resultFile);
+    }
+  } finally {
+    child.stdin.end();
+    child.kill('SIGKILL');
+  }
+  return { results, logs };
+}
+
+function projectWith(source) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-warm-'));
+  fs.writeFileSync(path.join(dir, 'index.mjs'), source);
+  return dir;
+}
+
+test('a warm harness keeps module scope across invokes', async () => {
+  const dir = projectWith('let calls = 0;\nexport const handler = async () => ({ calls: ++calls });\n');
+  const { results } = await warmInvokes(dir, 'index.handler', [{}, {}, {}]);
+  assert.deepStrictEqual(results.map((r) => r.response), [
+    { calls: 1 }, { calls: 2 }, { calls: 3 },
+  ], 'module scope was not reused — each invoke got a fresh module');
+});
+
+test('only the first warm invoke reports initMs', async () => {
+  const dir = projectWith('export const handler = async () => ({ ok: true });\n');
+  const { results } = await warmInvokes(dir, 'index.handler', [{}, {}]);
+  assert.strictEqual(typeof results[0].initMs, 'number', 'the cold invoke should report initMs');
+  assert.strictEqual(results[1].initMs, undefined, 'a warm invoke must not report initMs');
+});
+
+test('each warm invoke gets only its own logs', async () => {
+  const dir = projectWith(
+    'export const handler = async (e) => { console.log("run:" + e.n); return { n: e.n }; };\n');
+  const { logs } = await warmInvokes(dir, 'index.handler', [{ n: 1 }, { n: 2 }]);
+  assert.match(logs[0], /run:1/);
+  assert.doesNotMatch(logs[0], /run:2/);
+  assert.match(logs[1], /run:2/);
+  assert.doesNotMatch(logs[1], /run:1/, "the second invoke's logs still carried the first's output");
+});
+
+test('a handler error does not kill the warm environment', async () => {
+  const dir = projectWith(
+    'export const handler = async (e) => { if (e.boom) throw new Error("nope"); return { ok: true }; };\n');
+  const { results } = await warmInvokes(dir, 'index.handler', [{ boom: true }, {}]);
+  assert.strictEqual(results[0].ok, false);
+  assert.strictEqual(results[0].error.message, 'nope');
+  assert.strictEqual(results[1].ok, true, 'the environment died after a handler error');
+});
+
+test('a warm handler keeps /tmp writes between invokes', async () => {
+  const dir = projectWith(`
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const marker = path.join(os.tmpdir(), 'awsplay-warm-tmp-probe.txt');
+export const handler = async () => {
+  const existed = fs.existsSync(marker);
+  fs.writeFileSync(marker, 'x');
+  return { existed };
+};
+`);
+  const { results } = await warmInvokes(dir, 'index.handler', [{}, {}]);
+  assert.strictEqual(results[0].response.existed, false);
+  assert.strictEqual(results[1].response.existed, true, '/tmp did not persist across invokes');
+});
