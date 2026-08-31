@@ -1,6 +1,6 @@
 const store = require('../persistence/store');
 const history = require('../persistence/history');
-const traceCollector = require('../trace-collector');
+const traceCollector = require('../trace/collector');
 
 function listHistory(functionId) {
   if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };

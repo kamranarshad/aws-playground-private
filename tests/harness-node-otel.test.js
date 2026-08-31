@@ -6,8 +6,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-otel-'));
-const traceReceiver = require('../server/trace-receiver');
-const traceCollector = require('../server/trace-collector');
+const traceReceiver = require('../server/trace/receiver');
+const traceCollector = require('../server/trace/collector');
 
 const HARNESS = path.join(__dirname, '..', 'harnesses', 'node', 'harness.mjs');
 const FIXTURE = path.join(__dirname, '..', 'fixtures', 'typescript/otel-span');

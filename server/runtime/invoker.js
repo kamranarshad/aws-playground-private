@@ -4,9 +4,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { findVenvPython } = require('./detect');
-const { hasOwnTracingSetup } = require('../auto-trace-detect');
-const traceReceiver = require('../trace-receiver');
-const traceCollector = require('../trace-collector');
+const { hasOwnTracingSetup } = require('../trace/auto-trace-detect');
+const traceReceiver = require('../trace/receiver');
+const traceCollector = require('../trace/collector');
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');

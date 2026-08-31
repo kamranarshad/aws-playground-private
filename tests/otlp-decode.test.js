@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { decodeProtobuf, decodeJson } = require('../server/otlp-decode');
+const { decodeProtobuf, decodeJson } = require('../server/trace/otlp-decode');
 
 // --- minimal protobuf encoder, test-only, mirrors the field numbers the
 // production decoder in server/otlp-decode.js reads ---

@@ -8,7 +8,7 @@
 // API emulation.
 const http = require('http');
 const { decodeProtobuf, decodeJson } = require('./otlp-decode');
-const traceCollector = require('./trace-collector');
+const traceCollector = require('./collector');
 
 const FAAS_INVOCATION_ID = 'faas.invocation_id';
 

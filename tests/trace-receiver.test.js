@@ -5,8 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-tr-'));
-const traceReceiver = require('../server/trace-receiver');
-const traceCollector = require('../server/trace-collector');
+const traceReceiver = require('../server/trace/receiver');
+const traceCollector = require('../server/trace/collector');
 
 const { trace } = require('@opentelemetry/api');
 const { resourceFromAttributes, detectResources, envDetector } = require('@opentelemetry/resources');

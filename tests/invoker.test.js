@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { invoke } = require('../server/runtime/invoker');
-const { hasOwnTracingSetup } = require('../server/auto-trace-detect');
+const { hasOwnTracingSetup } = require('../server/trace/auto-trace-detect');
 const { hasRuntime } = require('./helpers');
 
 const FIXTURES = path.join(__dirname, '..', 'fixtures');
