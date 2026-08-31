@@ -3,10 +3,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const { writeFileAtomic } = require('./atomic-write');
-
-const ALLOWED_KEYS = ['name', 'path', 'runtime', 'handler', 'timeoutMs',
-  'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'localServices',
-  'savedEvents', 'trigger', 'autoTrace'];
+const { ALLOWED_KEYS, DEFAULTS } = require('./schema');
 
 function dataDir() {
   return process.env.AWS_PLAYGROUND_DATA_DIR || path.join(os.homedir(), '.aws-playground');
@@ -51,23 +48,8 @@ function get(id) {
 
 function create(input) {
   const db = load();
-  const fn = {
-    id: crypto.randomUUID(),
-    name: input.name,
-    path: input.path,
-    runtime: input.runtime,
-    handler: input.handler ?? '',
-    timeoutMs: input.timeoutMs ?? 30000,
-    memoryMb: input.memoryMb ?? 128,
-    jarPath: input.jarPath ?? null,
-    env: input.env ?? {},
-    envFile: input.envFile ?? 'auto',
-    buildCommand: input.buildCommand ?? '',
-    localServices: input.localServices ?? [],
-    savedEvents: input.savedEvents ?? [],
-    trigger: input.trigger ?? null,
-    autoTrace: input.autoTrace ?? false,
-  };
+  const fn = { id: crypto.randomUUID(), ...DEFAULTS };
+  for (const k of ALLOWED_KEYS) if (input[k] !== undefined) fn[k] = input[k];
   db.functions.push(fn);
   save(db);
   return fn;
