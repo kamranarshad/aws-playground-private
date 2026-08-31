@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/select'
 import { buildCurlCommand } from '@/lib/http'
 import { EVENT_TEMPLATES } from '@/lib/templates'
-import { useDetect, useUpdateFunction } from '@/lib/queries'
+import { useDetect, useUpdateFunction, useHealth } from '@/lib/queries'
 import { useCopy } from '@/lib/use-copy'
 import { useTheme } from '@/lib/theme'
 import type { FunctionDef } from '@/lib/types'
@@ -53,10 +53,13 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
   // Same "is this trigger actually reachable" check FunctionHeader uses for
   // its status badge — a playground.json trigger is always on, a manual one
   // only when its own enabled flag is set. Only then does
-  // http://localhost:9500/<name> exist for a curl command to hit.
+  // the HTTP trigger URL exist for a curl command to hit.
   const { data: projectTrigger } = useDetect(fn.path, (d) => d.projectTrigger ?? null)
-  const httpTriggerActive = projectTrigger?.type === 'http'
-    || (fn.trigger?.type === 'http' && fn.trigger.enabled)
+  const { data: health } = useHealth()
+  const httpPort = health?.ports?.httpTrigger
+  const httpTriggerActive = (projectTrigger?.type === 'http'
+    || (fn.trigger?.type === 'http' && fn.trigger.enabled))
+    && httpPort !== undefined
   const { copied: curlCopied, copy: copyCurl } = useCopy()
 
   // Dragging the handle up should grow the script panel below it, so a
@@ -165,7 +168,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, invokin
         </Button>
         {httpTriggerActive && (
           <Button variant="ghost" size="sm"
-            onClick={() => copyCurl(buildCurlCommand(fn, eventText))}>
+            onClick={() => copyCurl(buildCurlCommand(fn, eventText, httpPort!))}>
             <CopyIcon copied={curlCopied} className="size-3.5" /> Copy as curl
           </Button>
         )}

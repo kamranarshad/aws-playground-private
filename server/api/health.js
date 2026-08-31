@@ -1,4 +1,5 @@
 const { execFile } = require('child_process');
+const { PORTS } = require('../ports');
 
 function checkRuntime(cmd, args) {
   return new Promise((resolve) => {
@@ -16,7 +17,7 @@ async function health() {
     checkRuntime('java', ['-version']),
     checkRuntime('sh', ['-c', 'echo ok']),
   ]);
-  return { status: 200, body: { runtimes: { python, node, java, provided } } };
+  return { status: 200, body: { runtimes: { python, node, java, provided }, ports: PORTS } };
 }
 
 module.exports = { health };

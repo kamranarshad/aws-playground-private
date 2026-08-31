@@ -1,5 +1,3 @@
-export const HTTP_TRIGGER_PORT = 9500 // must match server/trigger/http.js's PORT
-
 const SKIPPED_HEADERS = new Set(['host', 'content-length', 'connection'])
 
 function shQuote(value: string): string {
@@ -12,7 +10,9 @@ function shQuote(value: string): string {
 // whatever fields are present. Unparseable JSON or a payload missing every
 // field still yields a working GET against the function's root rather than
 // an error — the point is a repro to hand off, not a strict validator.
-export function buildCurlCommand(fn: { name: string }, eventText: string): string {
+export function buildCurlCommand(
+  fn: { name: string }, eventText: string, httpTriggerPort: number,
+): string {
   let event: Record<string, unknown> = {}
   try {
     const parsed: unknown = JSON.parse(eventText)
@@ -47,7 +47,7 @@ export function buildCurlCommand(fn: { name: string }, eventText: string): strin
   // JSON already percent-encoded (real API Gateway's rawPath is encoded,
   // and the HTTP trigger listener decodes only the name segment when
   // routing) — so only the name needs encoding here, not rawPath.
-  const url = `http://localhost:${HTTP_TRIGGER_PORT}/${encodeURIComponent(fn.name)}`
+  const url = `http://localhost:${httpTriggerPort}/${encodeURIComponent(fn.name)}`
     + `${rawPath.startsWith('/') ? rawPath : `/${rawPath}`}${query ? `?${query}` : ''}`
 
   const headers: [string, string][] = event.headers && typeof event.headers === 'object'

@@ -781,3 +781,9 @@ test('detect reports projectServices', () => {
   const plain = api.detect({ path: path.join(FIXTURES, 'javascript/hello') });
   assert.strictEqual(plain.body.projectServices, null);
 });
+
+test('health reports the ports the web app needs', async () => {
+  const { PORTS } = require('../server/ports');
+  const { body } = await api.health();
+  assert.deepStrictEqual(body.ports, PORTS);
+});

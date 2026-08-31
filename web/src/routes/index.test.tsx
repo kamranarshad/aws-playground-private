@@ -45,7 +45,7 @@ vi.mock('@/lib/api', () => {
   ]
   return {
     api: {
-      health: vi.fn(async () => ({ runtimes: {} })),
+      health: vi.fn(async () => ({ runtimes: {}, ports: TEST_PORTS })),
       listFunctions: vi.fn(async () => ({ functions: [...functions] })),
       setSelection: vi.fn(async () => ({})),
       listServices: vi.fn(async () => ({ services: [], docker: { available: false } })),
@@ -75,6 +75,11 @@ vi.mock('@/lib/api', () => {
 })
 
 import { renderApp } from '@/test/route-harness'
+
+const TEST_PORTS = {
+  httpTrigger: 9500, s3Webhook: 9501, minio: 9400, minioConsole: 9401,
+  dynamodb: 9402, redis: 9403, postgres: 9404,
+}
 
 it('selects the function named in the URL on load', async () => {
   await renderApp('/?function=s3-handler')

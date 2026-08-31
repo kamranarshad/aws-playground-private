@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', () => ({
-  api: { updateFunction: vi.fn(), listFunctions: vi.fn(), detect: vi.fn() },
+  api: { updateFunction: vi.fn(), listFunctions: vi.fn(), detect: vi.fn(), health: vi.fn() },
 }))
 
 import { TriggerButton } from '@/components/trigger-button'
@@ -26,8 +26,16 @@ beforeEach(() => {
 
 afterEach(() => vi.clearAllMocks())
 
+const TEST_PORTS = {
+  httpTrigger: 9500, s3Webhook: 9501, minio: 9400, minioConsole: 9401,
+  dynamodb: 9402, redis: 9403, postgres: 9404,
+}
+
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // The URL row reads the HTTP trigger port from the health query rather than
+  // a constant, so it has to be cached before the first render.
+  qc.setQueryData(['health'], { runtimes: {}, ports: TEST_PORTS })
   return ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )

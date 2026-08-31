@@ -74,8 +74,19 @@ export interface RuntimeHealth {
   version: string | null
 }
 
+export interface Ports {
+  httpTrigger: number
+  s3Webhook: number
+  minio: number
+  minioConsole: number
+  dynamodb: number
+  redis: number
+  postgres: number
+}
+
 export interface Health {
   runtimes: Record<Runtime, RuntimeHealth>
+  ports: Ports
 }
 
 export interface Detection {

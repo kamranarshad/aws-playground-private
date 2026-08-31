@@ -10,8 +10,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
-import { HTTP_TRIGGER_PORT } from '@/lib/http'
-import { useDetect, useUpdateFunction } from '@/lib/queries'
+import { useDetect, useUpdateFunction, useHealth } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
 type TriggerType = 'none' | 'sqs' | 'http' | 'dynamodb' | 's3'
@@ -51,6 +50,10 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
   const [triggerPrefix, setTriggerPrefix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.prefix ?? '') : '')
   const [triggerSuffix, setTriggerSuffix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.suffix ?? '') : '')
   const update = useUpdateFunction()
+  // The listener's port is the server's to decide, so it rides along on the
+  // health poll rather than being duplicated as a constant over here.
+  const { data: health } = useHealth()
+  const httpPort = health?.ports?.httpTrigger
 
   function toggleEvent(event: 'ObjectCreated' | 'ObjectRemoved') {
     setTriggerEvents((prev) => (prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]))
@@ -154,10 +157,10 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
               <>
                 <Label htmlFor="t-trigger-url">HTTP trigger URL</Label>
                 <Input id="t-trigger-url" readOnly
-                  value={`http://localhost:${HTTP_TRIGGER_PORT}/${fn.name}/...`}
+                  value={httpPort === undefined ? '' : `http://localhost:${httpPort}/${fn.name}/...`}
                   spellCheck={false} onFocus={(e) => e.target.select()} />
                 <p className="text-xs text-muted-foreground">
-                  Shares one listener on port {HTTP_TRIGGER_PORT} across every function with an
+                  Shares one listener on port {httpPort ?? '\u2026'} across every function with an
                   HTTP trigger enabled, routed by name — names must be unique. Use the power
                   button next to Trigger to turn it on.
                 </p>
