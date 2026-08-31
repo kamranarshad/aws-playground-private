@@ -2,6 +2,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
+const { writeFileAtomic } = require('./atomic-write');
 
 const ALLOWED_KEYS = ['name', 'path', 'runtime', 'handler', 'timeoutMs',
   'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'localServices',
@@ -37,8 +38,7 @@ function load() {
 }
 
 function save(db) {
-  fs.mkdirSync(dataDir(), { recursive: true });
-  fs.writeFileSync(dataFile(), JSON.stringify(db, null, 2));
+  writeFileAtomic(dataFile(), JSON.stringify(db, null, 2));
 }
 
 function list() {

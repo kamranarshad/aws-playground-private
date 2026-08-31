@@ -75,3 +75,41 @@ test('trigger field defaults to null and round-trips through create/update', () 
   const updated = store.update(withTrigger.id, { trigger: { type: 'sqs', queueName: 'q2', enabled: false } });
   assert.deepStrictEqual(updated.trigger, { type: 'sqs', queueName: 'q2', enabled: false });
 });
+
+const { writeFileAtomic } = require('../server/atomic-write');
+
+test('writeFileAtomic replaces the target in one step', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-atomic-'));
+  const target = path.join(dir, 'data.json');
+  writeFileAtomic(target, '{"v":1}');
+  writeFileAtomic(target, '{"v":2}');
+  assert.strictEqual(fs.readFileSync(target, 'utf8'), '{"v":2}');
+  assert.deepStrictEqual(fs.readdirSync(dir), ['data.json'],
+    'a .tmp file was left behind after a successful write');
+});
+
+test('writeFileAtomic cleans up its temp file when the rename cannot complete', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-atomic2-'));
+  const target = path.join(dir, 'data.json');
+  // A directory at the target makes rename(2) fail *after* the temp file has
+  // been written -- the exact window that used to truncate the real file.
+  fs.mkdirSync(target);
+
+  assert.throws(() => writeFileAtomic(target, '{"v":1}'));
+
+  assert.deepStrictEqual(fs.readdirSync(dir), ['data.json'],
+    'the temp file survived a failed rename');
+  assert.ok(fs.statSync(target).isDirectory(), 'the target was clobbered');
+});
+
+test('a leftover temp file from a crash does not confuse the registry', () => {
+  process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-atomic3-'));
+  const fn = store.create({ name: 'keeper', path: '/tmp/keeper', runtime: 'node' });
+  const file = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'functions.json');
+  const before = fs.readFileSync(file, 'utf8');
+
+  fs.writeFileSync(file + '.tmp', '{"functions":[{"id":"hal');
+
+  assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
+  assert.strictEqual(store.get(fn.id).name, 'keeper');
+});
