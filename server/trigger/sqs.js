@@ -65,7 +65,7 @@ async function deleteMessage(client, queueUrl, receiptHandle) {
   await client.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }));
 }
 
-function start(fn, { onStatus }) {
+function start(fn, { onStatus, invokeFunction }) {
   return poller.start(fn, {
     onStatus,
     setup: async () => {
@@ -78,7 +78,7 @@ function start(fn, { onStatus }) {
     },
     buildEvent: (message) => buildSqsEvent(message, fn.trigger.queueName),
     buildSource: (message) => ({ type: 'trigger', messageId: message.MessageId }),
-    invokeFunction: require('../api/invoke').invokeFunction,
+    invokeFunction,
   });
 }
 
@@ -103,7 +103,7 @@ function stop(functionId) {
   running.delete(functionId);
 }
 
-async function startFor(fn, { store, localServices }) {
+async function startFor(fn, { store, localServices, invokeFunction }) {
   const st = { state: 'polling', lastError: null, lastPolledAt: null };
   const record = {
     queueName: fn.trigger.queueName,
@@ -126,7 +126,7 @@ async function startFor(fn, { store, localServices }) {
       Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
       return;
     }
-    const handle = module.exports.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    const handle = module.exports.start(fn, { onStatus: (patch) => Object.assign(st, patch), invokeFunction });
     if (record.cancelled) {
       handle.stop();
       return;
@@ -154,7 +154,7 @@ async function sync(fn, trigger, deps = {}) {
   // off the object it's given — pass the resolved effective trigger through
   // fn so a playground.json-only sqs trigger (where fn.trigger itself may be
   // null or different) still reaches the right queue.
-  await startFor({ ...fn, trigger }, { store, localServices });
+  await startFor({ ...fn, trigger }, { store, localServices, invokeFunction: deps.invokeFunction });
 }
 
 module.exports = {

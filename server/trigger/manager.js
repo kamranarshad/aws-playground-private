@@ -15,17 +15,17 @@ function stop(functionId) {
   for (const d of DRIVERS) d.stop(functionId);
 }
 
-async function sync(fn) {
+async function sync(fn, deps = {}) {
   const trigger = effectiveTrigger(fn);
   // Clean up any stale registration under the *other* trigger type(s) first —
   // covers switching sqs <-> http <-> dynamodb <-> s3 on the same function.
   for (const d of DRIVERS) if (d.type !== trigger?.type) d.stop(fn.id);
   const driver = DRIVERS.find((d) => d.type === trigger?.type);
-  if (driver) await driver.sync(fn, trigger);
+  if (driver) await driver.sync(fn, trigger, deps);
 }
 
-async function resumeAll() {
-  for (const fn of store.list()) await sync(fn);
+async function resumeAll(deps = {}) {
+  for (const fn of store.list()) await sync(fn, deps);
 }
 
 function stopAll() {

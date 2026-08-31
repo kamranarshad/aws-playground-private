@@ -6,6 +6,7 @@ const { startWebServer } = require('../server/serve-web');
 const localServices = require('../server/services');
 const triggerManager = require('../server/trigger/manager');
 const s3Trigger = require('../server/trigger/s3');
+const { invokeFunction } = require('../server/api/invoke');
 const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
 
 const args = process.argv.slice(2);
@@ -92,12 +93,12 @@ const HOST = '127.0.0.1';
   : startOnFirstAvailablePort(port, HOST))
   .then((server) => {
     installShutdownSweep(server);
-    triggerManager.resumeAll().catch((err) => {
+    triggerManager.resumeAll({ invokeFunction }).catch((err) => {
       console.warn(`aws-playground: could not resume triggers: ${err.message}`);
     });
     s3Trigger.createListener({
       routesFor: triggerManager.s3RoutesFor,
-      invokeFunction: require('../server/api/invoke').invokeFunction,
+      invokeFunction,
     }).catch((err) => {
       console.warn(`aws-playground: could not start the S3 trigger listener: ${err.message}`);
       // Also report it into the trigger manager: without this, every function

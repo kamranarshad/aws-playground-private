@@ -4,6 +4,7 @@ const { detectProject } = require('../detect');
 const history = require('../history');
 const inFlight = require('./in-flight');
 const manager = require('../trigger/manager');
+const { invokeFunction } = require('./invoke');
 
 const RUNTIMES = ['python', 'node', 'java', 'provided'];
 
@@ -105,7 +106,7 @@ function createFunction(input) {
   const err = fieldError(input);
   if (err) return { status: 400, body: { error: err } };
   const fn = store.create(input);
-  manager.sync(fn);
+  manager.sync(fn, { invokeFunction });
   return { status: 201, body: fn };
 }
 
@@ -115,7 +116,7 @@ function updateFunction(id, patch) {
   if (err) return { status: 400, body: { error: err } };
   const fn = store.update(id, p);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
-  manager.sync(fn);
+  manager.sync(fn, { invokeFunction });
   return { status: 200, body: fn };
 }
 

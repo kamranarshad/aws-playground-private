@@ -323,3 +323,36 @@ test('sync resolves an s3 trigger declared only in playground.json (fn.trigger s
     s3Trigger.ensureBucketConfig = originalEnsureBucketConfig;
   }
 });
+
+// The api/functions -> trigger/manager -> api/invoke cycle used to be dodged
+// by lazily requiring ../api/invoke inside driver function bodies. It is now
+// injected from the composition root instead, so what this pins is that the
+// dependency actually travels manager.sync -> driver.sync -> driver.start
+// rather than being silently re-required somewhere along the way.
+test('manager.sync threads an injected invokeFunction down to the driver', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const originalSqsStart = sqs.start;
+  try {
+    const injected = async () => ({ status: 200, body: { ok: true } });
+    let received;
+    sqs.start = (fn, { onStatus, invokeFunction }) => {
+      received = invokeFunction;
+      onStatus({ state: 'polling', lastError: null });
+      return { stop: () => {} };
+    };
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-trig-mgr-di-'));
+    const fn = store.create({
+      name: 'di-sqs', path: dir, runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'di-queue', enabled: true },
+    });
+
+    await manager.sync(fn, { invokeFunction: injected });
+
+    assert.strictEqual(received, injected);
+    manager.stop(fn.id);
+  } finally {
+    sqs.start = originalSqsStart;
+    localServices.start = originalLocalServicesStart;
+  }
+});

@@ -187,14 +187,14 @@ function stop(functionId) {
   stopHttpListenerIfIdle();
 }
 
-async function ensureHttpListenerRunning() {
+async function ensureHttpListenerRunning(invokeFunction) {
   if (httpListener) return;
   if (httpListenerStarting) return httpListenerStarting;
   httpListenerStarting = (async () => {
     try {
       httpListener = await module.exports.createListener({
         resolveFunctionId: (name) => httpRoutes.get(name) ?? null,
-        invokeFunction: require('../api/invoke').invokeFunction,
+        invokeFunction,
         onError: (err) => { httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null }; },
       });
       if (httpRoutes.size === 0) {
@@ -219,7 +219,7 @@ async function ensureHttpListenerRunning() {
 
 // Idempotent: safe to call as often as the caller likes for an already
 // fully-registered, unchanged route.
-async function sync(fn, trigger) {
+async function sync(fn, trigger, deps = {}) {
   // A '/' in the name can never be routed (the listener splits on the first
   // path segment) — the API refuses to let a *manual* trigger be enabled
   // against such a name, but a playground.json trigger bypasses that check
@@ -229,7 +229,7 @@ async function sync(fn, trigger) {
   if (current !== undefined && current !== fn.name) httpRoutes.delete(current);
   httpRoutes.set(fn.name, fn.id);
   httpTriggered.set(fn.id, fn.name);
-  await ensureHttpListenerRunning();
+  await ensureHttpListenerRunning(deps.invokeFunction);
 }
 
 module.exports = {

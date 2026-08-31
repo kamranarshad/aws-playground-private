@@ -109,7 +109,7 @@ function makeReceiver(streams, streamArn) {
   };
 }
 
-function start(fn, { onStatus }) {
+function start(fn, { onStatus, invokeFunction }) {
   return poller.start(fn, {
     onStatus,
     setup: async () => {
@@ -120,7 +120,7 @@ function start(fn, { onStatus }) {
     buildEvent: (batch) => buildDynamoDbEvent(batch.records, batch.streamArn),
     buildSource: (batch) => ({ type: 'trigger', recordCount: batch.records.length }),
     sleepOnEmpty: true,
-    invokeFunction: require('../api/invoke').invokeFunction,
+    invokeFunction,
   });
 }
 
@@ -145,7 +145,7 @@ function stop(functionId) {
   running.delete(functionId);
 }
 
-async function startFor(fn, { store, localServices }) {
+async function startFor(fn, { store, localServices, invokeFunction }) {
   const st = { state: 'polling', lastError: null, lastPolledAt: null };
   const record = {
     tableName: fn.trigger.tableName,
@@ -165,7 +165,7 @@ async function startFor(fn, { store, localServices }) {
       Object.assign(st, { state: 'error', lastError: started.output || 'DynamoDB Local failed to start' });
       return;
     }
-    const handle = module.exports.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    const handle = module.exports.start(fn, { onStatus: (patch) => Object.assign(st, patch), invokeFunction });
     if (record.cancelled) {
       handle.stop();
       return;
@@ -190,7 +190,7 @@ async function sync(fn, trigger, deps = {}) {
   // Same reasoning as sqs.js's sync: pass the resolved effective trigger
   // through fn so startFor reads the right table name whether it came from
   // playground.json or the manually-stored trigger.
-  await startFor({ ...fn, trigger }, { store, localServices });
+  await startFor({ ...fn, trigger }, { store, localServices, invokeFunction: deps.invokeFunction });
 }
 
 module.exports = {
