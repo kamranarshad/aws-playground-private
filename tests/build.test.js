@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { runBuild } = require('../server/build');
+const { runBuild } = require('../server/runtime/build');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-build-'));

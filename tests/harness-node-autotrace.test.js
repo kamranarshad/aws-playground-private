@@ -6,7 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-autotrace-e2e-'));
-const { invoke } = require('../server/invoker');
+const { invoke } = require('../server/runtime/invoker');
 
 const FIXTURE = path.join(__dirname, '..', 'fixtures', 'javascript', 'auto-trace-http');
 

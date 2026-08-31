@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { detectProject, findVenvPython, findJar } = require('../server/detect');
+const { detectProject, findVenvPython, findJar } = require('../server/runtime/detect');
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-detect-'));

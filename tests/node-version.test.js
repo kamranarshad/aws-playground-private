@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { MIN_NODE, nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
+const { MIN_NODE, nodeVersionOk, nodeVersionMessage } = require('../server/runtime/node-version');
 
 test('the floor matches what package.json declares', () => {
   const pkg = require('../package.json');

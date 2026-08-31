@@ -222,7 +222,7 @@ test('malformed handler string -> phase:init Runtime.MalformedHandlerName', asyn
 });
 
 // Test through invoker to verify initMs is threaded through correctly
-const { invoke } = require('../server/invoker');
+const { invoke } = require('../server/runtime/invoker');
 
 function baseInvoker(fixture, extra = {}) {
   return {

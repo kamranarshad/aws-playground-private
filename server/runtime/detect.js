@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const envfile = require('./envfile');
-const projectconfig = require('./persistence/projectconfig');
+const projectconfig = require('../persistence/projectconfig');
 
 function findVenvPython(dir) {
   for (const v of ['venv', '.venv', 'env']) {

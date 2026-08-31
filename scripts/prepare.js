@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
+const { nodeVersionOk, nodeVersionMessage } = require('../server/runtime/node-version');
 
 function planPrepare({ root, env }) {
   if (env.AWS_PLAYGROUND_SKIP_WEB_BUILD) {

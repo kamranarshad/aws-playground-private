@@ -1,6 +1,6 @@
 const store = require('../persistence/store');
 const schema = require('../schema');
-const { detectProject } = require('../detect');
+const { detectProject } = require('../runtime/detect');
 const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const manager = require('../trigger/manager');

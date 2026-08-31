@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { startWebServer } = require('../server/serve-web');
 const bootstrap = require('../server/bootstrap');
-const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
+const { nodeVersionOk, nodeVersionMessage } = require('../server/runtime/node-version');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(name);

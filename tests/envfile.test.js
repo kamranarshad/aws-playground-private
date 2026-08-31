@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const envfile = require('../server/envfile');
+const envfile = require('../server/runtime/envfile');
 
 function tmpProject(files) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-envfile-'));

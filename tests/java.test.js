@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { invoke } = require('../server/invoker');
+const { invoke } = require('../server/runtime/invoker');
 const { hasRuntime } = require('./helpers');
 
 const FIXTURE = path.join(__dirname, '..', 'fixtures', 'java/hello');
