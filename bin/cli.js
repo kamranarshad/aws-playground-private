@@ -3,10 +3,7 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { startWebServer } = require('../server/serve-web');
-const localServices = require('../server/services');
-const triggerManager = require('../server/trigger/manager');
-const s3Trigger = require('../server/trigger/s3');
-const { invokeFunction } = require('../server/api/invoke');
+const bootstrap = require('../server/bootstrap');
 const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
 
 const args = process.argv.slice(2);
@@ -72,14 +69,9 @@ function installShutdownSweep(server) {
     if (shuttingDown) return;
     shuttingDown = true;
     server.close();
-    triggerManager.stopAll();
-    try {
-      const stopped = await localServices.stopAutoStarted();
-      if (stopped.length) {
-        console.log(`aws-playground: stopped auto-started ${stopped.join(', ')}`);
-      }
-    } catch (err) {
-      console.warn(`aws-playground: could not stop auto-started services: ${err.message}`);
+    const stopped = await bootstrap.stop();
+    if (stopped.length) {
+      console.log(`aws-playground: stopped auto-started ${stopped.join(', ')}`);
     }
     process.exit(0);
   };
@@ -93,19 +85,7 @@ const HOST = '127.0.0.1';
   : startOnFirstAvailablePort(port, HOST))
   .then((server) => {
     installShutdownSweep(server);
-    triggerManager.resumeAll({ invokeFunction }).catch((err) => {
-      console.warn(`aws-playground: could not resume triggers: ${err.message}`);
-    });
-    s3Trigger.createListener({
-      routesFor: triggerManager.s3RoutesFor,
-      invokeFunction,
-    }).catch((err) => {
-      console.warn(`aws-playground: could not start the S3 trigger listener: ${err.message}`);
-      // Also report it into the trigger manager: without this, every function
-      // with an S3 trigger keeps showing 'listening' in the UI even though no
-      // event can ever reach it.
-      triggerManager.setS3ListenerError(err);
-    });
+    bootstrap.start();
     const url = `http://localhost:${server.address().port}`;
     console.log(`aws-playground listening at ${url}`);
     if (!flag('--no-open')) {

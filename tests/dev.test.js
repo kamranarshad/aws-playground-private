@@ -46,6 +46,13 @@ test('vite dev server serves the app shell and the API',
       const body = await health.json();
       assert.ok(body.runtimes.node.available);
 
+      // Trigger resumption and the S3 listener used to live only in
+      // bin/cli.js, so the dev server served a UI whose triggers never
+      // fired. This is the parity check.
+      const triggers = await fetch(`http://localhost:${port}/api/triggers`);
+      assert.strictEqual(triggers.status, 200,
+        `expected 200 from /api/triggers, got ${triggers.status}`);
+
       const home = await fetch(`http://localhost:${port}/`);
       assert.strictEqual(home.status, 200,
         `expected 200 from /, got ${home.status}`);

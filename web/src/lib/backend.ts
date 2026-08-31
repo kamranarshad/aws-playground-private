@@ -42,6 +42,13 @@ function newestServerMtime(): number {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cached: any = loadBackend()
+
+// The CLI calls bootstrap.start() itself. Under `vite dev` there is no CLI,
+// so without this the dev server serves a UI whose triggers never fire and
+// whose S3 webhook listener is never bound.
+if (import.meta.env.DEV) {
+  cached.startBootstrap?.()
+}
 let cachedAt = import.meta.env.DEV ? newestServerMtime() : 0
 
 // Vite dev hot-reloads web/src but never these CJS modules, so a long-lived
