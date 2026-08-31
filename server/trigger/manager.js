@@ -98,7 +98,7 @@ function statusAll() {
   return out;
 }
 
-async function startFor(fn) {
+async function startFor(fn, invokeFunction) {
   const st = { state: 'polling', lastError: null, lastPolledAt: null };
   const record = {
     queueName: fn.trigger.queueName,
@@ -121,7 +121,7 @@ async function startFor(fn) {
       Object.assign(st, { state: 'error', lastError: started.output || 'ElasticMQ failed to start' });
       return;
     }
-    const handle = sqs.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    const handle = sqs.start(fn, { onStatus: (patch) => Object.assign(st, patch), invokeFunction });
     if (record.cancelled) {
       handle.stop();
       return;
@@ -139,7 +139,7 @@ function stopSqs(functionId) {
   running.delete(functionId);
 }
 
-async function startForDynamo(fn) {
+async function startForDynamo(fn, invokeFunction) {
   const st = { state: 'polling', lastError: null, lastPolledAt: null };
   const record = {
     tableName: fn.trigger.tableName,
@@ -159,7 +159,7 @@ async function startForDynamo(fn) {
       Object.assign(st, { state: 'error', lastError: started.output || 'DynamoDB Local failed to start' });
       return;
     }
-    const handle = dynamodbTrigger.start(fn, { onStatus: (patch) => Object.assign(st, patch) });
+    const handle = dynamodbTrigger.start(fn, { onStatus: (patch) => Object.assign(st, patch), invokeFunction });
     if (record.cancelled) {
       handle.stop();
       return;
@@ -271,14 +271,14 @@ function stop(functionId) {
   stopS3(functionId);
 }
 
-async function ensureHttpListenerRunning() {
+async function ensureHttpListenerRunning(invokeFunction) {
   if (httpListener) return;
   if (httpListenerStarting) return httpListenerStarting;
   httpListenerStarting = (async () => {
     try {
       httpListener = await httpTrigger.createListener({
         resolveFunctionId: (name) => httpRoutes.get(name) ?? null,
-        invokeFunction: require('../api/invoke').invokeFunction,
+        invokeFunction,
         onError: (err) => { httpStatus = { state: 'error', lastError: err.message, lastPolledAt: null }; },
       });
       if (httpRoutes.size === 0) {
@@ -301,15 +301,15 @@ async function ensureHttpListenerRunning() {
   return httpListenerStarting;
 }
 
-async function syncHttp(fn) {
+async function syncHttp(fn, invokeFunction) {
   const current = httpTriggered.get(fn.id);
   if (current !== undefined && current !== fn.name) httpRoutes.delete(current);
   httpRoutes.set(fn.name, fn.id);
   httpTriggered.set(fn.id, fn.name);
-  await ensureHttpListenerRunning();
+  await ensureHttpListenerRunning(invokeFunction);
 }
 
-async function sync(fn) {
+async function sync(fn, { invokeFunction } = {}) {
   const trigger = effectiveTrigger(fn);
   // Clean up any stale registration under the *other* trigger type(s) first —
   // covers switching sqs <-> http <-> dynamodb <-> s3 on the same function.
@@ -331,7 +331,7 @@ async function sync(fn) {
     // off the object it's given — pass the resolved effective trigger
     // through fn so a playground.json-only sqs trigger (where fn.trigger
     // itself may be null or different) still reaches the right queue.
-    await startFor({ ...fn, trigger });
+    await startFor({ ...fn, trigger }, invokeFunction);
     return;
   }
 
@@ -347,7 +347,7 @@ async function sync(fn) {
     // Same reasoning as the sqs branch above: pass the resolved effective
     // trigger through fn so startForDynamo reads the right table name
     // whether it came from playground.json or the manually-stored trigger.
-    await startForDynamo({ ...fn, trigger });
+    await startForDynamo({ ...fn, trigger }, invokeFunction);
     return;
   }
 
@@ -358,7 +358,7 @@ async function sync(fn) {
     // that check entirely. Treat it as inert rather than corrupt the
     // shared route table.
     if (!trigger.enabled || fn.name.includes('/')) { stopHttp(fn.id); return; }
-    await syncHttp(fn);
+    await syncHttp(fn, invokeFunction);
   }
 
   if (trigger?.type === 's3') {
@@ -367,8 +367,8 @@ async function sync(fn) {
   }
 }
 
-async function resumeAll() {
-  for (const fn of store.list()) await sync(fn);
+async function resumeAll(invokeFunction) {
+  for (const fn of store.list()) await sync(fn, { invokeFunction });
 }
 
 function stopAll() {

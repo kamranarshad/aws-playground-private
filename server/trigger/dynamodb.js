@@ -141,7 +141,7 @@ function makeReceiver(streams, streamArn) {
   };
 }
 
-function start(fn, { onStatus }) {
+function start(fn, { onStatus, invokeFunction }) {
   const controller = new AbortController();
   (async () => {
     try {
@@ -153,7 +153,7 @@ function start(fn, { onStatus }) {
         signal: controller.signal,
         onStatus,
         receive,
-        invokeFunction: require('../api/invoke').invokeFunction,
+        invokeFunction,
       });
     } catch (err) {
       if (!controller.signal.aborted) onStatus({ state: 'error', lastError: err.message });

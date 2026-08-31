@@ -112,7 +112,7 @@ async function deleteMessage(client, queueUrl, receiptHandle) {
   await client.send(new DeleteMessageCommand({ QueueUrl: queueUrl, ReceiptHandle: receiptHandle }));
 }
 
-function start(fn, { onStatus }) {
+function start(fn, { onStatus, invokeFunction }) {
   const controller = new AbortController();
   (async () => {
     try {
@@ -124,7 +124,7 @@ function start(fn, { onStatus }) {
         onStatus,
         receive: (opts) => receiveMessage(client, queueUrl, opts),
         remove: (receiptHandle) => deleteMessage(client, queueUrl, receiptHandle),
-        invokeFunction: require('../api/invoke').invokeFunction,
+        invokeFunction,
       });
     } catch (err) {
       if (!controller.signal.aborted) onStatus({ state: 'error', lastError: err.message });

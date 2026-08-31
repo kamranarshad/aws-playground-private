@@ -55,6 +55,26 @@ test('sync starts elasticmq and the poll loop when a trigger is enabled', async 
   }
 });
 
+test('sync passes the injected invokeFunction stub straight through to sqs.start', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  try {
+    const invokeFunction = async () => ({ status: 200 });
+    let received;
+    sqs.start = (fn, opts) => { received = opts.invokeFunction; return { stop: () => {} }; };
+    const fn = store.create({ name: 'f1-di', path: '/tmp/f1-di', runtime: 'node',
+      trigger: { type: 'sqs', queueName: 'q1-di', enabled: true } });
+
+    await manager.sync(fn, { invokeFunction });
+
+    assert.strictEqual(received, invokeFunction);
+    manager.stop(fn.id);
+    store.remove(fn.id);
+  } finally {
+    localServices.start = originalLocalServicesStart;
+  }
+});
+
 test('sync is a no-op when the trigger is already running with the same queue', async () => {
   elasticmqAlreadyRunning();
   // Monkeypatch localServices.start for fast hermetic test (no real TCP wait)
@@ -223,6 +243,22 @@ test('sync starts dynamodb-local and the poll loop when a trigger is enabled', a
   store.remove(fn.id);
 });
 
+test('sync passes the injected invokeFunction stub straight through to dynamodb.start', async () => {
+  elasticmqAlreadyRunning();
+  localServices.start = async () => ({ ok: true, state: 'running', output: '' });
+  const invokeFunction = async () => ({ status: 200 });
+  let received;
+  dynamodbTrigger.start = (fn, opts) => { received = opts.invokeFunction; return { stop: () => {} }; };
+  const fn = store.create({ name: 'd1-di', path: '/tmp/d1-di', runtime: 'node',
+    trigger: { type: 'dynamodb', tableName: 'tbl1-di', enabled: true } });
+
+  await manager.sync(fn, { invokeFunction });
+
+  assert.strictEqual(received, invokeFunction);
+  manager.stop(fn.id);
+  store.remove(fn.id);
+});
+
 test('sync is a no-op when the dynamodb trigger is already running against the same table', async () => {
   elasticmqAlreadyRunning();
   localServices.start = async () => ({ ok: true, state: 'running', output: '' });
@@ -384,6 +420,26 @@ test('sync registers an HTTP route and starts the shared listener when a trigger
     manager.stop(fn.id);
     assert.strictEqual(stopped, true);
     assert.deepStrictEqual(manager.status(fn.id), { state: 'idle', lastError: null, lastPolledAt: null });
+  } finally {
+    httpTrigger.createListener = originalCreateListener;
+  }
+});
+
+test('sync passes the injected invokeFunction stub straight through to httpTrigger.createListener', async () => {
+  const invokeFunction = async () => ({ status: 200 });
+  let received;
+  httpTrigger.createListener = async (opts) => {
+    received = opts.invokeFunction;
+    return { stop: () => {}, server: { address: () => ({ port: 9500 }) } };
+  };
+  try {
+    const fn = store.create({ name: 'h1-di', path: '/tmp/h1-di', runtime: 'node',
+      trigger: { type: 'http', enabled: true } });
+
+    await manager.sync(fn, { invokeFunction });
+
+    assert.strictEqual(received, invokeFunction);
+    manager.stop(fn.id);
   } finally {
     httpTrigger.createListener = originalCreateListener;
   }

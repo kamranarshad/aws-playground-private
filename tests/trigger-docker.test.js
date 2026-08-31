@@ -182,7 +182,7 @@ test('resumeAll resumes a previously enabled trigger after a simulated restart',
 
   manager.stopAll(); // simulate shutdown
 
-  await manager.resumeAll(); // simulate a fresh process reading functions.json
+  await manager.resumeAll(api.invokeFunction); // simulate a fresh process reading functions.json
   await client.send(new SendMessageCommand({ QueueUrl, MessageBody: 'after-restart' }));
 
   const entry = await waitForTriggerEntry(fn.id);
