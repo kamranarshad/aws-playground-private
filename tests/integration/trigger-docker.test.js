@@ -291,6 +291,41 @@ test('enabling a dynamodb trigger invokes the function on a real stream record a
   manager.stop(fn.id);
 });
 
+// Recreating a table is ordinary during development, and it replaces the
+// table's stream. The poller resolved the stream ARN once when it started and
+// never again, so it stayed pinned to the dead stream forever -- reporting an
+// error nobody was watching and delivering nothing until the playground was
+// restarted.
+test('a dynamodb trigger recovers when the table is recreated underneath it',
+  { skip: readyDynamo ? false : 'docker daemon, dynamodb-local image, or python3 not available' }, async () => {
+  const created = api.createFunction({ name: 'trig-e2e-ddb-recreate', path: path.join(FIXTURES, 'python/hello'),
+    runtime: 'python', handler: 'app.handler' });
+  const client = await freshTable('trigger-e2e-recreate-table');
+  const fn = api.updateFunction(created.body.id,
+    { trigger: { type: 'dynamodb', tableName: 'trigger-e2e-recreate-table', enabled: true } }).body;
+
+  const deliver = async (tag) => {
+    for (let i = 0; i < 15; i++) {
+      await client.send(new PutItemCommand({
+        TableName: 'trigger-e2e-recreate-table', Item: { id: { S: `${tag}-${i}` } },
+      }));
+      const entry = await waitForTriggerEntry(fn.id, 2);
+      if (entry) return entry;
+    }
+    return null;
+  };
+
+  assert.ok(await deliver('before'), 'precondition: the trigger should deliver before the recreate');
+  api.clearHistory(fn.id);
+
+  await freshTable('trigger-e2e-recreate-table');
+
+  assert.ok(await deliver('after'),
+    `the trigger never recovered from the table being recreated: ${JSON.stringify(manager.status(fn.id))}`);
+
+  manager.stop(fn.id);
+});
+
 test('enabling an S3 trigger invokes the function when an object is created, and tags history',
   { skip: s3Ready ? false : 'docker daemon, minio image, or python3 not available' }, async () => {
   await ensureS3Listener();

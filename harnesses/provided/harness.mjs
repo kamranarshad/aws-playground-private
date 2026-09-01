@@ -30,6 +30,16 @@ const warm = process.argv.includes('--warm');
 const SENTINEL_PREFIX = '\0AWSPLAY-END:';
 const SENTINEL_SUFFIX = '\0';
 
+// Writes the sentinel and waits for it to actually reach the pipe. A bare
+// write() followed by process.exit() can discard it: writes to a pipe are
+// asynchronous, and exiting drops whatever is still buffered -- which the
+// parent then waits for until the invoke times out.
+function writeSentinel(requestId) {
+  return new Promise((resolve) => {
+    process.stdout.write(SENTINEL_PREFIX + requestId + SENTINEL_SUFFIX, resolve);
+  });
+}
+
 function flushStdio() {
   return new Promise((resolve) => {
     let pending = 2;
@@ -93,6 +103,7 @@ let current = null;
 let waiter = null;
 let firstInvocation = true;
 let bootstrapDead = null;
+let bootstrapExited = false;
 
 function nextInvocation() {
   if (current) return Promise.resolve(current);
@@ -110,7 +121,6 @@ async function settle(payload) {
   const inv = current;
   if (!inv || inv.settled) return;
   inv.settled = true;
-  current = null;
   writeEnvelope(inv.resultFile, payload);
   if (!warm) {
     killBootstrap();
@@ -119,7 +129,11 @@ async function settle(payload) {
     return;
   }
   await flushStdio();
-  process.stdout.write(SENTINEL_PREFIX + inv.requestId + SENTINEL_SUFFIX);
+  await writeSentinel(inv.requestId);
+  // Cleared only now: until the parent has its sentinel this invocation is
+  // still in flight, and treating the harness as idle any earlier would let
+  // an exiting bootstrap take it down before the answer was written.
+  current = null;
   inv.done();
 }
 
@@ -230,18 +244,36 @@ function startBootstrap(port) {
     if (current) settle(bootstrapDead);
   });
   child.on('exit', (code) => {
+    bootstrapExited = true;
     const inv = current;
+    // Exited between invocations: it is simply not a loop. That is fine --
+    // the next request restarts it (see ensureBootstrap). Exited
+    // mid-invocation is a genuine failure and the caller needs the reason.
+    if (!inv || inv.settled) return;
     bootstrapDead = {
-      ok: false, phase: inv?.polled ? 'invoke' : 'init',
-      durationMs: inv ? durationOf(inv) : 0,
+      ok: false, phase: inv.polled ? 'invoke' : 'init',
+      durationMs: durationOf(inv),
       error: {
         type: 'Runtime.ExitError',
         message: `Bootstrap exited with code ${code} before posting a response`,
         stackTrace: [],
       },
     };
-    if (inv) settle(bootstrapDead);
+    settle(bootstrapDead);
   });
+}
+
+// Restarts the bootstrap if it is no longer running, and reports whether it
+// had to. initStart moves with it so the reported init time measures the
+// restart rather than the harness's original startup.
+let initStart = harnessStart;
+async function ensureBootstrap() {
+  if (!bootstrapExited) return false;
+  bootstrapExited = false;
+  bootstrapDead = null;
+  initStart = process.hrtime.bigint();
+  startBootstrap(server.address().port);
+  return true;
 }
 
 server.listen(0, '127.0.0.1', async () => {
@@ -258,19 +290,18 @@ server.listen(0, '127.0.0.1', async () => {
   }
 
   for await (const req of requests(process.stdin)) {
-    // The bootstrap died earlier; there is nothing left to serve with, so
-    // answer this request with the reason rather than hanging on it.
-    if (bootstrapDead && !child?.pid) {
-      writeEnvelope(req.resultFile, bootstrapDead);
-      await flushStdio();
-      process.stdout.write(SENTINEL_PREFIX + req.requestId + SENTINEL_SUFFIX);
-      continue;
-    }
+    // A bootstrap written as a loop is still sitting on /invocation/next and
+    // this is a no-op. One that served a single invocation and exited gets
+    // restarted here, so it behaves exactly as it did when every invoke had
+    // its own process -- just without a new harness. Either way the restart
+    // is a real initialisation, so it is reported as one.
+    const restarted = await ensureBootstrap();
     await new Promise((resolve) => {
       offer({
         requestId: req.requestId, event: req.event, resultFile: req.resultFile,
         deadline: Date.now() + req.timeoutMs, startedAt: null,
-        initMs: firstInvocation ? Number(process.hrtime.bigint() - harnessStart) / 1e6 : null,
+        initMs: (firstInvocation || restarted)
+          ? Number(process.hrtime.bigint() - initStart) / 1e6 : null,
         polled: false, settled: false, done: resolve,
       });
       firstInvocation = false;

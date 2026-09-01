@@ -177,6 +177,10 @@ class Env {
     }
   }
 
+  hasExited() {
+    return this.child.exitCode !== null || this.child.signalCode !== null;
+  }
+
   touch() {
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => evict(this.key), idleMs());
@@ -222,7 +226,10 @@ class Env {
 async function acquire(opts) {
   const key = keyFor(opts);
   const existing = envs.get(key);
-  if (existing && !existing.dead) {
+  // `dead` is set from the child's 'close' event, which arrives a tick after
+  // the process is actually gone -- so an acquire in that window would hand
+  // back an environment that can never answer. Ask the process directly.
+  if (existing && !existing.dead && !existing.hasExited()) {
     // The one deliberate break from Lambda: locally the source changes under a
     // warm environment constantly, and serving the previous version would make
     // the tool actively wrong. Checked here rather than watched, because the
@@ -231,6 +238,8 @@ async function acquire(opts) {
       existing.cold = false;
       return existing;
     }
+    evict(key);
+  } else if (existing) {
     evict(key);
   }
   const env = new Env(key, opts);

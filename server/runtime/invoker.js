@@ -274,7 +274,11 @@ async function invoke(opts) {
     timedOut: run.timedOut === true,
     // Which kind of invoke this was. Warm-by-default is otherwise invisible,
     // and an unexplained 3ms after a 400ms is more confusing than useful.
-    cold: run.cold === true,
+    // An envelope carrying initMs means the runtime initialised for this
+    // invoke even if the environment itself was reused -- a `provided`
+    // bootstrap that is not a loop gets restarted, and calling that warm
+    // would be a lie.
+    cold: run.cold === true || envelope?.initMs != null,
   };
   if (envelope?.initMs != null) {
     out.report.initMs = Math.round(envelope.initMs * 100) / 100;

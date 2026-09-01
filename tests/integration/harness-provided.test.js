@@ -173,3 +173,40 @@ test('each warm provided invoke gets only its own logs', { skip: noBash }, async
     `the second invoke's logs carried more than its own output: ${JSON.stringify(logs[1])}`);
   assert.ok(ids.length === 2);
 });
+
+// A real AWS custom runtime loops on /invocation/next, but a hand-written
+// local bootstrap often serves one invocation and exits -- which worked fine
+// when every invoke got its own process. Reusing the environment must not
+// break it: the harness gives up its environment so the next invoke cold
+// starts a fresh bootstrap, exactly as before.
+const ONE_SHOT_BOOTSTRAP = `#!/usr/bin/env bash
+set -euo pipefail
+HEADERS="$(mktemp)"
+curl -sS -LD "$HEADERS" -X GET "http://$AWS_LAMBDA_RUNTIME_API/2018-06-01/runtime/invocation/next" >/dev/null
+REQUEST_ID=$(grep -Fi Lambda-Runtime-Aws-Request-Id "$HEADERS" | tr -d '[:space:]' | cut -d: -f2)
+curl -sS -X POST \\
+  "http://$AWS_LAMBDA_RUNTIME_API/2018-06-01/runtime/invocation/$REQUEST_ID/response" \\
+  -d '{"served":true}' >/dev/null
+`;
+
+test('a bootstrap that exits after one invocation still serves the next one',
+  { skip: noBash }, async (t) => {
+  const { invoke } = require('../../server/runtime/invoker');
+  const pool = require('../../server/runtime/pool');
+  t.after(() => pool.shutdown());
+
+  const dir = bootstrapProject(ONE_SHOT_BOOTSTRAP);
+  const base = { id: 'one-shot-fn', runtime: 'provided', dir, handler: 'bootstrap',
+    event: {}, timeoutMs: 10000 };
+
+  const first = await invoke(base);
+  assert.strictEqual(first.ok, true, JSON.stringify(first.error));
+  assert.deepStrictEqual(first.response, { served: true });
+
+  const second = await invoke(base);
+  assert.strictEqual(second.ok, true,
+    `a non-looping bootstrap broke on the second invoke: ${JSON.stringify(second.error)}`);
+  assert.deepStrictEqual(second.response, { served: true });
+  assert.strictEqual(second.report.cold, true,
+    'the bootstrap had to be restarted, so this was not a warm invoke');
+});

@@ -91,21 +91,37 @@ async function resolveOpenShardIterator(streams, streamArn) {
 // checkpointing across restarts/reshards" scope decision. Returns null for
 // an empty batch so the shared poller's generic "nothing to process" check
 // works the same way SQS's null-message case does.
-function makeReceiver(streams, streamArn) {
+//
+// The *stream* is re-resolved too, not just the shard. Recreating a table is
+// ordinary during development and it replaces the table's stream; resolving
+// the ARN once when the poller started left it pinned to the dead stream
+// forever, delivering nothing until the playground was restarted. Both are
+// looked up from the table name on demand, so anything that replaces the
+// stream underneath simply costs one failed poll and a re-resolve.
+function makeReceiver(dynamo, streams, tableName) {
+  let streamArn = null;
   let shardIterator = null;
+  const reset = () => { streamArn = null; shardIterator = null; };
   return async function receive() {
     const { GetRecordsCommand } = streamsSdk();
-    if (!shardIterator) shardIterator = await resolveOpenShardIterator(streams, streamArn);
+    try {
+      if (!streamArn) streamArn = await ensureStreamEnabled(dynamo, tableName);
+      if (!shardIterator) shardIterator = await resolveOpenShardIterator(streams, streamArn);
+    } catch (err) {
+      reset();
+      throw err;
+    }
+    const currentArn = streamArn;
     let result;
     try {
       result = await streams.send(new GetRecordsCommand({ ShardIterator: shardIterator }));
     } catch (err) {
-      shardIterator = null;
+      reset();
       throw err;
     }
     shardIterator = result.NextShardIterator ?? null; // null means the shard closed
     const records = result.Records ?? [];
-    return records.length ? { records, streamArn } : null;
+    return records.length ? { records, streamArn: currentArn } : null;
   };
 }
 
@@ -114,8 +130,7 @@ function start(fn, { onStatus, invokeFunction }) {
     onStatus,
     setup: async () => {
       const { dynamo, streams } = buildClients();
-      const streamArn = await ensureStreamEnabled(dynamo, fn.trigger.tableName);
-      return { receive: makeReceiver(streams, streamArn) };
+      return { receive: makeReceiver(dynamo, streams, fn.trigger.tableName) };
     },
     buildEvent: (batch) => buildDynamoDbEvent(batch.records, batch.streamArn),
     buildSource: (batch) => ({ type: 'trigger', recordCount: batch.records.length }),
