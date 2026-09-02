@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AddFunctionDialog } from '@/components/add-function-dialog'
@@ -70,10 +70,13 @@ export function App() {
   const currentRequestId = result?.report.requestId ?? null
   const tracePending = result?.trace?.pending === true
   const tracePoll = useTracePoll(selectedId, currentRequestId, tracePending)
-  useEffect(() => {
-    if (!tracePoll.data?.trace) return
-    setResult((r) => (r && r.report.requestId === currentRequestId ? { ...r, trace: tracePoll.data!.trace! } : r))
-  }, [tracePoll.data, currentRequestId])
+  const effectiveResult = useMemo(() => {
+    if (!result) return null
+    if (tracePoll.data?.trace && result.report.requestId === currentRequestId) {
+      return { ...result, trace: tracePoll.data.trace }
+    }
+    return result
+  }, [result, tracePoll.data?.trace, currentRequestId])
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
 
@@ -216,7 +219,7 @@ export function App() {
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <ResultPanel
-                    result={result}
+                    result={effectiveResult}
                     checkResults={checkResults}
                     activeTab={activeTab}
                     onActiveTabChange={onActiveTabChange}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Webhook } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -38,8 +38,7 @@ export function TriggerButton({ fn }: { fn: FunctionDef }) {
   return <TriggerPicker fn={fn} />
 }
 
-function TriggerPicker({ fn }: { fn: FunctionDef }) {
-  const [open, setOpen] = useState(false)
+function TriggerDialogContent({ fn, onClose }: { fn: FunctionDef; onClose: () => void }) {
   const [triggerType, setTriggerType] = useState<TriggerType>(fn.trigger?.type ?? 'none')
   const [triggerQueueName, setTriggerQueueName] = useState(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
   const [triggerTableName, setTriggerTableName] = useState(fn.trigger?.type === 'dynamodb' ? fn.trigger.tableName : '')
@@ -50,30 +49,12 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
   const [triggerPrefix, setTriggerPrefix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.prefix ?? '') : '')
   const [triggerSuffix, setTriggerSuffix] = useState(fn.trigger?.type === 's3' ? (fn.trigger.suffix ?? '') : '')
   const update = useUpdateFunction()
-  // The listener's port is the server's to decide, so it rides along on the
-  // health poll rather than being duplicated as a constant over here.
   const { data: health } = useHealth()
   const httpPort = health?.ports?.httpTrigger
 
   function toggleEvent(event: 'ObjectCreated' | 'ObjectRemoved') {
     setTriggerEvents((prev) => (prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]))
   }
-
-  useEffect(() => {
-    // Re-seed from `fn` whenever the dialog opens — same reason
-    // SettingsDialog does this for its own fields: React Query's
-    // structural sharing can keep the same `fn` reference across a
-    // refetch that changes nothing, so an effect keyed only on `fn`
-    // identity can miss a reset.
-    if (!open) return
-    setTriggerType(fn.trigger?.type ?? 'none')
-    setTriggerQueueName(fn.trigger?.type === 'sqs' ? fn.trigger.queueName : '')
-    setTriggerTableName(fn.trigger?.type === 'dynamodb' ? fn.trigger.tableName : '')
-    setTriggerBucket(fn.trigger?.type === 's3' ? fn.trigger.bucket : '')
-    setTriggerEvents(fn.trigger?.type === 's3' ? fn.trigger.events : [])
-    setTriggerPrefix(fn.trigger?.type === 's3' ? (fn.trigger.prefix ?? '') : '')
-    setTriggerSuffix(fn.trigger?.type === 's3' ? (fn.trigger.suffix ?? '') : '')
-  }, [open, fn])
 
   function save() {
     // This dialog only ever sets type/queue/table name — enabling/disabling
@@ -99,8 +80,108 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
                 }
               : null)
             : null
-    update.mutate({ id: fn.id, patch: { trigger } }, { onSuccess: () => setOpen(false) })
+    update.mutate({ id: fn.id, patch: { trigger } }, { onSuccess: onClose })
   }
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Trigger — {fn.name}</DialogTitle>
+      </DialogHeader>
+      <div className="grid gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="t-trigger-type">Trigger</Label>
+          <Select value={triggerType} onValueChange={(v) => setTriggerType(v as TriggerType)}>
+            <SelectTrigger id="t-trigger-type" size="sm" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="sqs">SQS queue</SelectItem>
+              <SelectItem value="http">HTTP (API Gateway)</SelectItem>
+              <SelectItem value="dynamodb">DynamoDB Streams</SelectItem>
+              <SelectItem value="s3">S3 bucket</SelectItem>
+            </SelectContent>
+          </Select>
+          {triggerType === 'sqs' && (
+            <>
+              <Label htmlFor="t-trigger-queue">SQS trigger queue</Label>
+              <Input id="t-trigger-queue" value={triggerQueueName}
+                onChange={(e) => setTriggerQueueName(e.target.value)}
+                spellCheck={false} placeholder="queue name (empty = no trigger)" />
+              <p className="text-xs text-muted-foreground">
+                Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't
+                exist. Use the power button next to Trigger to turn it on.
+              </p>
+            </>
+          )}
+          {triggerType === 'dynamodb' && (
+            <>
+              <Label htmlFor="t-trigger-table">DynamoDB table</Label>
+              <Input id="t-trigger-table" value={triggerTableName}
+                onChange={(e) => setTriggerTableName(e.target.value)}
+                spellCheck={false} placeholder="table name (empty = no trigger)" />
+              <p className="text-xs text-muted-foreground">
+                Auto-starts the local DynamoDB service and enables the table's stream if it
+                isn't already — the table itself must already exist. Use the power button next
+                to Trigger to turn it on.
+              </p>
+            </>
+          )}
+          {triggerType === 'http' && (
+            <>
+              <Label htmlFor="t-trigger-url">HTTP trigger URL</Label>
+              <Input id="t-trigger-url" readOnly
+                value={httpPort === undefined ? '' : `http://localhost:${httpPort}/${fn.name}/...`}
+                spellCheck={false} onFocus={(e) => e.target.select()} />
+              <p className="text-xs text-muted-foreground">
+                Shares one listener on port {httpPort ?? '\u2026'} across every function with an
+                HTTP trigger enabled, routed by name — names must be unique. Use the power
+                button next to Trigger to turn it on.
+              </p>
+            </>
+          )}
+          {triggerType === 's3' && (
+            <>
+              <Label htmlFor="t-trigger-bucket">S3 bucket</Label>
+              <Input id="t-trigger-bucket" value={triggerBucket}
+                onChange={(e) => setTriggerBucket(e.target.value)}
+                spellCheck={false} placeholder="bucket name (empty = no trigger)" />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox id="t-trigger-created" checked={triggerEvents.includes('ObjectCreated')}
+                    onCheckedChange={() => toggleEvent('ObjectCreated')} />
+                  <Label htmlFor="t-trigger-created" className="text-sm font-normal">Object Created</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox id="t-trigger-removed" checked={triggerEvents.includes('ObjectRemoved')}
+                    onCheckedChange={() => toggleEvent('ObjectRemoved')} />
+                  <Label htmlFor="t-trigger-removed" className="text-sm font-normal">Object Removed</Label>
+                </div>
+              </div>
+              <Label htmlFor="t-trigger-prefix">Key prefix (optional)</Label>
+              <Input id="t-trigger-prefix" value={triggerPrefix}
+                onChange={(e) => setTriggerPrefix(e.target.value)} spellCheck={false} placeholder="e.g. images/" />
+              <Label htmlFor="t-trigger-suffix">Key suffix (optional)</Label>
+              <Input id="t-trigger-suffix" value={triggerSuffix}
+                onChange={(e) => setTriggerSuffix(e.target.value)} spellCheck={false} placeholder="e.g. .png" />
+              <p className="text-xs text-muted-foreground">
+                Auto-creates the bucket if it doesn't exist and wires up a MinIO webhook to a shared
+                listener. Use the power button next to Trigger to turn it on.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+      <DialogFooter>
+        <Button onClick={save} disabled={update.isPending}>Save</Button>
+      </DialogFooter>
+    </DialogContent>
+  )
+}
+
+function TriggerPicker({ fn }: { fn: FunctionDef }) {
+  const [open, setOpen] = useState(false)
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -109,99 +190,7 @@ function TriggerPicker({ fn }: { fn: FunctionDef }) {
           <Webhook className="size-4" />
         </Button>
       </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Trigger — {fn.name}</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="t-trigger-type">Trigger</Label>
-            <Select value={triggerType} onValueChange={(v) => setTriggerType(v as TriggerType)}>
-              <SelectTrigger id="t-trigger-type" size="sm" className="w-56">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">None</SelectItem>
-                <SelectItem value="sqs">SQS queue</SelectItem>
-                <SelectItem value="http">HTTP (API Gateway)</SelectItem>
-                <SelectItem value="dynamodb">DynamoDB Streams</SelectItem>
-                <SelectItem value="s3">S3 bucket</SelectItem>
-              </SelectContent>
-            </Select>
-            {triggerType === 'sqs' && (
-              <>
-                <Label htmlFor="t-trigger-queue">SQS trigger queue</Label>
-                <Input id="t-trigger-queue" value={triggerQueueName}
-                  onChange={(e) => setTriggerQueueName(e.target.value)}
-                  spellCheck={false} placeholder="queue name (empty = no trigger)" />
-                <p className="text-xs text-muted-foreground">
-                  Auto-starts the local SQS service (ElasticMQ) and creates the queue if it doesn't
-                  exist. Use the power button next to Trigger to turn it on.
-                </p>
-              </>
-            )}
-            {triggerType === 'dynamodb' && (
-              <>
-                <Label htmlFor="t-trigger-table">DynamoDB table</Label>
-                <Input id="t-trigger-table" value={triggerTableName}
-                  onChange={(e) => setTriggerTableName(e.target.value)}
-                  spellCheck={false} placeholder="table name (empty = no trigger)" />
-                <p className="text-xs text-muted-foreground">
-                  Auto-starts the local DynamoDB service and enables the table's stream if it
-                  isn't already — the table itself must already exist. Use the power button next
-                  to Trigger to turn it on.
-                </p>
-              </>
-            )}
-            {triggerType === 'http' && (
-              <>
-                <Label htmlFor="t-trigger-url">HTTP trigger URL</Label>
-                <Input id="t-trigger-url" readOnly
-                  value={httpPort === undefined ? '' : `http://localhost:${httpPort}/${fn.name}/...`}
-                  spellCheck={false} onFocus={(e) => e.target.select()} />
-                <p className="text-xs text-muted-foreground">
-                  Shares one listener on port {httpPort ?? '\u2026'} across every function with an
-                  HTTP trigger enabled, routed by name — names must be unique. Use the power
-                  button next to Trigger to turn it on.
-                </p>
-              </>
-            )}
-            {triggerType === 's3' && (
-              <>
-                <Label htmlFor="t-trigger-bucket">S3 bucket</Label>
-                <Input id="t-trigger-bucket" value={triggerBucket}
-                  onChange={(e) => setTriggerBucket(e.target.value)}
-                  spellCheck={false} placeholder="bucket name (empty = no trigger)" />
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="t-trigger-created" checked={triggerEvents.includes('ObjectCreated')}
-                      onCheckedChange={() => toggleEvent('ObjectCreated')} />
-                    <Label htmlFor="t-trigger-created" className="text-sm font-normal">Object Created</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox id="t-trigger-removed" checked={triggerEvents.includes('ObjectRemoved')}
-                      onCheckedChange={() => toggleEvent('ObjectRemoved')} />
-                    <Label htmlFor="t-trigger-removed" className="text-sm font-normal">Object Removed</Label>
-                  </div>
-                </div>
-                <Label htmlFor="t-trigger-prefix">Key prefix (optional)</Label>
-                <Input id="t-trigger-prefix" value={triggerPrefix}
-                  onChange={(e) => setTriggerPrefix(e.target.value)} spellCheck={false} placeholder="e.g. images/" />
-                <Label htmlFor="t-trigger-suffix">Key suffix (optional)</Label>
-                <Input id="t-trigger-suffix" value={triggerSuffix}
-                  onChange={(e) => setTriggerSuffix(e.target.value)} spellCheck={false} placeholder="e.g. .png" />
-                <p className="text-xs text-muted-foreground">
-                  Auto-creates the bucket if it doesn't exist and wires up a MinIO webhook to a shared
-                  listener. Use the power button next to Trigger to turn it on.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-        <DialogFooter>
-          <Button onClick={save} disabled={update.isPending}>Save</Button>
-        </DialogFooter>
-      </DialogContent>
+      {open && <TriggerDialogContent fn={fn} onClose={() => setOpen(false)} />}
     </Dialog>
   )
 }

@@ -5,7 +5,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 vi.mock('@/lib/api', () => ({
-  api: { updateFunction: vi.fn(), listFunctions: vi.fn(), detect: vi.fn(), health: vi.fn() },
+  api: {
+    updateFunction: vi.fn(),
+    listFunctions: vi.fn(),
+    detect: vi.fn(),
+    health: vi.fn().mockResolvedValue({ runtimes: {}, ports: { httpTrigger: 9500 } }),
+  },
 }))
 
 import { TriggerButton } from '@/components/trigger-button'
