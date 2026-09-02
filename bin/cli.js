@@ -200,7 +200,10 @@ From a source checkout, pass flags through npm: npm start -- --port 5000`);
 }
 
 const DIST = path.join(__dirname, '..', 'web', 'dist');
-if (!fs.existsSync(path.join(DIST, 'server', 'server.js'))) {
+const hasWebBuild = fs.existsSync(path.join(DIST, 'server', 'server.js')) ||
+  fs.existsSync(path.join(DIST, 'index.html')) ||
+  fs.existsSync(path.join(DIST, 'client', 'index.html'));
+if (!hasWebBuild) {
   console.error('aws-playground: web app not built (web/dist missing).');
   console.error('From a source checkout, run: npm install');
   process.exit(1);

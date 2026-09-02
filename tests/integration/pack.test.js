@@ -6,7 +6,9 @@ const os = require('node:os');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
-const built = fs.existsSync(path.join(ROOT, 'web', 'dist', 'server', 'server.js'));
+const built = fs.existsSync(path.join(ROOT, 'web', 'dist', 'index.html')) ||
+  fs.existsSync(path.join(ROOT, 'web', 'dist', 'server', 'server.js')) ||
+  fs.existsSync(path.join(ROOT, 'web', 'dist', 'client', 'index.html'));
 
 test('packed tarball boots and serves the API',
   { skip: built ? false : 'web/dist missing - run npm run build first' }, async () => {

@@ -31,11 +31,25 @@ function staticFile(clientDir, urlPath) {
   return null;
 }
 
+const { handleApiRequest } = require('./api/router');
+
 async function startWebServer({ distDir, port, host }) {
-  const entryUrl = pathToFileURL(path.join(distDir, 'server', 'server.js')).href;
-  const clientDir = path.join(distDir, 'client');
-  const mod = await import(entryUrl);
-  const entry = mod.default ?? mod;
+  const serverJs = path.join(distDir, 'server', 'server.js');
+  const hasSsr = fs.existsSync(serverJs);
+  let entry = null;
+  if (hasSsr) {
+    const entryUrl = pathToFileURL(serverJs).href;
+    const mod = await import(entryUrl);
+    entry = mod.default ?? mod;
+  }
+  const clientDir = fs.existsSync(path.join(distDir, 'client'))
+    ? path.join(distDir, 'client')
+    : distDir;
+  const spaHtml = fs.existsSync(path.join(clientDir, 'index.html'))
+    ? path.join(clientDir, 'index.html')
+    : fs.existsSync(path.join(distDir, 'index.html'))
+      ? path.join(distDir, 'index.html')
+      : null;
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -44,6 +58,10 @@ async function startWebServer({ distDir, port, host }) {
       if (!['localhost', '127.0.0.1', '[::1]'].includes(hostname)) {
         res.writeHead(403, { 'content-type': 'text/plain' });
         return res.end('Forbidden: invalid Host header');
+      }
+
+      if (await handleApiRequest(req, res)) {
+        return;
       }
       if (req.method === 'GET' || req.method === 'HEAD') {
         let urlPath;
@@ -63,20 +81,32 @@ async function startWebServer({ distDir, port, host }) {
           if (req.method === 'HEAD') { stream.destroy(); return res.end(); }
           return stream.pipe(res);
         }
+        if (!entry && spaHtml) {
+          const stream = fs.createReadStream(spaHtml);
+          stream.on('error', () => { res.destroy(); });
+          res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+          if (req.method === 'HEAD') { stream.destroy(); return res.end(); }
+          return stream.pipe(res);
+        }
       }
-      const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
-      const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, {
-        method: req.method,
-        // IncomingHttpHeaders allows string[] values, which HeadersInit's
-        // type does not -- undici accepts them at runtime regardless.
-        headers: /** @type {any} */ (req.headers),
-        body: hasBody ? Readable.toWeb(req) : undefined,
-        duplex: hasBody ? 'half' : undefined,
-      });
-      const response = await entry.fetch(request);
-      res.statusCode = response.status;
-      response.headers.forEach((value, key) => { res.appendHeader(key, value); });
-      res.end(Buffer.from(await response.arrayBuffer()));
+      if (entry) {
+        const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
+        const request = new Request(`http://${req.headers.host ?? 'localhost'}${req.url}`, {
+          method: req.method,
+          // IncomingHttpHeaders allows string[] values, which HeadersInit's
+          // type does not -- undici accepts them at runtime regardless.
+          headers: /** @type {any} */ (req.headers),
+          body: hasBody ? Readable.toWeb(req) : undefined,
+          duplex: hasBody ? 'half' : undefined,
+        });
+        const response = await entry.fetch(request);
+        res.statusCode = response.status;
+        response.headers.forEach((value, key) => { res.appendHeader(key, value); });
+        res.end(Buffer.from(await response.arrayBuffer()));
+      } else {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('Not Found');
+      }
     } catch (err) {
       res.writeHead(500, { 'content-type': 'text/plain' });
       res.end(`aws-playground web server error: ${err.message}`);

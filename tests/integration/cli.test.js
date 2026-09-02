@@ -13,8 +13,10 @@ const CLI = path.join(__dirname, '..', '..', 'bin', 'cli.js');
 // what is actually missing. Skip with a reason instead, the same way
 // web.test.js does. --help needs no build, so it always runs.
 const DIST = path.join(__dirname, '..', '..', 'web', 'dist');
-const needsBuild = fs.existsSync(path.join(DIST, 'server', 'server.js'))
-  ? false : 'web/dist missing - run npm run build first';
+const hasWebBuild = fs.existsSync(path.join(DIST, 'server', 'server.js')) ||
+  fs.existsSync(path.join(DIST, 'index.html')) ||
+  fs.existsSync(path.join(DIST, 'client', 'index.html'));
+const needsBuild = hasWebBuild ? false : 'web/dist missing - run npm run build first';
 
 test('cli starts server, prints URL, serves health, and shuts down',
   { skip: needsBuild }, async () => {

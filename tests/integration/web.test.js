@@ -5,7 +5,9 @@ const os = require('node:os');
 const path = require('node:path');
 
 const DIST = path.join(__dirname, '..', '..', 'web', 'dist');
-const built = fs.existsSync(path.join(DIST, 'server', 'server.js'));
+const built = fs.existsSync(path.join(DIST, 'server', 'server.js')) ||
+  fs.existsSync(path.join(DIST, 'index.html')) ||
+  fs.existsSync(path.join(DIST, 'client', 'index.html'));
 
 test('built web app serves the shell and the API',
   { skip: built ? false : 'web/dist missing - run npm run build first' }, async () => {
@@ -65,11 +67,44 @@ test('built web app serves the shell and the API',
     const historyBody = await historyRes.json();
     assert.strictEqual(historyBody.entries.length, 1);
 
+    const statsRes = await fetch(`http://127.0.0.1:${port}/api/functions/${fn.id}/stats`);
+    assert.strictEqual(statsRes.status, 200);
+    const statsBody = await statsRes.json();
+    assert.strictEqual(statsBody.total, 1);
+    assert.strictEqual(statsBody.successes, 1);
+    assert.strictEqual(statsBody.errorRate, 0);
+
     const deleted = await fetch(`http://127.0.0.1:${port}/api/functions/${fn.id}`, { method: 'DELETE' });
     assert.strictEqual(deleted.status, 204);
     const deletedAgain = await fetch(`http://127.0.0.1:${port}/api/functions/${fn.id}`, { method: 'DELETE' });
     assert.strictEqual(deletedAgain.status, 404);
   } finally {
     server.close();
+  }
+});
+
+test('static SPA mode serves index.html on client-route fallback', async () => {
+  const spaDir = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-spa-'));
+  fs.writeFileSync(path.join(spaDir, 'index.html'), '<!DOCTYPE html><html><body>SPA Shell</body></html>');
+  fs.writeFileSync(path.join(spaDir, 'style.css'), 'body { background: black; }');
+  const { startWebServer } = require('../../server/serve-web');
+  const server = await startWebServer({ distDir: spaDir, port: 0, host: '127.0.0.1' });
+  const port = server.address().port;
+  try {
+    const health = await fetch(`http://127.0.0.1:${port}/api/health`);
+    assert.strictEqual(health.status, 200);
+
+    const css = await fetch(`http://127.0.0.1:${port}/style.css`);
+    assert.strictEqual(css.status, 200);
+    assert.strictEqual(css.headers.get('content-type'), 'text/css');
+
+    // Route fallback to index.html for client route
+    const clientRoute = await fetch(`http://127.0.0.1:${port}/services`);
+    assert.strictEqual(clientRoute.status, 200);
+    const html = await clientRoute.text();
+    assert.ok(html.includes('SPA Shell'));
+  } finally {
+    server.close();
+    fs.rmSync(spaDir, { recursive: true, force: true });
   }
 });

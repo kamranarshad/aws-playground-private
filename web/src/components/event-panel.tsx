@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useMemo, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent } from 'react'
 import CodeMirror, { EditorView, keymap, Prec } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
@@ -33,6 +33,11 @@ const DEFAULT_SCRIPT_PANEL_HEIGHT = 96
 const MIN_SCRIPT_PANEL_HEIGHT = 48
 const MAX_SCRIPT_PANEL_HEIGHT = 400
 
+const emptySubscribe = () => () => {}
+function useMounted() {
+  return useSyncExternalStore(emptySubscribe, () => true, () => false)
+}
+
 export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, onInvokeCold, invoking, onScriptChange, hasResult, onRunChecks }: {
   fn: FunctionDef
   eventText: string
@@ -45,7 +50,7 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, onInvok
   onRunChecks: (script: string) => void
 }) {
   const { theme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  const mounted = useMounted()
   const [saveOpen, setSaveOpen] = useState(false)
   const [saveName, setSaveName] = useState('')
   const [scriptDraft, setScriptDraft] = useState('')
@@ -81,8 +86,6 @@ export function EventPanel({ fn, eventText, onEventTextChange, onInvoke, onInvok
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
-
-  useEffect(() => setMounted(true), [])
 
   // CodeMirror's own default keymap binds Mod-Enter to insertBlankLine (its
   // documented Ctrl-/Cmd-Enter behavior) and runs it before the app's

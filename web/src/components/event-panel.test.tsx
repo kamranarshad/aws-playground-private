@@ -21,6 +21,7 @@ function stubClipboard(writeText: () => Promise<void> = async () => {}) {
 
 beforeEach(() => {
   vi.mocked(api.detect).mockResolvedValue({ runtime: 'node', handlerCandidates: [], projectTrigger: null })
+  vi.mocked(api.health).mockResolvedValue({ runtimes: {} as any, ports: TEST_PORTS as any })
 })
 
 afterEach(() => vi.clearAllMocks())

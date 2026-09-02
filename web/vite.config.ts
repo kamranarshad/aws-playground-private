@@ -1,18 +1,55 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+import { createRequire } from 'node:module'
+import { defineConfig, type Plugin } from 'vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+const require = createRequire(import.meta.url)
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig(({ command }) => ({
+function playgroundApiPlugin(): Plugin {
+  return {
+    name: 'playground-api',
+    configureServer(server) {
+      try {
+        const bootstrap = require('../server/bootstrap')
+        bootstrap.start().catch((err: any) => {
+          console.warn(`aws-playground: dev bootstrap error: ${err.message}`)
+        })
+      } catch (err: any) {
+        console.warn(`aws-playground: could not load bootstrap: ${err.message}`)
+      }
+
+      server.middlewares.use(async (req, res, next) => {
+        try {
+          const { handleApiRequest } = require('../server/api/router')
+          if (await handleApiRequest(req, res)) {
+            return
+          }
+        } catch (err: any) {
+          console.error('aws-playground api router error:', err)
+        }
+        next()
+      })
+    },
+  }
+}
+
+export default defineConfig({
   server: { port: 3000 },
   resolve: { alias: { '@': path.resolve(dirname, './src') } },
-  plugins: [tailwindcss(), tanstackStart(), viteReact()],
-  // Build only: bundle all deps so dist/server is self-contained for npm
-  // packaging. In dev this would force CJS deps (react) through the
-  // ESM-only module runner ("module is not defined") — externalize there.
-  ssr: command === 'build' ? { noExternal: true } : undefined,
-}))
+  plugins: [
+    tanstackRouter({
+      target: 'react',
+      autoCodeSplitting: true,
+      routesDirectory: './src/routes',
+      generatedRouteTree: './src/routeTree.gen.ts',
+      routeFileIgnorePrefix: '-',
+    }),
+    tailwindcss(),
+    viteReact(),
+    playgroundApiPlugin(),
+  ],
+})

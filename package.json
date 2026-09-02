@@ -24,7 +24,9 @@
     "test:server": "npm run test:unit && npm run test:integration",
     "test:web": "npm --prefix web run test",
     "lint": "oxlint --react-plugin .",
-    "typecheck:server": "tsc -p server/tsconfig.json",
+    "typecheck:server": "npm --prefix web exec -- tsc -p server/tsconfig.json",
+    "typecheck:web": "npm --prefix web run typecheck",
+    "typecheck": "npm run typecheck:server && npm run typecheck:web",
     "test:unit": "node --test tests/unit/*.test.js",
     "test:integration": "node scripts/run-integration.js tests/integration/*.test.js"
   },
