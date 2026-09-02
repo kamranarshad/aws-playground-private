@@ -91,9 +91,9 @@ async function resolveHandler() {
   const filePart = handlerSpec.slice(0, dot);
   const exportName = handlerSpec.slice(dot + 1);
   const base = path.resolve(process.cwd(), filePart);
-  const candidate = ['.mjs', '.js', '.cjs'].map(e => base + e).find(f => fs.existsSync(f));
+  const candidate = ['.mjs', '.js', '.cjs', '.ts', '.mts', '.cts'].map(e => base + e).find(f => fs.existsSync(f));
   if (!candidate) throw namedError('Runtime.ImportModuleError',
-    `Cannot find module file for '${filePart}' (tried .mjs, .js, .cjs)`);
+    `Cannot find module file for '${filePart}' (tried .mjs, .js, .cjs, .ts, .mts, .cts)`);
   const mod = await import(pathToFileURL(candidate).href);
   const fn = mod[exportName] ?? mod.default?.[exportName];
   if (typeof fn !== 'function') throw namedError('Runtime.HandlerNotFound',

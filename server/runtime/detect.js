@@ -58,10 +58,11 @@ function pythonHandlerCandidates(dir) {
 function nodeHandlerCandidates(dir) {
   const out = [];
   for (const f of fs.readdirSync(dir)) {
-    if (!/\.(m?js|cjs)$/.test(f)) continue;
+    if (f.endsWith('.d.ts')) continue;
+    if (!/\.(m?js|cjs|[mc]?ts)$/.test(f)) continue;
     const src = tryReadFile(path.join(dir, f));
     if (src === null) continue;
-    const base = f.replace(/\.(m?js|cjs)$/, '');
+    const base = f.replace(/\.(m?js|cjs|[mc]?ts)$/, '');
     const re = /(?:exports\.([A-Za-z_]\w*)\s*=|export\s+(?:const|async\s+function|function)\s+([A-Za-z_]\w*))/g;
     for (const m of src.matchAll(re)) out.push(`${base}.${m[1] || m[2]}`);
   }

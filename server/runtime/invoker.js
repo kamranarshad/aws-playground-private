@@ -68,7 +68,7 @@ function command(opts, harnessArgs, nodeRequireArgs = []) {
     return { cmd: interp, args: [path.join(HARNESS_DIR, 'python', 'harness.py'), ...harnessArgs] };
   }
   if (opts.runtime === 'node') {
-    return { cmd: process.execPath, args: [...nodeRequireArgs, path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
+    return { cmd: process.execPath, args: ['--experimental-strip-types', ...nodeRequireArgs, path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
   }
   if (opts.runtime === 'provided') {
     return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'provided', 'harness.mjs'), ...harnessArgs] };
