@@ -45,6 +45,8 @@ export interface Ports {
   dynamodb: number
   redis: number
   postgres: number
+  elasticmq?: number
+  elasticmqConsole?: number
 }
 
 /** Every server/api/* function returns this shape; the route handlers in

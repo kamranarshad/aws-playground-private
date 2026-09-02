@@ -22,6 +22,8 @@ test('the service registry composes its ports from PORTS, not literals', () => {
   assert.strictEqual(REGISTRY.dynamodb.endpoint, `http://127.0.0.1:${PORTS.dynamodb}`);
   assert.strictEqual(REGISTRY.redis.endpoint, `redis://127.0.0.1:${PORTS.redis}`);
   assert.strictEqual(REGISTRY.postgres.endpoint, `postgresql://127.0.0.1:${PORTS.postgres}`);
+  assert.strictEqual(REGISTRY.elasticmq.endpoint, `http://127.0.0.1:${PORTS.elasticmq}`);
+  assert.strictEqual(REGISTRY.elasticmq.consoleUrl, `http://127.0.0.1:${PORTS.elasticmqConsole}`);
 });
 
 test("MinIO's webhook endpoint tracks the S3 trigger listener's port", () => {
