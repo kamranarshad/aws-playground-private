@@ -33,7 +33,31 @@ function encodeBody(buffer) {
   return { body: buffer.toString('base64'), isBase64Encoded: true };
 }
 
-function buildHttpEvent({ method, rawPath, url, headers, bodyBuffer }) {
+function buildHttpEventV1({ method, rawPath, url, headers, bodyBuffer }) {
+  const { body, isBase64Encoded } = encodeBody(bodyBuffer);
+  const queryStringParameters = {};
+  for (const [k, v] of url.searchParams) queryStringParameters[k] = v;
+  return {
+    resource: '/{proxy+}',
+    path: rawPath,
+    httpMethod: method,
+    headers,
+    queryStringParameters: Object.keys(queryStringParameters).length ? queryStringParameters : null,
+    requestContext: {
+      resourcePath: '/{proxy+}',
+      httpMethod: method,
+      path: rawPath,
+      protocol: 'HTTP/1.1',
+    },
+    body: body ?? null,
+    isBase64Encoded,
+  };
+}
+
+function buildHttpEvent({ method, rawPath, url, headers, bodyBuffer, format = '2.0' }) {
+  if (format === '1.0' || format === 'v1') {
+    return buildHttpEventV1({ method, rawPath, url, headers, bodyBuffer });
+  }
   const { body, isBase64Encoded } = encodeBody(bodyBuffer);
   const queryStringParameters = {};
   for (const [k, v] of url.searchParams) queryStringParameters[k] = v;
@@ -237,6 +261,6 @@ async function sync(fn, trigger, deps = {}) {
 module.exports = {
   type: 'http',
   sync, stop, status, statusAll,
-  PORT, HOST, routeFor, encodeBody, buildHttpEvent, isValidProxyResponse, translateInvokeResult,
+  PORT, HOST, routeFor, encodeBody, buildHttpEvent, buildHttpEventV1, isValidProxyResponse, translateInvokeResult,
   createRequestHandler, createListener,
 };

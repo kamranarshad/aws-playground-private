@@ -77,6 +77,21 @@ test('buildHttpEvent omits queryStringParameters when there is no query string',
   assert.strictEqual(event.rawQueryString, '');
 });
 
+test('buildHttpEvent shapes an API Gateway REST API v1 event when format is v1', () => {
+  const url = new URL('http://internal/hello?name=you');
+  const event = buildHttpEvent({
+    method: 'POST', rawPath: '/hello', url, headers: { host: 'localhost' },
+    bodyBuffer: Buffer.from('{"test":1}'), format: 'v1',
+  });
+  assert.strictEqual(event.path, '/hello');
+  assert.strictEqual(event.httpMethod, 'POST');
+  assert.strictEqual(event.resource, '/{proxy+}');
+  assert.deepStrictEqual(event.queryStringParameters, { name: 'you' });
+  assert.strictEqual(event.body, '{"test":1}');
+  assert.strictEqual(event.isBase64Encoded, false);
+  assert.strictEqual(event.requestContext.httpMethod, 'POST');
+});
+
 test('isValidProxyResponse accepts a minimal proxy response and rejects malformed shapes', () => {
   assert.strictEqual(isValidProxyResponse({ statusCode: 200 }), true);
   assert.strictEqual(isValidProxyResponse({ statusCode: 200, body: 'x', headers: { a: 'b' } }), true);
