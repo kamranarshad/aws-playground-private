@@ -42,10 +42,19 @@ function save(db) {
     const sqlite = getDb(dataDir());
     sqlite.exec('BEGIN IMMEDIATE');
     try {
-      sqlite.exec('DELETE FROM functions');
-      const insert = sqlite.prepare('INSERT INTO functions (id, name, data) VALUES (?, ?, ?)');
+      const currentIds = new Set(db.functions.map(f => f.id));
+      const existingRows = sqlite.prepare('SELECT id FROM functions').all();
+      const deleteStmt = sqlite.prepare('DELETE FROM functions WHERE id = ?');
+      for (const row of existingRows) {
+        if (!currentIds.has(row.id)) {
+          deleteStmt.run(row.id);
+        }
+      }
+      const upsert = sqlite.prepare(
+        'INSERT INTO functions (id, name, data) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET name = excluded.name, data = excluded.data'
+      );
       for (const fn of db.functions) {
-        insert.run(fn.id, fn.name, JSON.stringify(fn));
+        upsert.run(fn.id, fn.name, JSON.stringify(fn));
       }
       sqlite.exec('COMMIT');
     } catch (err) {
