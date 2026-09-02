@@ -146,10 +146,17 @@ process.exit(process.argv[2] === 'inspect' ? 1 : 0);
 
 test('cli without --port skips a busy port and binds the next free one',
   { skip: needsBuild }, async () => {
-  const occupier = net.createServer();
-  await new Promise((resolve, reject) => {
-    occupier.once('error', reject);
-    occupier.listen(3000, '127.0.0.1', resolve);
+  let occupier = null;
+  await new Promise((resolve) => {
+    const s = net.createServer();
+    s.once('error', () => {
+      // Already occupied on this system -- exactly the state the test requires
+      resolve();
+    });
+    s.listen(3000, '127.0.0.1', () => {
+      occupier = s;
+      resolve();
+    });
   });
 
   const child = spawn(process.execPath, [CLI, '--no-open'], {
@@ -172,7 +179,7 @@ test('cli without --port skips a busy port and binds the next free one',
   } finally {
     child.kill('SIGTERM');
     await new Promise((resolve) => child.on('close', resolve));
-    await new Promise((resolve) => occupier.close(resolve));
+    if (occupier) await new Promise((resolve) => occupier.close(resolve));
   }
 });
 
