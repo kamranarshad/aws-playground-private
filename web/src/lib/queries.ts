@@ -76,6 +76,7 @@ export function useCreateFunction() {
       )
       qc.invalidateQueries({ queryKey: ['functions'] })
     },
+    onError: onApiError,
   })
 }
 
