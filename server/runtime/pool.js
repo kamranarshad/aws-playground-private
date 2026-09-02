@@ -40,11 +40,13 @@ function fingerprint(dir) {
     } catch {
       return;
     }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const e of entries) {
       if (DERIVED.has(e.name) || e.name.startsWith('.')) continue;
       const child = path.join(d, e.name);
       const childRel = rel ? `${rel}/${e.name}` : e.name;
       if (e.isDirectory()) { walk(child, childRel); continue; }
+      if (!e.isFile()) continue;
       if (++count > MAX_FINGERPRINT_FILES) return;
       try {
         const st = fs.statSync(child);
@@ -83,7 +85,7 @@ function size() {
 }
 
 class Env {
-  constructor(key, opts) {
+  constructor(key, opts, sourceFingerprint) {
     this.key = key;
     this.functionId = opts.id;
     this.dir = opts.dir;
@@ -94,7 +96,7 @@ class Env {
     this.buf = '';
     this.pending = null;
     this.idleTimer = null;
-    this.sourceFingerprint = fingerprint(opts.dir);
+    this.sourceFingerprint = sourceFingerprint ?? fingerprint(opts.dir);
 
     this.child = spawn(opts.command.cmd, opts.command.args, {
       cwd: opts.dir,
@@ -229,12 +231,13 @@ async function acquire(opts) {
   // `dead` is set from the child's 'close' event, which arrives a tick after
   // the process is actually gone -- so an acquire in that window would hand
   // back an environment that can never answer. Ask the process directly.
+  const fp = fingerprint(opts.dir);
   if (existing && !existing.dead && !existing.hasExited()) {
     // The one deliberate break from Lambda: locally the source changes under a
     // warm environment constantly, and serving the previous version would make
     // the tool actively wrong. Checked here rather than watched, because the
     // act of importing a handler touches its own source file.
-    if (fingerprint(opts.dir) === existing.sourceFingerprint) {
+    if (fp === existing.sourceFingerprint) {
       existing.cold = false;
       return existing;
     }
@@ -242,7 +245,7 @@ async function acquire(opts) {
   } else if (existing) {
     evict(key);
   }
-  const env = new Env(key, opts);
+  const env = new Env(key, opts, fp);
   envs.set(key, env);
   return env;
 }
@@ -259,13 +262,13 @@ function evict(key) {
 }
 
 function evictForFunction(functionId) {
-  for (const [key, env] of [...envs]) {
+  for (const [key, env] of Array.from(envs)) {
     if (env.functionId === functionId) evict(key);
   }
 }
 
 async function shutdown() {
-  for (const key of [...envs.keys()]) evict(key);
+  for (const key of Array.from(envs.keys())) evict(key);
 }
 
 module.exports = { keyFor, acquire, evict, evictForFunction, shutdown, size, DEFAULT_IDLE_MS, idleMs };
