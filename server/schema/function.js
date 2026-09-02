@@ -3,6 +3,15 @@ const { validateTrigger } = require('./trigger');
 
 const RUNTIMES = ['python', 'node', 'java', 'provided'];
 
+function getSupportedRuntimes() {
+  try {
+    const { listRuntimeDrivers } = require('../runtime/drivers');
+    const drivers = listRuntimeDrivers();
+    if (drivers && drivers.length > 0) return drivers;
+  } catch {}
+  return RUNTIMES;
+}
+
 const ALLOWED_KEYS = ['name', 'path', 'runtime', 'handler', 'timeoutMs',
   'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'localServices',
   'savedEvents', 'trigger', 'autoTrace'];
@@ -22,7 +31,8 @@ const DEFAULTS = {
 // `list`/`get` are injected rather than required so this module never depends
 // on the store, and so it is testable without a data directory.
 function validateFields(fields, { currentId = null, list, get }) {
-  if ('runtime' in fields && !RUNTIMES.includes(fields.runtime)) {
+  const supported = getSupportedRuntimes();
+  if ('runtime' in fields && !supported.includes(fields.runtime)) {
     return `unsupported runtime '${fields.runtime}'`;
   }
   if ('path' in fields
