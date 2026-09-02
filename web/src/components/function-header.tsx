@@ -11,12 +11,13 @@ import { SettingsDialog } from '@/components/settings-dialog'
 import { TriggerButton } from '@/components/trigger-button'
 import { TriggerStatusBadge } from '@/components/trigger-status-badge'
 import { TriggerToggle } from '@/components/trigger-toggle'
-import { useDeleteFunction, useDetect, useTriggerStatus } from '@/lib/queries'
+import { useDeleteFunction, useDetect, useFunctionStats, useTriggerStatus } from '@/lib/queries'
 import type { FunctionDef } from '@/lib/types'
 
 export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: () => void }) {
   const del = useDeleteFunction()
   const { data: triggerStatuses } = useTriggerStatus()
+  const { data: stats } = useFunctionStats(fn.id)
   // A playground.json-declared trigger never touches fn.trigger, so the
   // status badge's visibility can't rely on fn.trigger?.enabled alone — it
   // needs the same signal TriggerButton uses to decide a trigger is active.
@@ -28,6 +29,20 @@ export function FunctionHeader({ fn, onDeleted }: { fn: FunctionDef; onDeleted: 
       <h2 className="truncate text-sm font-semibold">{fn.name}</h2>
       <Badge variant="secondary" className="font-mono">{fn.runtime}</Badge>
       {triggerStatus && <TriggerStatusBadge status={triggerStatus} />}
+      {stats && stats.total > 0 && (
+        <span
+          className="hidden sm:inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-muted/60 text-[11px] font-mono text-muted-foreground tabular-nums"
+          title={`Total: ${stats.total} | Errors: ${stats.failures} (${(stats.errorRate * 100).toFixed(1)}%) | p95: ${stats.p95DurationMs ?? 0}ms`}
+        >
+          <span>{stats.total} {stats.total === 1 ? 'run' : 'runs'}</span>
+          {stats.failures > 0 && (
+            <span className="text-destructive font-medium">({(stats.errorRate * 100).toFixed(0)}% err)</span>
+          )}
+          {stats.p95DurationMs != null && (
+            <span>· p95 {stats.p95DurationMs}ms</span>
+          )}
+        </span>
+      )}
       <span className="truncate font-mono text-xs tabular-nums text-muted-foreground">
         {fn.handler || 'no handler set'} · {fn.timeoutMs}ms · {fn.memoryMb}MB
       </span>

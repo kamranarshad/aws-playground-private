@@ -136,3 +136,16 @@ export interface HistoryEntry {
   ok: boolean
   truncated: boolean
 }
+
+export interface FunctionStats {
+  total: number
+  successes: number
+  failures: number
+  errorRate: number
+  avgDurationMs: number | null
+  minDurationMs: number | null
+  maxDurationMs: number | null
+  p50DurationMs: number | null
+  p95DurationMs: number | null
+  p99DurationMs: number | null
+}

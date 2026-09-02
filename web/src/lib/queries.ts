@@ -41,6 +41,15 @@ export function useHistoryQuery(id: string | null) {
   })
 }
 
+export function useFunctionStats(id: string | null) {
+  return useQuery({
+    queryKey: ['function-stats', id],
+    queryFn: () => api.getStats(id!),
+    enabled: !!id,
+    refetchInterval: SERVICES_POLL_MS,
+  })
+}
+
 // Spans for an invoke can still be arriving from the OTLP receiver after the
 // response comes back, so poll the trace endpoint while it's pending and
 // stop once the last poll (or the initial invoke response) says it's done.
@@ -93,8 +102,10 @@ export function useInvoke() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: InvokePayload) => api.invoke(payload),
-    onSuccess: (_r, payload) =>
-      qc.invalidateQueries({ queryKey: ['history', payload.functionId] }),
+    onSuccess: (_r, payload) => {
+      qc.invalidateQueries({ queryKey: ['history', payload.functionId] })
+      qc.invalidateQueries({ queryKey: ['function-stats', payload.functionId] })
+    },
     onError: onApiError,
   })
 }

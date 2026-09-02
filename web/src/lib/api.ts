@@ -1,5 +1,5 @@
 import type {
-  Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus, Trace, TriggersStatus,
+  Detection, FunctionDef, FunctionStats, Health, HistoryEntry, InvokeResult, ServicesStatus, Trace, TriggersStatus,
 } from './types'
 
 export class ApiError extends Error {
@@ -44,8 +44,15 @@ export const api = {
     request<Detection>('/api/detect', { method: 'POST', body: JSON.stringify({ path }) }),
   invoke: (payload: InvokePayload) =>
     request<InvokeResult>('/api/invoke', { method: 'POST', body: JSON.stringify(payload) }),
-  listHistory: (id: string) =>
-    request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history`),
+  listHistory: (id: string, opts?: { limit?: number; offset?: number }) => {
+    const params = new URLSearchParams()
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+    if (opts?.offset !== undefined) params.set('offset', String(opts.offset))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history${query}`)
+  },
+  getStats: (id: string) =>
+    request<FunctionStats>(`/api/functions/${id}/stats`),
   clearHistory: (id: string) =>
     request<void>(`/api/functions/${id}/history`, { method: 'DELETE' }),
   getTrace: (id: string, requestId: string) =>

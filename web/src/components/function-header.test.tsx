@@ -7,6 +7,8 @@ vi.mock('@/lib/api', () => ({
   api: {
     deleteFunction: vi.fn(), listTriggerStatus: vi.fn(),
     detect: vi.fn(), updateFunction: vi.fn(),
+    getStats: vi.fn().mockResolvedValue(null),
+    health: vi.fn().mockResolvedValue({ runtimes: {}, ports: {} }),
   },
 }))
 
@@ -68,3 +70,15 @@ it('shows the auto-trace toggle for a Node function but not for a non-Node one',
   rerender(<FunctionHeader fn={{ ...fn, runtime: 'python' }} onDeleted={() => {}} />)
   expect(screen.queryByText('Auto-trace')).not.toBeInTheDocument()
 })
+
+it('shows the stats pill when stats data is available', async () => {
+  vi.mocked(api.getStats).mockResolvedValue({
+    total: 15, successes: 14, failures: 1, errorRate: 0.0667,
+    avgDurationMs: 40, minDurationMs: 10, maxDurationMs: 120,
+    p50DurationMs: 35, p95DurationMs: 95, p99DurationMs: 110,
+  })
+  render(<FunctionHeader fn={fn} onDeleted={() => {}} />, { wrapper: makeWrapper() })
+  expect(await screen.findByText('15 runs')).toBeInTheDocument()
+  expect(await screen.findByText('· p95 95ms')).toBeInTheDocument()
+})
+
