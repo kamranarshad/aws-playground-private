@@ -4,6 +4,7 @@ import { AppNav } from '@/components/app-nav'
 import { Button } from '@/components/ui/button'
 import { Toaster } from '@/components/ui/sonner'
 import { useReleaseSelectionOnUnload } from '@/lib/queries'
+import { useServerEvents } from '@/lib/events'
 import { ThemeProvider } from '@/lib/theme'
 
 const queryClient = new QueryClient({
@@ -15,6 +16,18 @@ export const Route = createRootRoute({
   notFoundComponent: NotFound,
 })
 
+function AppShell() {
+  useServerEvents()
+  return (
+    <div className="flex h-screen">
+      <AppNav />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Outlet />
+      </div>
+    </div>
+  )
+}
+
 function RootComponent() {
   // At the root, not on the function page: closing the tab from /services
   // must release the selection too.
@@ -22,12 +35,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <div className="flex h-screen">
-          <AppNav />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            <Outlet />
-          </div>
-        </div>
+        <AppShell />
         <Toaster richColors />
       </ThemeProvider>
     </QueryClientProvider>
