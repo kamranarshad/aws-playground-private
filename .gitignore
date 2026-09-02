@@ -26,3 +26,5 @@ web/src/routeTree.gen.ts
 harnesses/java/harness.jar
 fixtures/**/target/
 fixtures/typescript/*/dist/
+!docs/ARCHITECTURE.md
+
