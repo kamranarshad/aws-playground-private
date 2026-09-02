@@ -62,4 +62,9 @@ function detect(input) {
   return { status: 200, body: detectProject(dir) };
 }
 
-module.exports = { RUNTIMES, listFunctions, createFunction, updateFunction, deleteFunction, detect };
+function getFunctionStats(id) {
+  if (!store.get(id)) return { status: 404, body: { error: 'function not found' } };
+  return { status: 200, body: history.getStats(id) };
+}
+
+module.exports = { RUNTIMES, listFunctions, createFunction, updateFunction, deleteFunction, detect, getFunctionStats };

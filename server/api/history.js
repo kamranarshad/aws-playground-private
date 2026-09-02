@@ -2,9 +2,9 @@ const store = require('../persistence/store');
 const history = require('../persistence/history');
 const traceCollector = require('../trace/collector');
 
-function listHistory(functionId) {
+function listHistory(functionId, opts = {}) {
   if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
-  return { status: 200, body: { entries: history.list(functionId) } };
+  return { status: 200, body: { entries: history.list(functionId, opts) } };
 }
 
 function clearHistory(functionId) {

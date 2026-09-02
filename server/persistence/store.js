@@ -34,8 +34,25 @@ function load() {
   }
 }
 
+const { getDb } = require('./sqlite');
+
 function save(db) {
   writeFileAtomic(dataFile(), JSON.stringify(db, null, 2));
+  try {
+    const sqlite = getDb(dataDir());
+    sqlite.exec('BEGIN IMMEDIATE');
+    try {
+      sqlite.exec('DELETE FROM functions');
+      const insert = sqlite.prepare('INSERT INTO functions (id, name, data) VALUES (?, ?, ?)');
+      for (const fn of db.functions) {
+        insert.run(fn.id, fn.name, JSON.stringify(fn));
+      }
+      sqlite.exec('COMMIT');
+    } catch (err) {
+      try { sqlite.exec('ROLLBACK'); } catch {}
+      throw err;
+    }
+  } catch {}
 }
 
 function list() {
@@ -43,6 +60,13 @@ function list() {
 }
 
 function get(id) {
+  try {
+    const sqlite = getDb(dataDir());
+    const row = sqlite.prepare('SELECT data FROM functions WHERE id = ?').get(id);
+    if (row && row.data) {
+      return JSON.parse(String(row.data));
+    }
+  } catch {}
   return list().find(f => f.id === id) || null;
 }
 

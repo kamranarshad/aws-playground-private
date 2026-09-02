@@ -62,14 +62,45 @@ function writeAll(functionId, oldestFirst) {
   writeFileAtomic(fileFor(functionId), oldestFirst.map(e => JSON.stringify(e)).join('\n') + '\n');
 }
 
-function list(functionId) {
+const { getDb } = require('./sqlite');
+
+/**
+ * @param {string} functionId
+ * @param {{ limit?: number, offset?: number }} [opts]
+ */
+function list(functionId, opts) {
+  const limit = (opts && typeof opts.limit === 'number') ? opts.limit : MAX_ENTRIES;
+  const offset = (opts && typeof opts.offset === 'number') ? opts.offset : 0;
+
+  // Preserve disk compaction contract: if file exists and exceeds cap, compact it
   const all = readAll(functionId);
-  if (all.length <= MAX_ENTRIES) return all.reverse();
-  // The overflow is already parsed here, so compacting costs one write and
-  // amortizes across the MAX_ENTRIES appends that produced it.
-  const keep = all.slice(-MAX_ENTRIES);
-  try { writeAll(functionId, keep); } catch {}
-  return keep.reverse();
+  if (all.length > MAX_ENTRIES) {
+    const keep = all.slice(-MAX_ENTRIES);
+    try { writeAll(functionId, keep); } catch {}
+  }
+
+  try {
+    const sqlite = getDb(dataDir());
+    const rows = sqlite.prepare('SELECT data FROM history WHERE function_id = ? ORDER BY ts DESC, rowid DESC LIMIT ? OFFSET ?')
+      .all(functionId, limit, offset);
+    if (rows && rows.length > 0) {
+      return rows.map(r => JSON.parse(String(r.data)));
+    }
+  } catch {}
+
+  if (!all.length) return [];
+
+  // Backfill SQLite if file exists but SQLite has no records yet
+  try {
+    const sqlite = getDb(dataDir());
+    const insert = sqlite.prepare('INSERT OR IGNORE INTO history (id, function_id, request_id, ts, duration_ms, ok, error_type, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+    for (const e of all) {
+      insert.run(e.id || crypto.randomUUID(), functionId, e.report?.requestId ?? null, e.ts || Date.now(), e.durationMs ?? null, e.ok ? 1 : 0, e.error?.type ?? null, JSON.stringify(e));
+    }
+  } catch {}
+
+  const result = all.length <= MAX_ENTRIES ? all.reverse() : all.slice(-MAX_ENTRIES).reverse();
+  return result.slice(offset, offset + limit);
 }
 
 function append(functionId, entry) {
@@ -99,6 +130,20 @@ function append(functionId, entry) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.appendFileSync(file, JSON.stringify(stored) + '\n');
   try {
+    const sqlite = getDb(dataDir());
+    sqlite.prepare('INSERT INTO history (id, function_id, request_id, ts, duration_ms, ok, error_type, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(
+        stored.id,
+        functionId,
+        stored.report?.requestId ?? null,
+        stored.ts,
+        stored.durationMs ?? null,
+        stored.ok ? 1 : 0,
+        stored.error?.type ?? null,
+        JSON.stringify(stored)
+      );
+  } catch {}
+  try {
     if (fs.statSync(file).size > compactBytes()) {
       writeAll(functionId, readAll(functionId).slice(-MAX_ENTRIES));
     }
@@ -107,6 +152,11 @@ function append(functionId, entry) {
 }
 
 function getByRequestId(functionId, requestId) {
+  try {
+    const sqlite = getDb(dataDir());
+    const row = sqlite.prepare('SELECT data FROM history WHERE function_id = ? AND request_id = ?').get(functionId, requestId);
+    if (row && row.data) return JSON.parse(String(row.data));
+  } catch {}
   return readAll(functionId).find((e) => e.report?.requestId === requestId) ?? null;
 }
 
@@ -125,9 +175,17 @@ function appendSpans(functionId, requestId, spans, pending) {
   entry.trace = merged.value;
   entry.truncated = entry.truncated || merged.truncated;
   writeAll(functionId, all);
+  try {
+    const sqlite = getDb(dataDir());
+    sqlite.prepare('UPDATE history SET data = ? WHERE function_id = ? AND request_id = ?')
+      .run(JSON.stringify(entry), functionId, requestId);
+  } catch {}
 }
 
 function clear(functionId) {
+  try {
+    getDb(dataDir()).prepare('DELETE FROM history WHERE function_id = ?').run(functionId);
+  } catch {}
   try {
     fs.rmSync(fileFor(functionId));
     return true;
@@ -136,5 +194,83 @@ function clear(functionId) {
   }
 }
 
-module.exports = { append, list, clear, getByRequestId, appendSpans, MAX_ENTRIES, MAX_FIELD_BYTES,
+function getStats(functionId) {
+  try {
+    const sqlite = getDb(dataDir());
+    /** @type {{ total?: number, successes?: number, failures?: number, avg_duration?: number, min_duration?: number, max_duration?: number } | undefined} */
+    const row = sqlite.prepare(`
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END), 0) AS successes,
+        COALESCE(SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END), 0) AS failures,
+        AVG(duration_ms) AS avg_duration,
+        MIN(duration_ms) AS min_duration,
+        MAX(duration_ms) AS max_duration
+      FROM history
+      WHERE function_id = ?
+    `).get(functionId);
+
+    const total = Number(row?.total ?? 0);
+    const successes = Number(row?.successes ?? 0);
+    const failures = Number(row?.failures ?? 0);
+    const avgDuration = row?.avg_duration != null ? Number(row.avg_duration) : null;
+    const minDuration = row?.min_duration != null ? Number(row.min_duration) : null;
+    const maxDuration = row?.max_duration != null ? Number(row.max_duration) : null;
+
+    if (total === 0) {
+      return {
+        total: 0,
+        successes: 0,
+        failures: 0,
+        errorRate: 0,
+        avgDurationMs: null,
+        minDurationMs: null,
+        maxDurationMs: null,
+        p50DurationMs: null,
+        p95DurationMs: null,
+        p99DurationMs: null,
+      };
+    }
+
+    const durations = sqlite.prepare(`
+      SELECT duration_ms FROM history
+      WHERE function_id = ? AND duration_ms IS NOT NULL
+      ORDER BY duration_ms ASC
+    `).all(functionId).map(r => Number(r.duration_ms));
+
+    const percentile = (/** @type {number} */ p) => {
+      if (!durations.length) return null;
+      const idx = Math.min(Math.floor((p / 100) * durations.length), durations.length - 1);
+      return durations[idx];
+    };
+
+    return {
+      total,
+      successes,
+      failures,
+      errorRate: total > 0 ? Number((failures / total).toFixed(4)) : 0,
+      avgDurationMs: avgDuration != null ? Number(avgDuration.toFixed(2)) : null,
+      minDurationMs: minDuration != null ? Number(minDuration.toFixed(2)) : null,
+      maxDurationMs: maxDuration != null ? Number(maxDuration.toFixed(2)) : null,
+      p50DurationMs: percentile(50),
+      p95DurationMs: percentile(95),
+      p99DurationMs: percentile(99),
+    };
+  } catch {
+    return {
+      total: 0,
+      successes: 0,
+      failures: 0,
+      errorRate: 0,
+      avgDurationMs: null,
+      minDurationMs: null,
+      maxDurationMs: null,
+      p50DurationMs: null,
+      p95DurationMs: null,
+      p99DurationMs: null,
+    };
+  }
+}
+
+module.exports = { append, list, clear, getByRequestId, appendSpans, getStats, MAX_ENTRIES, MAX_FIELD_BYTES,
   COMPACT_BYTES, compactBytes };
