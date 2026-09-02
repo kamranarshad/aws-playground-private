@@ -14,7 +14,12 @@ async function invokeFunction(input) {
   const { functionId, source } = input || {};
   const fn = store.get(functionId);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
-  if (inFlight.has(fn.id)) {
+  if (input?.queue && inFlight.has(fn.id)) {
+    const ok = await inFlight.waitFor(fn.id, input.waitTimeoutMs ?? 10000);
+    if (!ok && inFlight.has(fn.id)) {
+      return { status: 409, body: { error: 'an invoke is already in flight for this function' } };
+    }
+  } else if (inFlight.has(fn.id)) {
     return { status: 409, body: { error: 'an invoke is already in flight for this function' } };
   }
   inFlight.add(fn.id);
