@@ -59,7 +59,23 @@ export function App() {
     navigate({ search: (prev) => ({ ...prev, traceView: view === 'timeline' ? 'timeline' : undefined }) })
   }
   const [addOpen, setAddOpen] = useState(false)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const stored = localStorage.getItem('awsplay_event_drafts')
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem('awsplay_event_drafts', JSON.stringify(drafts))
+    } catch {}
+  }, [drafts])
+
   const [result, setResult] = useState<InvokeResult | null>(null)
   const [checkResults, setCheckResults] = useState<AssertionRun | null>(null)
   // Mirrors EventPanel's own local script draft, so an invoke triggered from
