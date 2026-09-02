@@ -3,19 +3,11 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { findVenvPython } = require('./detect');
 const { hasOwnTracingSetup } = require('../trace/auto-trace-detect');
 const traceReceiver = require('../trace/receiver');
 const traceCollector = require('../trace/collector');
 const pool = require('./pool');
 
-// Runtimes whose harness understands --warm and serves a request loop. The
-// rest still get a fresh process per invoke, which is exactly what they did
-// before; a runtime joins this set in the commit that converts its harness.
-// All four now. `provided` is the one where this is not a compromise: a real
-// custom runtime is written as a loop around /invocation/next, so keeping the
-// bootstrap alive is closer to AWS than restarting it per invoke was.
-const WARM_RUNTIMES = new Set(['node', 'python', 'java', 'provided']);
 
 const HARNESS_DIR = path.join(__dirname, '..', '..', 'harnesses');
 const AUTO_TRACE_BOOTSTRAP = path.join(HARNESS_DIR, 'node', 'auto-trace-bootstrap.cjs');
@@ -62,21 +54,12 @@ const BASE_ENV_KEYS = [
   'AWS_CA_BUNDLE', 'REQUESTS_CA_BUNDLE', 'CURL_CA_BUNDLE',
 ];
 
+const { getRuntimeDriver } = require('./drivers');
+
 function command(opts, harnessArgs, nodeRequireArgs = []) {
-  if (opts.runtime === 'python') {
-    const interp = findVenvPython(opts.dir) || 'python3';
-    return { cmd: interp, args: [path.join(HARNESS_DIR, 'python', 'harness.py'), ...harnessArgs] };
-  }
-  if (opts.runtime === 'node') {
-    return { cmd: process.execPath, args: ['--experimental-strip-types', ...nodeRequireArgs, path.join(HARNESS_DIR, 'node', 'harness.mjs'), ...harnessArgs] };
-  }
-  if (opts.runtime === 'provided') {
-    return { cmd: process.execPath, args: [path.join(HARNESS_DIR, 'provided', 'harness.mjs'), ...harnessArgs] };
-  }
-  if (opts.runtime === 'java') {
-    const harnessJar = path.join(HARNESS_DIR, 'java', 'harness.jar');
-    const cp = [harnessJar, opts.jarPath].filter(Boolean).join(path.delimiter);
-    return { cmd: 'java', args: ['-cp', cp, 'Harness', ...harnessArgs] };
+  const driver = getRuntimeDriver(opts.runtime);
+  if (driver) {
+    return driver.command(opts, harnessArgs, nodeRequireArgs);
   }
   throw new Error(`Unknown runtime: ${opts.runtime}`);
 }
@@ -162,10 +145,8 @@ async function invoke(opts) {
   const timeoutMs = opts.timeoutMs ?? 30000;
   const memoryMb = opts.memoryMb ?? 128;
   const resultFile = path.join(os.tmpdir(), `awsplay-${requestId}.json`);
-  // --result-file/--request-id still go on the command line so a harness that
-  // is started cold (or crashes before its first request) has somewhere to
-  // report an init failure. In warm mode each request carries its own.
-  const warm = WARM_RUNTIMES.has(opts.runtime) && !opts.disableWarm;
+  const driver = getRuntimeDriver(opts.runtime);
+  const warm = !!driver?.warm && !opts.disableWarm;
   const harnessArgs = ['--handler', opts.handler, '--result-file', resultFile,
     '--timeout-ms', String(timeoutMs), '--memory-mb', String(memoryMb),
     '--request-id', requestId, ...(warm ? ['--warm'] : [])];
