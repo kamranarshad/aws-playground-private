@@ -9,5 +9,8 @@
     "./types": { "types": "./types.d.ts", "default": "./types.d.ts" },
     "./bootstrap": "./bootstrap.js",
     "./ports": "./ports.js"
+  },
+  "dependencies": {
+    "@aws-playground/shared": "*"
   }
 }

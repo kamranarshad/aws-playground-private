@@ -12,7 +12,8 @@
   },
   "workspaces": [
     "server",
-    "web"
+    "web",
+    "shared"
   ],
   "scripts": {
     "start": "node bin/cli.js",
@@ -33,6 +34,7 @@
   "files": [
     "bin",
     "server",
+    "shared",
     "harnesses",
     "scripts",
     "web/dist"
