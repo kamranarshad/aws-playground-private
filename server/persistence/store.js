@@ -61,21 +61,22 @@ function save(db) {
       try { sqlite.exec('ROLLBACK'); } catch {}
       throw err;
     }
-  } catch {}
+  } catch (err) {
+    // The mirror is best-effort -- functions.json above is canonical -- but a
+    // failure here should still be visible, not silently swallowed.
+    console.warn(`aws-playground: failed to mirror functions to SQLite: ${err.message}`);
+  }
 }
 
 function list() {
   return load().functions;
 }
 
+// Reads the same canonical source as list(). The SQLite mirror is
+// deliberately not consulted: if a mirror write ever failed, get() serving
+// the stale mirror while list() serves the fresh file would make an invoke
+// run a different configuration than the one the UI displays.
 function get(id) {
-  try {
-    const sqlite = getDb(dataDir());
-    const row = sqlite.prepare('SELECT data FROM functions WHERE id = ?').get(id);
-    if (row && row.data) {
-      return JSON.parse(String(row.data));
-    }
-  } catch {}
   return list().find(f => f.id === id) || null;
 }
 

@@ -113,3 +113,19 @@ test('a leftover temp file from a crash does not confuse the registry', () => {
   assert.strictEqual(fs.readFileSync(file, 'utf8'), before);
   assert.strictEqual(store.get(fn.id).name, 'keeper');
 });
+
+test('get reads the canonical functions.json, including hand-edits', () => {
+  process.env.AWS_PLAYGROUND_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'awsplay-canon-'));
+  const fn = store.create({ name: 'hand-edit', path: '/tmp/hand-edit', runtime: 'node' });
+  const file = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'functions.json');
+
+  // Edit the registry behind the store's back, the way a user (or a test
+  // relying on the disk contract) would. get() must agree with list() and
+  // serve the edited value, not a stale copy from a secondary store.
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  onDisk.functions[0].handler = 'edited.handler';
+  fs.writeFileSync(file, JSON.stringify(onDisk));
+
+  assert.strictEqual(store.list().find((f) => f.id === fn.id).handler, 'edited.handler');
+  assert.strictEqual(store.get(fn.id).handler, 'edited.handler');
+});
