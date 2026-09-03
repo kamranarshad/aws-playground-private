@@ -2,23 +2,22 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { dataDir } = require('./store');
-const { writeFileAtomic } = require('./atomic-write');
+const { getDb } = require('./sqlite');
 
+// The default list page size. Not a retention limit -- see RETAIN.
 const MAX_ENTRIES = 50;
 const MAX_FIELD_BYTES = 64 * 1024;
 
-// Appends are unbounded between reads, so a session that never opens the
-// History tab would grow the file forever. This is the backstop: one stat
-// per append (no parse), compacting only when the file is genuinely large.
-const COMPACT_BYTES = 4 * 1024 * 1024;
+// How many runs per function survive on disk. list() shows MAX_ENTRIES by
+// default and paginates over the rest; getStats() aggregates exactly this
+// retained set, so the History tab and the stats panel can never describe
+// different data. Overridable for operators who want a longer (or shorter)
+// window than the default.
+const RETAIN = 1000;
 
-function compactBytes() {
-  const parsed = parseInt(process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES, 10);
-  return Number.isFinite(parsed) ? parsed : COMPACT_BYTES;
-}
-
-function fileFor(functionId) {
-  return path.join(dataDir(), 'history', `${functionId}.jsonl`);
+function retainLimit() {
+  const parsed = parseInt(process.env.AWS_PLAYGROUND_HISTORY_RETAIN, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : RETAIN;
 }
 
 function capString(s) {
@@ -41,66 +40,95 @@ function capJson(value) {
   return { value: cut, truncated: true };
 }
 
-// Everything on disk, oldest first. May exceed MAX_ENTRIES: appends are
-// append-only and trimming happens here, on the read side.
-function readAll(functionId) {
+// --- legacy JSONL import ---------------------------------------------------
+
+// Installs that predate the SQLite consolidation hold their runs in
+// history/<functionId>.jsonl. Every read path imports one before answering.
+function legacyFile(functionId) {
+  return path.join(dataDir(), 'history', `${functionId}.jsonl`);
+}
+
+// One existsSync per function per process, rather than per read.
+/** @type {Set<string>} */
+const importChecked = new Set();
+
+function insertRow(sqlite, functionId, entry, ignoreConflict = false) {
+  sqlite.prepare(
+    `INSERT ${ignoreConflict ? 'OR IGNORE ' : ''}INTO history `
+    + '(id, function_id, request_id, ts, duration_ms, ok, error_type, data) '
+    + 'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(
+    entry.id ?? crypto.randomUUID(),
+    functionId,
+    entry.report?.requestId ?? null,
+    entry.ts ?? Date.now(),
+    entry.durationMs ?? null,
+    entry.ok ? 1 : 0,
+    entry.error?.type ?? null,
+    JSON.stringify(entry),
+  );
+}
+
+// Imports history/<id>.jsonl into SQLite, then sets the file aside rather
+// than deleting it -- the same instinct store.js applies to a registry it
+// cannot parse. Renaming is what makes the import happen exactly once; a
+// re-import would be harmless (INSERT OR IGNORE keys on the entry id) but
+// would re-read the whole file on every list().
+function importLegacy(sqlite, functionId) {
+  if (importChecked.has(functionId)) return;
+  importChecked.add(functionId);
+  const file = legacyFile(functionId);
   let raw;
   try {
-    raw = fs.readFileSync(fileFor(functionId), 'utf8');
+    raw = fs.readFileSync(file, 'utf8');
   } catch {
-    return [];
+    return; // no legacy file, which is the common case
   }
-  const out = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    try { out.push(JSON.parse(line)); } catch {}
+  try {
+    sqlite.exec('BEGIN IMMEDIATE');
+    try {
+      for (const line of raw.split('\n')) {
+        if (!line.trim()) continue;
+        let entry;
+        try { entry = JSON.parse(line); } catch { continue; }
+        insertRow(sqlite, functionId, entry, true);
+      }
+      sqlite.exec('COMMIT');
+    } catch (err) {
+      try { sqlite.exec('ROLLBACK'); } catch {}
+      throw err;
+    }
+    trim(sqlite, functionId);
+    fs.renameSync(file, `${file}.imported`);
+  } catch (err) {
+    console.warn(
+      `aws-playground: could not import legacy history for ${functionId} `
+      + `(${err.message}); ${file} was left in place.`);
   }
-  return out;
 }
 
-function writeAll(functionId, oldestFirst) {
-  writeFileAtomic(fileFor(functionId), oldestFirst.map(e => JSON.stringify(e)).join('\n') + '\n');
+// Every read and write path goes through here, so a pre-existing install sees
+// its runs on the first access, whichever one it happens to be.
+function readyDb(functionId) {
+  const sqlite = getDb(dataDir());
+  importLegacy(sqlite, functionId);
+  return sqlite;
 }
 
-const { getDb } = require('./sqlite');
+// --- writes ----------------------------------------------------------------
 
-/**
- * @param {string} functionId
- * @param {{ limit?: number, offset?: number }} [opts]
- */
-function list(functionId, opts) {
-  const limit = (opts && typeof opts.limit === 'number') ? opts.limit : MAX_ENTRIES;
-  const offset = (opts && typeof opts.offset === 'number') ? opts.offset : 0;
-
-  // Preserve disk compaction contract: if file exists and exceeds cap, compact it
-  const all = readAll(functionId);
-  if (all.length > MAX_ENTRIES) {
-    const keep = all.slice(-MAX_ENTRIES);
-    try { writeAll(functionId, keep); } catch {}
-  }
-
-  try {
-    const sqlite = getDb(dataDir());
-    const rows = sqlite.prepare('SELECT data FROM history WHERE function_id = ? ORDER BY ts DESC, rowid DESC LIMIT ? OFFSET ?')
-      .all(functionId, limit, offset);
-    if (rows && rows.length > 0) {
-      return rows.map(r => JSON.parse(String(r.data)));
-    }
-  } catch {}
-
-  if (!all.length) return [];
-
-  // Backfill SQLite if file exists but SQLite has no records yet
-  try {
-    const sqlite = getDb(dataDir());
-    const insert = sqlite.prepare('INSERT OR IGNORE INTO history (id, function_id, request_id, ts, duration_ms, ok, error_type, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-    for (const e of all) {
-      insert.run(e.id || crypto.randomUUID(), functionId, e.report?.requestId ?? null, e.ts || Date.now(), e.durationMs ?? null, e.ok ? 1 : 0, e.error?.type ?? null, JSON.stringify(e));
-    }
-  } catch {}
-
-  const result = all.length <= MAX_ENTRIES ? all.reverse() : all.slice(-MAX_ENTRIES).reverse();
-  return result.slice(offset, offset + limit);
+// Drops everything older than the newest retainLimit() runs. rowid is
+// SQLite's insertion counter, so this is exact even when several runs share a
+// millisecond ts. The subquery yields no row (and the DELETE matches nothing)
+// until the function is actually over the cap, so the hot path pays one
+// indexed lookup per invoke, not a scan.
+function trim(sqlite, functionId) {
+  sqlite.prepare(`
+    DELETE FROM history WHERE function_id = ? AND rowid <= (
+      SELECT rowid FROM history WHERE function_id = ?
+      ORDER BY rowid DESC LIMIT 1 OFFSET ?
+    )
+  `).run(functionId, functionId, retainLimit());
 }
 
 function append(functionId, entry) {
@@ -124,153 +152,136 @@ function append(functionId, entry) {
     ...(trace.value !== null ? { trace: trace.value } : {}),
     durationMs: entry.durationMs ?? null,
     ok: !!entry.ok,
-    truncated: logs.truncated || event.truncated || response.truncated || report.truncated || trace.truncated,
+    truncated: logs.truncated || event.truncated || response.truncated
+      || report.truncated || trace.truncated,
   };
-  const file = fileFor(functionId);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.appendFileSync(file, JSON.stringify(stored) + '\n');
-  try {
-    const sqlite = getDb(dataDir());
-    sqlite.prepare('INSERT INTO history (id, function_id, request_id, ts, duration_ms, ok, error_type, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(
-        stored.id,
-        functionId,
-        stored.report?.requestId ?? null,
-        stored.ts,
-        stored.durationMs ?? null,
-        stored.ok ? 1 : 0,
-        stored.error?.type ?? null,
-        JSON.stringify(stored)
-      );
-  } catch {}
-  try {
-    if (fs.statSync(file).size > compactBytes()) {
-      writeAll(functionId, readAll(functionId).slice(-MAX_ENTRIES));
-    }
-  } catch {}
+  const sqlite = readyDb(functionId);
+  insertRow(sqlite, functionId, stored);
+  trim(sqlite, functionId);
   return stored;
 }
 
-function getByRequestId(functionId, requestId) {
-  try {
-    const sqlite = getDb(dataDir());
-    const row = sqlite.prepare('SELECT data FROM history WHERE function_id = ? AND request_id = ?').get(functionId, requestId);
-    if (row && row.data) return JSON.parse(String(row.data));
-  } catch {}
-  return readAll(functionId).find((e) => e.report?.requestId === requestId) ?? null;
-}
-
-// Merges late-arriving spans into an already-persisted entry, found by its
-// report.requestId (entries aren't otherwise indexed by that field). No-ops
-// if the entry isn't found -- e.g. it was trimmed by MAX_ENTRIES compaction
-// while the trace window was still open, an edge the window's short default
-// (10s) makes unlikely to matter in practice.
+// Merges late-arriving spans into an already-persisted run, found by its
+// report.requestId. No-ops if the run is not found -- e.g. it aged out past
+// retainLimit() while the trace window was still open, an edge the window's
+// short default (10s) makes unlikely to matter in practice.
 function appendSpans(functionId, requestId, spans, pending) {
   if (!functionId) return;
-  const all = readAll(functionId);
-  const entry = all.find((e) => e.report?.requestId === requestId);
-  if (!entry) return;
-  const existingSpans = Array.isArray(entry.trace?.spans) ? entry.trace.spans : [];
-  const merged = capJson({ spans: existingSpans.concat(spans), pending });
-  entry.trace = merged.value;
-  entry.truncated = entry.truncated || merged.truncated;
-  writeAll(functionId, all);
   try {
-    const sqlite = getDb(dataDir());
+    const sqlite = readyDb(functionId);
+    const row = sqlite.prepare(
+      'SELECT data FROM history WHERE function_id = ? AND request_id = ?')
+      .get(functionId, requestId);
+    if (!row) return;
+    const entry = JSON.parse(String(row.data));
+    const existingSpans = Array.isArray(entry.trace?.spans) ? entry.trace.spans : [];
+    const merged = capJson({ spans: existingSpans.concat(spans), pending });
+    entry.trace = merged.value;
+    entry.truncated = entry.truncated || merged.truncated;
     sqlite.prepare('UPDATE history SET data = ? WHERE function_id = ? AND request_id = ?')
       .run(JSON.stringify(entry), functionId, requestId);
-  } catch {}
+  } catch (err) {
+    console.warn(`aws-playground: failed to merge trace spans: ${err.message}`);
+  }
 }
 
 function clear(functionId) {
+  const removed = getDb(dataDir())
+    .prepare('DELETE FROM history WHERE function_id = ?').run(functionId).changes > 0;
+  // A legacy file that was never read would otherwise resurrect, on the next
+  // list(), the history the user just cleared.
+  let legacyRemoved = false;
   try {
-    getDb(dataDir()).prepare('DELETE FROM history WHERE function_id = ?').run(functionId);
+    fs.rmSync(legacyFile(functionId));
+    legacyRemoved = true;
   } catch {}
-  try {
-    fs.rmSync(fileFor(functionId));
-    return true;
-  } catch {
-    return false;
-  }
+  importChecked.add(functionId);
+  return removed || legacyRemoved;
 }
+
+// --- reads -----------------------------------------------------------------
+
+/**
+ * Newest first.
+ * @param {string} functionId
+ * @param {{ limit?: number, offset?: number }} [opts]
+ */
+function list(functionId, opts) {
+  const limit = (opts && typeof opts.limit === 'number') ? opts.limit : MAX_ENTRIES;
+  const offset = (opts && typeof opts.offset === 'number') ? opts.offset : 0;
+  const rows = readyDb(functionId).prepare(
+    'SELECT data FROM history WHERE function_id = ? '
+    + 'ORDER BY ts DESC, rowid DESC LIMIT ? OFFSET ?')
+    .all(functionId, limit, offset);
+  return rows.map((r) => JSON.parse(String(r.data)));
+}
+
+function getByRequestId(functionId, requestId) {
+  const row = readyDb(functionId).prepare(
+    'SELECT data FROM history WHERE function_id = ? AND request_id = ?')
+    .get(functionId, requestId);
+  return row?.data ? JSON.parse(String(row.data)) : null;
+}
+
+const EMPTY_STATS = Object.freeze({
+  total: 0,
+  successes: 0,
+  failures: 0,
+  errorRate: 0,
+  avgDurationMs: null,
+  minDurationMs: null,
+  maxDurationMs: null,
+  p50DurationMs: null,
+  p95DurationMs: null,
+  p99DurationMs: null,
+});
+
+const round2 = (/** @type {number | null | undefined} */ n) =>
+  n != null ? Number(Number(n).toFixed(2)) : null;
 
 function getStats(functionId) {
-  try {
-    const sqlite = getDb(dataDir());
-    /** @type {{ total?: number, successes?: number, failures?: number, avg_duration?: number, min_duration?: number, max_duration?: number } | undefined} */
-    const row = sqlite.prepare(`
-      SELECT
-        COUNT(*) AS total,
-        COALESCE(SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END), 0) AS successes,
-        COALESCE(SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END), 0) AS failures,
-        AVG(duration_ms) AS avg_duration,
-        MIN(duration_ms) AS min_duration,
-        MAX(duration_ms) AS max_duration
-      FROM history
-      WHERE function_id = ?
-    `).get(functionId);
+  const sqlite = readyDb(functionId);
+  /** @type {any} */
+  const row = sqlite.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      COALESCE(SUM(CASE WHEN ok = 1 THEN 1 ELSE 0 END), 0) AS successes,
+      COALESCE(SUM(CASE WHEN ok = 0 THEN 1 ELSE 0 END), 0) AS failures,
+      AVG(duration_ms) AS avg_duration,
+      MIN(duration_ms) AS min_duration,
+      MAX(duration_ms) AS max_duration
+    FROM history
+    WHERE function_id = ?
+  `).get(functionId);
 
-    const total = Number(row?.total ?? 0);
-    const successes = Number(row?.successes ?? 0);
-    const failures = Number(row?.failures ?? 0);
-    const avgDuration = row?.avg_duration != null ? Number(row.avg_duration) : null;
-    const minDuration = row?.min_duration != null ? Number(row.min_duration) : null;
-    const maxDuration = row?.max_duration != null ? Number(row.max_duration) : null;
+  const total = Number(row?.total ?? 0);
+  if (total === 0) return { ...EMPTY_STATS };
 
-    if (total === 0) {
-      return {
-        total: 0,
-        successes: 0,
-        failures: 0,
-        errorRate: 0,
-        avgDurationMs: null,
-        minDurationMs: null,
-        maxDurationMs: null,
-        p50DurationMs: null,
-        p95DurationMs: null,
-        p99DurationMs: null,
-      };
-    }
+  const failures = Number(row?.failures ?? 0);
+  const durations = sqlite.prepare(`
+    SELECT duration_ms FROM history
+    WHERE function_id = ? AND duration_ms IS NOT NULL
+    ORDER BY duration_ms ASC
+  `).all(functionId).map((r) => Number(r.duration_ms));
 
-    const durations = sqlite.prepare(`
-      SELECT duration_ms FROM history
-      WHERE function_id = ? AND duration_ms IS NOT NULL
-      ORDER BY duration_ms ASC
-    `).all(functionId).map(r => Number(r.duration_ms));
+  const percentile = (/** @type {number} */ p) => {
+    if (!durations.length) return null;
+    return durations[Math.min(Math.floor((p / 100) * durations.length), durations.length - 1)];
+  };
 
-    const percentile = (/** @type {number} */ p) => {
-      if (!durations.length) return null;
-      const idx = Math.min(Math.floor((p / 100) * durations.length), durations.length - 1);
-      return durations[idx];
-    };
-
-    return {
-      total,
-      successes,
-      failures,
-      errorRate: total > 0 ? Number((failures / total).toFixed(4)) : 0,
-      avgDurationMs: avgDuration != null ? Number(avgDuration.toFixed(2)) : null,
-      minDurationMs: minDuration != null ? Number(minDuration.toFixed(2)) : null,
-      maxDurationMs: maxDuration != null ? Number(maxDuration.toFixed(2)) : null,
-      p50DurationMs: percentile(50),
-      p95DurationMs: percentile(95),
-      p99DurationMs: percentile(99),
-    };
-  } catch {
-    return {
-      total: 0,
-      successes: 0,
-      failures: 0,
-      errorRate: 0,
-      avgDurationMs: null,
-      minDurationMs: null,
-      maxDurationMs: null,
-      p50DurationMs: null,
-      p95DurationMs: null,
-      p99DurationMs: null,
-    };
-  }
+  return {
+    total,
+    successes: Number(row?.successes ?? 0),
+    failures,
+    errorRate: Number((failures / total).toFixed(4)),
+    avgDurationMs: round2(row?.avg_duration),
+    minDurationMs: round2(row?.min_duration),
+    maxDurationMs: round2(row?.max_duration),
+    p50DurationMs: percentile(50),
+    p95DurationMs: percentile(95),
+    p99DurationMs: percentile(99),
+  };
 }
 
-module.exports = { append, list, clear, getByRequestId, appendSpans, getStats, MAX_ENTRIES, MAX_FIELD_BYTES,
-  COMPACT_BYTES, compactBytes };
+module.exports = { append, list, clear, getByRequestId, appendSpans, getStats,
+  MAX_ENTRIES, MAX_FIELD_BYTES, RETAIN, retainLimit };

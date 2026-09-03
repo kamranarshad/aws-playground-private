@@ -30,7 +30,9 @@ test('list of unknown function is empty', () => {
   assert.deepStrictEqual(history.list('nope'), []);
 });
 
-test('cap at MAX_ENTRIES, oldest trimmed', () => {
+// MAX_ENTRIES is the default page size: a function with more retained runs
+// than that still answers a bare list() with the newest MAX_ENTRIES.
+test('list returns the newest MAX_ENTRIES by default', () => {
   for (let i = 0; i < history.MAX_ENTRIES + 7; i++) {
     history.append('fn2', entry({ logs: `run-${i}` }));
   }
@@ -38,50 +40,6 @@ test('cap at MAX_ENTRIES, oldest trimmed', () => {
   assert.strictEqual(entries.length, history.MAX_ENTRIES);
   assert.strictEqual(entries[0].logs, `run-${history.MAX_ENTRIES + 6}`);
   assert.strictEqual(entries[entries.length - 1].logs, 'run-7');
-});
-
-function historyFile(functionId) {
-  return path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history', `${functionId}.jsonl`);
-}
-
-function lineCount(functionId) {
-  return fs.readFileSync(historyFile(functionId), 'utf8').trim().split('\n').length;
-}
-
-// Invoking is the hot path: it should cost one appended line, not a full
-// read-parse-rewrite of every retained run. Trimming moves to the read side,
-// where the entries are already parsed.
-test('append only appends; list trims to the cap and compacts', () => {
-  for (let i = 0; i < history.MAX_ENTRIES + 5; i++) {
-    history.append('fn8', entry({ logs: `run-${i}` }));
-  }
-  assert.strictEqual(lineCount('fn8'), history.MAX_ENTRIES + 5,
-    'append should not rewrite the file to trim');
-
-  const entries = history.list('fn8');
-
-  assert.strictEqual(entries.length, history.MAX_ENTRIES);
-  assert.strictEqual(entries[0].logs, `run-${history.MAX_ENTRIES + 4}`);
-  assert.strictEqual(lineCount('fn8'), history.MAX_ENTRIES,
-    'list should compact the file it just trimmed');
-});
-
-// The read-side trim alone would let a long run that never opens the
-// History tab grow the file without bound, so append keeps a cheap
-// size guard (one stat, no parse).
-test('append compacts on its own once the file passes the size guard', () => {
-  process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = '2000';
-  try {
-    for (let i = 0; i < history.MAX_ENTRIES + 10; i++) {
-      history.append('fn9', entry({ logs: `run-${i}` }));
-    }
-    assert.ok(lineCount('fn9') <= history.MAX_ENTRIES,
-      `file should self-compact, has ${lineCount('fn9')} lines`);
-    assert.strictEqual(history.list('fn9')[0].logs, `run-${history.MAX_ENTRIES + 9}`,
-      'compaction must keep the newest runs');
-  } finally {
-    delete process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
-  }
 });
 
 test('oversized fields are truncated and flagged', () => {
@@ -125,18 +83,7 @@ test('per-field truncation is independent of other oversized fields', () => {
   assert.deepStrictEqual(stored.response, { ok: 1 });
 });
 
-test('compactBytes falls back to the default when the env override is not a number', () => {
-  const prev = process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
-  process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = 'unlimited';
-  try {
-    assert.strictEqual(history.compactBytes(), history.COMPACT_BYTES);
-  } finally {
-    if (prev === undefined) delete process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES;
-    else process.env.AWS_PLAYGROUND_HISTORY_COMPACT_BYTES = prev;
-  }
-});
-
-test('clear removes the file', () => {
+test('clear removes the stored runs', () => {
   history.append('fn5', entry());
   assert.strictEqual(history.clear('fn5'), true);
   assert.deepStrictEqual(history.list('fn5'), []);
@@ -205,21 +152,128 @@ test('appendSpans no-ops for an unknown functionId, requestId, or falsy function
   assert.strictEqual(history.getByRequestId('fn15', 'req-y').trace, undefined);
 });
 
-test('compaction never leaves a torn history file', () => {
-  const fnId = 'compact-atomic';
-  for (let i = 0; i < 60; i++) {
-    history.append(fnId, { handler: 'h', event: { i }, response: { i }, logs: '', report: {}, ok: true });
+// --- retention: one engine, one retained set -------------------------------
+// Stats used to aggregate every run ever recorded while list() returned at
+// most MAX_ENTRIES, so the two panels described different data and drifted
+// further apart the longer the install was used.
+test('stats aggregate only the runs retention keeps', () => {
+  process.env.AWS_PLAYGROUND_HISTORY_RETAIN = '10';
+  try {
+    for (let i = 0; i < 25; i++) history.append('retain1', entry({ durationMs: i + 1 }));
+    assert.strictEqual(history.getStats('retain1').total, 10);
+  } finally {
+    delete process.env.AWS_PLAYGROUND_HISTORY_RETAIN;
   }
-  const file = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history', `${fnId}.jsonl`);
+});
 
-  // list() trims past MAX_ENTRIES via writeAll. Every line on disk after it
-  // must still be parseable -- a torn rewrite shows up as a trailing
-  // fragment that JSON.parse rejects.
-  history.list(fnId);
-  const lines = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.trim());
-  assert.strictEqual(lines.length, history.MAX_ENTRIES);
-  for (const line of lines) assert.doesNotThrow(() => JSON.parse(line));
-  assert.deepStrictEqual(
-    fs.readdirSync(path.dirname(file)).filter((f) => f.endsWith('.tmp')), [],
-    'a .tmp file was left behind');
+// The JSONL half was trimmed to MAX_ENTRIES while SQLite kept the row, so a
+// late span for a run just outside the list window was silently dropped even
+// though the run was still retained and still visible via pagination.
+test('appendSpans reaches a retained run outside the default list window', () => {
+  for (let i = 0; i < history.MAX_ENTRIES + 10; i++) {
+    history.append('spans-deep', entry({ report: { requestId: `req-${i}`, durationMs: 1 } }));
+  }
+  history.list('spans-deep');
+
+  history.appendSpans('spans-deep', 'req-2', [{ name: 'late' }], false);
+
+  const found = history.getByRequestId('spans-deep', 'req-2');
+  assert.ok(found, 'the run is still retained');
+  assert.deepStrictEqual(found.trace.spans, [{ name: 'late' }]);
+  assert.strictEqual(found.trace.pending, false);
+});
+
+// Installs that predate the SQLite consolidation keep their runs in
+// history/<id>.jsonl. Those must survive the switch, and must be imported
+// exactly once -- the legacy file is set aside (not deleted) afterwards, the
+// same instinct store.js applies to an unreadable registry.
+test('legacy JSONL history is imported once and the file retired', () => {
+  const dir = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history');
+  fs.mkdirSync(dir, { recursive: true });
+  const legacy = path.join(dir, 'legacy1.jsonl');
+  fs.writeFileSync(legacy, [
+    { id: 'a', ts: 1, logs: 'old-1', ok: true, durationMs: 3, report: { requestId: 'leg-1' } },
+    { id: 'b', ts: 2, logs: 'old-2', ok: true, durationMs: 7, report: { requestId: 'leg-2' } },
+  ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+
+  const listed = history.list('legacy1');
+
+  assert.strictEqual(listed.length, 2);
+  assert.strictEqual(listed[0].logs, 'old-2', 'newest first');
+  assert.strictEqual(history.getStats('legacy1').total, 2, 'imported runs count toward stats');
+  assert.strictEqual(history.getByRequestId('legacy1', 'leg-1').logs, 'old-1');
+  assert.strictEqual(fs.existsSync(legacy), false, 'the legacy file is retired once imported');
+  assert.ok(fs.existsSync(legacy + '.imported'), 'it is set aside, not deleted');
+});
+
+// Replaces the old JSONL line-count tests: what they were really protecting
+// is that stored history stays bounded on the invoke path without a read
+// having to happen first, and that trimming keeps the newest runs.
+test('append alone bounds stored history, keeping the newest runs', () => {
+  process.env.AWS_PLAYGROUND_HISTORY_RETAIN = '20';
+  try {
+    for (let i = 0; i < 75; i++) history.append('retain2', entry({ logs: `run-${i}` }));
+
+    // No list() in between -- the bound must hold on writes alone.
+    const all = history.list('retain2', { limit: 1000 });
+    assert.strictEqual(all.length, 20);
+    assert.strictEqual(all[0].logs, 'run-74');
+    assert.strictEqual(all[all.length - 1].logs, 'run-55');
+  } finally {
+    delete process.env.AWS_PLAYGROUND_HISTORY_RETAIN;
+  }
+});
+
+// Replaces the torn-file test: trimming must never leave a retained run
+// unreadable or half-written.
+test('every retained run stays readable after trimming', () => {
+  process.env.AWS_PLAYGROUND_HISTORY_RETAIN = '15';
+  try {
+    for (let i = 0; i < 60; i++) {
+      history.append('retain3', entry({ event: { i }, report: { requestId: `r-${i}`, durationMs: i } }));
+    }
+    const all = history.list('retain3', { limit: 1000 });
+    assert.strictEqual(all.length, 15);
+    for (const e of all) {
+      assert.ok(e.id, 'entry survived intact');
+      assert.strictEqual(typeof e.event.i, 'number');
+      assert.ok(history.getByRequestId('retain3', e.report.requestId), 'still addressable by requestId');
+    }
+  } finally {
+    delete process.env.AWS_PLAYGROUND_HISTORY_RETAIN;
+  }
+});
+
+test('list paginates over the retained set beyond the default window', () => {
+  for (let i = 0; i < 120; i++) history.append('paged', entry({ logs: `run-${i}` }));
+  const first = history.list('paged');
+  assert.strictEqual(first.length, history.MAX_ENTRIES);
+  assert.strictEqual(first[0].logs, 'run-119');
+  const second = history.list('paged', { limit: history.MAX_ENTRIES, offset: history.MAX_ENTRIES });
+  assert.strictEqual(second.length, history.MAX_ENTRIES);
+  assert.strictEqual(second[0].logs, 'run-69');
+  assert.strictEqual(history.getStats('paged').total, 120, 'stats see the whole retained set');
+});
+
+test('retainLimit falls back to the default when the env override is not a number', () => {
+  const prev = process.env.AWS_PLAYGROUND_HISTORY_RETAIN;
+  process.env.AWS_PLAYGROUND_HISTORY_RETAIN = 'unlimited';
+  try {
+    assert.strictEqual(history.retainLimit(), history.RETAIN);
+    process.env.AWS_PLAYGROUND_HISTORY_RETAIN = '0';
+    assert.strictEqual(history.retainLimit(), history.RETAIN);
+  } finally {
+    if (prev === undefined) delete process.env.AWS_PLAYGROUND_HISTORY_RETAIN;
+    else process.env.AWS_PLAYGROUND_HISTORY_RETAIN = prev;
+  }
+});
+
+test('clearing history also retires an unread legacy file', () => {
+  const dir = path.join(process.env.AWS_PLAYGROUND_DATA_DIR, 'history');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'legacy2.jsonl'),
+    JSON.stringify({ id: 'z', ts: 1, logs: 'old', ok: true, report: { requestId: 'leg-z' } }) + '\n');
+
+  assert.strictEqual(history.clear('legacy2'), true);
+  assert.deepStrictEqual(history.list('legacy2'), [], 'cleared history does not resurrect');
 });

@@ -339,8 +339,15 @@ See `fixtures/javascript/auto-trace-http` for a working example: a plain CommonJ
 
 Registered functions, per-function env vars, and saved events live in
 `~/.aws-playground/functions.json` (override with `AWS_PLAYGROUND_DATA_DIR`).
-Invoke history lives in `<dataDir>/history/<functionId>.jsonl` (50 runs per
-function).
+Invoke history lives in `<dataDir>/playground.db` (Node's built-in SQLite),
+which keeps the newest 1000 runs per function — set
+`AWS_PLAYGROUND_HISTORY_RETAIN` to change that. The History tab shows 50 at a
+time and pages back through the rest; the stats panel aggregates exactly the
+same retained runs.
+
+Upgrading from a version that stored history in `<dataDir>/history/*.jsonl`
+needs no action: each function's file is imported into SQLite the first time
+its history is read, then renamed to `.jsonl.imported`.
 
 ## Development
 

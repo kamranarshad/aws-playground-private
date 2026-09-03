@@ -89,7 +89,9 @@ To match real AWS Lambda execution environment reuse:
 
 Data is persisted in `~/.aws-playground/` (configurable via `AWS_PLAYGROUND_DATA_DIR`):
 - **Functions & Metadata**: The canonical registry is `functions.json`, written atomically on every change; both `list()` and `get()` read from it, so the store can never serve two different versions of a function. Each save is also mirrored into `playground.db` (Node 22's native `node:sqlite`) in an ACID transaction for inspection and tooling; the mirror is best-effort and never read back by the server.
-- **History Logs**: Invocations are recorded in `history` with indexed lookups on `function_id`, `request_id`, and `ts`. Older entries beyond retention limits (50 per function) are trimmed automatically.
+- **History Logs**: `playground.db` is the single store for invoke history, with indexed lookups on `function_id`, `request_id`, and `ts`. `append()` trims to the newest `RETAIN` runs per function (1000 by default, `AWS_PLAYGROUND_HISTORY_RETAIN` to override) using SQLite's `rowid` as the insertion order, so the bound holds on the write path without a read having to happen first.
+
+  Because retention is enforced in one place, every reader describes the same set of runs: `list()` pages over it (50 at a time by default), `getStats()` aggregates it, and `appendSpans()` can reach any run still inside it. History predating this consolidation lives in `<dataDir>/history/<functionId>.jsonl`; the first read of a function imports that file into SQLite and renames it to `.jsonl.imported`.
 
 ---
 
