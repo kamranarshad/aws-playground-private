@@ -1,5 +1,8 @@
+// The router is transport only: parse the request, dispatch to the backend,
+// serialize the result. SSE broadcasts happen inside the api layer itself
+// (see api/events.js callers) so non-HTTP callers trigger them too.
 const backend = require('./index');
-const { handleEventsSubscription, broadcast } = require('./events');
+const { handleEventsSubscription } = require('./events');
 
 async function readJsonBody(req) {
   const chunks = [];
@@ -70,9 +73,6 @@ async function handleApiRequest(req, res) {
       const body = await readJsonBody(req);
       const result = backend.createFunction(body);
       sendJson(res, result.status, result.body);
-      if (result.status === 201 || result.status === 200) {
-        broadcast('functions', result.body);
-      }
       return true;
     }
 
@@ -86,14 +86,12 @@ async function handleApiRequest(req, res) {
           const body = await readJsonBody(req);
           const result = backend.updateFunction(id, body);
           sendJson(res, result.status, result.body);
-          if (result.status === 200) broadcast('functions', result.body);
           return true;
         }
         if (req.method === 'DELETE') {
           const result = backend.deleteFunction(id);
           if (result.status === 204) sendEmpty(res, 204);
           else sendJson(res, result.status, result.body);
-          if (result.status === 204) broadcast('functions', { id });
           return true;
         }
       }
@@ -121,7 +119,6 @@ async function handleApiRequest(req, res) {
           const result = backend.clearHistory(id);
           if (result.status === 204) sendEmpty(res, 204);
           else sendJson(res, result.status, result.body);
-          if (result.status === 204) broadcast('history', { functionId: id });
           return true;
         }
       }
@@ -147,7 +144,6 @@ async function handleApiRequest(req, res) {
       const body = await readJsonBody(req);
       const result = await backend.invokeFunction(body);
       sendJson(res, result.status, result.body);
-      if (result.status === 200) broadcast('history', { functionId: body?.functionId });
       return true;
     }
 
@@ -164,13 +160,11 @@ async function handleApiRequest(req, res) {
       if (parts[1] === 'start' && req.method === 'POST') {
         const result = await backend.startService(name);
         sendJson(res, result.status, result.body);
-        if (result.status === 200) broadcast('services', result.body);
         return true;
       }
       if (parts[1] === 'stop' && req.method === 'POST') {
         const result = await backend.stopService(name);
         sendJson(res, result.status, result.body);
-        if (result.status === 200) broadcast('services', result.body);
         return true;
       }
     }
@@ -179,7 +173,6 @@ async function handleApiRequest(req, res) {
       const body = await readJsonBody(req);
       const result = await backend.setSelection(body);
       sendJson(res, result.status, result.body);
-      if (result.status === 200) broadcast('services', result.body);
       return true;
     }
 

@@ -1,5 +1,9 @@
 const store = require('../persistence/store');
 const schema = require('../schema');
+// Broadcasts live here in the api layer, not in the HTTP router: a mutation
+// must reach SSE subscribers no matter which caller drove it (HTTP route,
+// trigger fire, CLI), and the router only sees the first of those.
+const { broadcast } = require('./events');
 const { detectProject } = require('../runtime/detect');
 const history = require('../persistence/history');
 const inFlight = require('./in-flight');
@@ -28,6 +32,7 @@ function createFunction(input) {
   if (err) return { status: 400, body: { error: err } };
   const fn = store.create(input);
   manager.sync(fn, { invokeFunction });
+  broadcast('functions', fn);
   return { status: 201, body: fn };
 }
 
@@ -41,6 +46,7 @@ function updateFunction(id, patch) {
   // an edited function must never keep serving from the old configuration.
   pool.evictForFunction(id);
   manager.sync(fn, { invokeFunction });
+  broadcast('functions', fn);
   return { status: 200, body: fn };
 }
 
@@ -53,6 +59,7 @@ function deleteFunction(id) {
   pool.evictForFunction(id);
   if (!store.remove(id)) return { status: 404, body: { error: 'function not found' } };
   history.clear(id);
+  broadcast('functions', { id });
   return { status: 204 };
 }
 

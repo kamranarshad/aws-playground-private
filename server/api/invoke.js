@@ -9,6 +9,9 @@ const history = require('../persistence/history');
 const inFlight = require('./in-flight');
 const { effectiveServices, unknownServiceError } = require('./services');
 const { failureResult } = require('./invoke-result');
+// Emitted here rather than in the HTTP router so trigger-fired invokes
+// (which call invokeFunction directly) refresh the UI's history too.
+const { broadcast } = require('./events');
 
 async function invokeFunction(input) {
   const { functionId, source } = input || {};
@@ -50,6 +53,7 @@ async function invokeFunction(input) {
             source: source ?? { type: 'manual' },
           });
         } catch {}
+        broadcast('history', { functionId: fn.id });
         return { status: 200, body: result };
       }
     }
@@ -113,6 +117,7 @@ async function invokeFunction(input) {
     } catch (err) {
       console.warn(`aws-playground: failed to record invoke history: ${err.message}`);
     }
+    broadcast('history', { functionId: fn.id });
     return { status: 200, body: result };
   } catch (err) {
     return { status: 500, body: { error: err.message } };

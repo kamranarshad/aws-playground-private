@@ -1,6 +1,7 @@
 const store = require('../persistence/store');
 const history = require('../persistence/history');
 const traceCollector = require('../trace/collector');
+const { broadcast } = require('./events');
 
 function listHistory(functionId, opts = {}) {
   if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
@@ -10,6 +11,7 @@ function listHistory(functionId, opts = {}) {
 function clearHistory(functionId) {
   if (!store.get(functionId)) return { status: 404, body: { error: 'function not found' } };
   history.clear(functionId);
+  broadcast('history', { functionId });
   return { status: 204 };
 }
 

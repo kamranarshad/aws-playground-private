@@ -1,6 +1,7 @@
 const store = require('../persistence/store');
 const projectconfig = require('../persistence/projectconfig');
 const localServices = require('../services');
+const { broadcast } = require('./events');
 
 function effectiveServices(fn) {
   return projectconfig.read(fn.path).services ?? fn.localServices ?? [];
@@ -27,6 +28,7 @@ async function startService(name, opts) {
   }
   const r = await localServices.start(name, opts);
   if (!r.ok) return { status: 409, body: { error: r.output, state: r.state } };
+  broadcast('services', { state: r.state });
   return { status: 200, body: { state: r.state } };
 }
 
@@ -36,6 +38,7 @@ async function stopService(name) {
   }
   const r = await localServices.stop(name);
   if (!r.ok) return { status: 409, body: { error: r.output, state: r.state } };
+  broadcast('services', { state: r.state });
   return { status: 200, body: { state: r.state } };
 }
 
@@ -47,16 +50,18 @@ function selectionOpts(input) {
 async function setSelection(input) {
   const { functionId } = input || {};
   if (functionId === null || functionId === undefined) {
-    return { status: 200,
-      body: await localServices.setSelection([], selectionOpts(input)) };
+    const body = await localServices.setSelection([], selectionOpts(input));
+    broadcast('services', body);
+    return { status: 200, body };
   }
   const fn = store.get(functionId);
   if (!fn) return { status: 404, body: { error: 'function not found' } };
   const services = effectiveServices(fn);
   const err = unknownServiceError(services);
   if (err) return { status: 400, body: { error: err } };
-  return { status: 200,
-    body: await localServices.setSelection(services, selectionOpts(input)) };
+  const body = await localServices.setSelection(services, selectionOpts(input));
+  broadcast('services', body);
+  return { status: 200, body };
 }
 
 module.exports = { effectiveServices, unknownServiceError,
