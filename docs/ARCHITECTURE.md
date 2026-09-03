@@ -63,7 +63,7 @@ Both local development (`npm run dev`) and production standalone distribution (`
 
 ### Real-Time Observability via Server-Sent Events (SSE)
 `server/api/events.js` maintains a persistent SSE stream at `/api/events`. When functions are created/updated, local Docker services start/stop, triggers fire, or handler executions complete:
-1. `router.js` emits targeted events (`functions`, `triggers`, `services`, `history`).
+1. The API handlers in `server/api/` emit targeted events (`functions`, `services`, `history`) at the point where the state actually changes. Emitting from the api layer rather than the HTTP router means every caller triggers them — the router, a trigger fire calling `invokeFunction` directly, or the CLI.
 2. The web frontend hook `useServerEvents()` in `web/src/lib/events.ts` receives the event and invalidates TanStack Query keys, refreshing the UI in real time without polling overhead.
 
 ---
@@ -88,7 +88,7 @@ To match real AWS Lambda execution environment reuse:
 ## 5. Persistence Layer (`server/persistence/`)
 
 Data is persisted in `~/.aws-playground/` (configurable via `AWS_PLAYGROUND_DATA_DIR`):
-- **Functions & Metadata**: Stored in `playground.db` via Node 22's native `DatabaseSync` (`node:sqlite`). Operations use ACID transactions, with atomic backup to `functions.json` for disk test contract compatibility.
+- **Functions & Metadata**: The canonical registry is `functions.json`, written atomically on every change; both `list()` and `get()` read from it, so the store can never serve two different versions of a function. Each save is also mirrored into `playground.db` (Node 22's native `node:sqlite`) in an ACID transaction for inspection and tooling; the mirror is best-effort and never read back by the server.
 - **History Logs**: Invocations are recorded in `history` with indexed lookups on `function_id`, `request_id`, and `ts`. Older entries beyond retention limits (50 per function) are trimmed automatically.
 
 ---
