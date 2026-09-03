@@ -52,4 +52,21 @@ export default defineConfig({
     viteReact(),
     playgroundApiPlugin(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@codemirror') || id.includes('@uiw/react-codemirror')) {
+            return 'codemirror'
+          }
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'react-vendor'
+          }
+          if (id.includes('node_modules/radix-ui') || id.includes('lucide-react')) {
+            return 'ui-vendor'
+          }
+        },
+      },
+    },
+  },
 })
