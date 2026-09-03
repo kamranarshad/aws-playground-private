@@ -1,5 +1,7 @@
 export type Runtime = 'python' | 'node' | 'java' | 'provided'
 
+export declare const RUNTIMES: Runtime[]
+
 export interface SavedEvent {
   name: string
   event: unknown
@@ -36,6 +38,16 @@ export interface FunctionDef {
   savedEvents: SavedEvent[]
   autoTrace: boolean
 }
+
+/** Every function field a create/update request may set (everything but `id`). */
+export declare const ALLOWED_KEYS: (keyof Omit<FunctionDef, 'id'>)[]
+
+/** Defaults applied on create for every field not required in the request. */
+export declare const DEFAULTS: Omit<FunctionDef, 'id' | 'name' | 'path' | 'runtime'>
+
+export type ResultTab = 'response' | 'logs' | 'report' | 'trace' | 'checks' | 'history'
+
+export declare const RESULT_TABS: ResultTab[]
 
 export interface Ports {
   httpTrigger: number

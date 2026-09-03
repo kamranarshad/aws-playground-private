@@ -71,3 +71,10 @@ test('DEFAULTS covers every key store.create sets', () => {
     assert.ok(k in schema.DEFAULTS, `DEFAULTS is missing ${k}`);
   }
 });
+
+test('schema constants are the shared package constants, not copies', () => {
+  const shared = require('../../shared');
+  assert.strictEqual(schema.RUNTIMES, shared.RUNTIMES);
+  assert.strictEqual(schema.ALLOWED_KEYS, shared.ALLOWED_KEYS);
+  assert.strictEqual(schema.DEFAULTS, shared.DEFAULTS);
+});

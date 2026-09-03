@@ -1,7 +1,9 @@
 const fs = require('fs');
 const { validateTrigger } = require('./trigger');
-
-const RUNTIMES = ['python', 'node', 'java', 'provided'];
+// Required by path rather than as `@aws-playground/shared`: the workspace
+// symlink that makes the bare specifier resolve exists only in a dev
+// checkout, not in an installed copy of the published package.
+const { RUNTIMES, ALLOWED_KEYS, DEFAULTS } = require('../../shared');
 
 function getSupportedRuntimes() {
   try {
@@ -11,16 +13,6 @@ function getSupportedRuntimes() {
   } catch {}
   return RUNTIMES;
 }
-
-const ALLOWED_KEYS = ['name', 'path', 'runtime', 'handler', 'timeoutMs',
-  'memoryMb', 'jarPath', 'env', 'envFile', 'buildCommand', 'localServices',
-  'savedEvents', 'trigger', 'autoTrace'];
-
-const DEFAULTS = {
-  handler: '', timeoutMs: 30000, memoryMb: 128, jarPath: null, env: {},
-  envFile: 'auto', buildCommand: '', localServices: [], savedEvents: [],
-  trigger: null, autoTrace: false,
-};
 
 // Shared between create (fields always present) and update (fields present
 // only when patched) so a PATCH can't put the store into a state POST would

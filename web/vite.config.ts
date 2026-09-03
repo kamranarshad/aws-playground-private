@@ -40,6 +40,9 @@ function playgroundApiPlugin(): Plugin {
 export default defineConfig({
   server: { port: 3000 },
   resolve: { alias: { '@': path.resolve(dirname, './src') } },
+  // Linked workspace packages skip prebundling by default, but this one is
+  // CommonJS, which the dev server can't serve as-is.
+  optimizeDeps: { include: ['@aws-playground/shared'] },
   plugins: [
     tanstackRouter({
       target: 'react',
@@ -53,6 +56,9 @@ export default defineConfig({
     playgroundApiPlugin(),
   ],
   build: {
+    // Same linked-CommonJS problem as optimizeDeps above, for the production
+    // build: the CJS interop plugin only covers node_modules by default.
+    commonjsOptions: { include: [/node_modules/, /[\\/]shared[\\/]index\.js$/] },
     rollupOptions: {
       output: {
         manualChunks(id) {

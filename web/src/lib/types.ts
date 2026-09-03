@@ -26,7 +26,7 @@ export type {
   FunctionStats,
   ApiResult,
   PollerStatus,
+  ResultTab,
 } from '@aws-playground/shared'
 
-export type ResultTab = 'response' | 'logs' | 'report' | 'trace' | 'checks' | 'history'
-export const RESULT_TABS: ResultTab[] = ['response', 'logs', 'report', 'trace', 'checks', 'history']
+export { RESULT_TABS } from '@aws-playground/shared'
