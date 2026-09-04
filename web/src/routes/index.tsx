@@ -9,6 +9,7 @@ import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
 import { HistoryList } from '@/components/history-list'
+import { LayoutToggle } from '@/components/layout-toggle'
 import { ResultPanel } from '@/components/result-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
@@ -18,6 +19,7 @@ import { runAssertions, type AssertionRun } from '@/lib/assertions'
 import {
   useFunctions, useInvoke, useSelectionSync, useTracePoll,
 } from '@/lib/queries'
+import { useLayout } from '@/lib/use-layout'
 import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
 import type { TraceView } from '@/components/trace-tab'
 
@@ -58,6 +60,7 @@ export function App() {
   function onTraceViewChange(view: TraceView) {
     navigate({ search: (prev) => ({ ...prev, traceView: view === 'timeline' ? 'timeline' : undefined }) })
   }
+  const { layout, toggle: toggleLayout } = useLayout()
   const [addOpen, setAddOpen] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, string>>(() => {
     if (typeof window === 'undefined') return {}
@@ -201,6 +204,7 @@ export function App() {
         <div className="flex items-center gap-3">
           <HealthChips />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
+          <LayoutToggle layout={layout} onToggle={toggleLayout} />
           <ThemeToggle />
         </div>
       </header>
@@ -212,7 +216,10 @@ export function App() {
             <div className="flex h-full flex-col">
               <FunctionHeader key={`header-${selected.id}`} fn={selected} onDeleted={() => selectFunction(null)} />
               <EnvEditor key={selected.id} fn={selected} />
-              <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+              <ResizablePanelGroup
+                orientation={layout === 'stacked' ? 'vertical' : 'horizontal'}
+                className="min-h-0 flex-1"
+              >
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <EventPanel
                     // Function switches reset the inline script draft along

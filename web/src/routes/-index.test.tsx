@@ -250,3 +250,24 @@ it('restores the previously selected function on Back navigation', async () => {
 
   await screen.findByRole('heading', { name: 'order-lookup' })
 })
+
+it('toggles the event/result panes between side-by-side and stacked', async () => {
+  await renderApp('/')
+  // react-resizable-panels lays the group out with an inline flex-direction
+  // (the group carries no aria-orientation; only its separator does), so this
+  // is the arrangement the user actually sees.
+  const group = () => document.querySelector('[data-slot="resizable-panel-group"]') as HTMLElement
+  const handle = () => document.querySelector('[data-slot="resizable-handle"]') as HTMLElement
+  await waitFor(() => expect(group()).toBeTruthy())
+
+  expect(group().style.flexDirection).toBe('row')
+  expect(handle().getAttribute('aria-orientation')).toBe('vertical')
+
+  await userEvent.click(screen.getByLabelText('Toggle pane layout'))
+  expect(group().style.flexDirection).toBe('column')
+  // The separator flips too, which is what gives it its full-width styling.
+  expect(handle().getAttribute('aria-orientation')).toBe('horizontal')
+
+  await userEvent.click(screen.getByLabelText('Toggle pane layout'))
+  expect(group().style.flexDirection).toBe('row')
+})
