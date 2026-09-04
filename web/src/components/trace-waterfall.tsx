@@ -1,7 +1,8 @@
 import { Fragment, useState } from 'react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { SpanLabel } from '@/components/span-label'
 import {
-  layoutSpans, spanDurationMs, spanOffsetMs, ticksFor, timelineBounds,
+  SPAN_GUTTER_PX, layoutSpans, spanDurationMs, spanOffsetMs, ticksFor, timelineBounds,
 } from '@/lib/trace-layout'
 import { cn } from '@/lib/utils'
 import type { Span } from '@/lib/types'
@@ -74,12 +75,12 @@ export function TraceWaterfall({ spans, error }: { spans: Span[]; error?: string
             const widthPct = Math.max((spanDurationMs(span) / totalMs) * 100, MIN_BAR_WIDTH_PCT)
             return (
               <Fragment key={span.spanId}>
-                <div
-                  className="truncate pr-2 font-mono text-[11px]"
-                  style={{ height: ROW_HEIGHT_PX, lineHeight: `${ROW_HEIGHT_PX}px`, paddingLeft: `${depth * 12}px` }}
-                >
-                  {span.name}
-                </div>
+                <SpanLabel
+                  depth={depth}
+                  name={span.name}
+                  className="pr-2 font-mono text-[11px]"
+                  style={{ height: ROW_HEIGHT_PX, lineHeight: `${ROW_HEIGHT_PX}px`, paddingLeft: `${SPAN_GUTTER_PX}px` }}
+                />
                 <div className="relative" style={{ height: ROW_HEIGHT_PX }}>
                   <button
                     type="button"

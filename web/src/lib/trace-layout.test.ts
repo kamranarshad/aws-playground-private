@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import {
-  depthOf, layoutSpans, niceTickStepMs, spanDurationMs, spanOffsetMs, ticksFor, timelineBounds,
+  depthOf, layoutSpans, niceTickStepMs, spanDurationMs, spanGuideGlyph, spanOffsetMs, ticksFor,
+  timelineBounds,
 } from '@/lib/trace-layout'
 import type { Span } from '@/lib/types'
 
@@ -69,4 +70,12 @@ it('ticksFor generates evenly spaced round ticks covering the total duration', (
 
 it('ticksFor never divides by zero for a zero-duration trace', () => {
   expect(ticksFor(0)).toEqual([0])
+})
+
+// Span names sit in one straight column in both views; nesting is carried by
+// a glyph in a fixed-width gutter beside them, never by shifting the name.
+it('spanGuideGlyph marks nested spans and leaves roots blank', () => {
+  expect(spanGuideGlyph(0)).toBe('')
+  expect(spanGuideGlyph(1)).toBe('\u2514\u2500')
+  expect(spanGuideGlyph(4)).toBe('\u2514\u2500')
 })

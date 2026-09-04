@@ -37,6 +37,17 @@ export function layoutSpans(spans: Span[]): LayoutRow[] {
   return sortSpansByStart(spans).map((span) => ({ span, depth: depthOf(span, byId) }))
 }
 
+// Span names sit in one straight column in both trace views; depth is carried
+// by a glyph in a fixed-width gutter beside the name, never by shifting the
+// name itself. Shared for the same reason layoutSpans is: the two views each
+// owned an indent formula (12 + depth*16 and depth*12), so the same name sat
+// at a different x depending on which view you were in.
+export const SPAN_GUTTER_PX = 12
+
+export function spanGuideGlyph(depth: number): string {
+  return depth > 0 ? '\u2514\u2500' : ''
+}
+
 export interface TimelineBounds {
   originNano: bigint
   totalMs: number

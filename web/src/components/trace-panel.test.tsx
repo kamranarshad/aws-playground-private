@@ -23,13 +23,15 @@ it('renders a span with its name, duration, and attributes', () => {
   expect(screen.getByText(/http\.method="GET"/)).toBeInTheDocument()
 })
 
-it('indents a child span under its parent', () => {
+it('renders every span name at the same left offset, guiding nested ones', () => {
   const parent = span({ spanId: 'parent-1', name: 'parent-span' })
   const child = span({ spanId: 'child-1', parentSpanId: 'parent-1', name: 'child-span' })
   render(<TracePanel spans={[parent, child]} />)
-  const childRow = screen.getByText('child-span').closest('li')
-  const parentRow = screen.getByText('parent-span').closest('li')
-  const childPad = Number((childRow?.style.paddingLeft ?? '0').replace('px', ''))
-  const parentPad = Number((parentRow?.style.paddingLeft ?? '0').replace('px', ''))
-  expect(childPad).toBeGreaterThan(parentPad)
+  const childRow = screen.getByText('child-span').closest('li') as HTMLElement
+  const parentRow = screen.getByText('parent-span').closest('li') as HTMLElement
+
+  expect(childRow.style.paddingLeft).toBe(parentRow.style.paddingLeft)
+  // The nested span is marked in the gutter instead of being pushed right.
+  expect(childRow.textContent).toContain('\u2514\u2500')
+  expect(parentRow.textContent).not.toContain('\u2514\u2500')
 })

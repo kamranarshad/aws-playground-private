@@ -1,5 +1,6 @@
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { layoutSpans, spanDurationMs } from '@/lib/trace-layout'
+import { SpanLabel } from '@/components/span-label'
+import { SPAN_GUTTER_PX, layoutSpans, spanDurationMs } from '@/lib/trace-layout'
 import type { Span } from '@/lib/types'
 
 export function TracePanel({ spans, error }: { spans: Span[]; error?: string | null }) {
@@ -16,10 +17,10 @@ export function TracePanel({ spans, error }: { spans: Span[]; error?: string | n
         {layoutSpans(spans).map(({ span, depth }) => (
           <li
             key={span.spanId}
-            className="flex items-baseline gap-2 px-3 py-1.5"
-            style={{ paddingLeft: `${12 + depth * 16}px` }}
+            className="flex items-baseline gap-2 py-1.5 pr-3"
+            style={{ paddingLeft: `${SPAN_GUTTER_PX}px` }}
           >
-            <span className="font-medium">{span.name}</span>
+            <SpanLabel depth={depth} name={span.name} className="font-medium" />
             <span className="text-muted-foreground">{spanDurationMs(span).toFixed(2)}ms</span>
             {Object.keys(span.attributes).length > 0 && (
               <span className="truncate text-muted-foreground/70">

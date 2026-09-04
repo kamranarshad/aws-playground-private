@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it } from 'vitest'
+import { TracePanel } from '@/components/trace-panel'
 import { TraceWaterfall } from '@/components/trace-waterfall'
 import type { Span } from '@/lib/types'
 
@@ -53,13 +54,23 @@ it('shows a span\'s full detail panel on click, and hides it again on a second c
   expect(screen.queryByText('http.method')).not.toBeInTheDocument()
 })
 
-it('indents a child span\'s label under its parent, same as the list view', () => {
+// Both views put names in one straight column, so a name sits at the same x
+// whichever view you are in -- the two previously drifted to 12+depth*16 and
+// depth*12 and a depth-0 name in the Timeline sat flush against the edge.
+it('renders span names at one left offset, matching the list view', () => {
   const parent = span({ spanId: 'parent-1', name: 'parent-span' })
   const child = span({ spanId: 'child-1', parentSpanId: 'parent-1', name: 'child-span' })
+
+  const listView = render(<TracePanel spans={[parent, child]} />)
+  const listRowPad = (screen.getByText('parent-span').closest('li') as HTMLElement).style.paddingLeft
+  listView.unmount()
+
   render(<TraceWaterfall spans={[parent, child]} />)
-  const childLabel = screen.getByText('child-span')
-  const parentLabel = screen.getByText('parent-span')
-  const childPad = Number(childLabel.style.paddingLeft.replace('px', '') || '0')
-  const parentPad = Number(parentLabel.style.paddingLeft.replace('px', '') || '0')
-  expect(childPad).toBeGreaterThan(parentPad)
+  const labels = ['parent-span', 'child-span'].map(
+    (n) => (screen.getByText(n).closest('[data-testid="span-label"]') as HTMLElement))
+
+  expect(labels[0].style.paddingLeft).toBe(labels[1].style.paddingLeft)
+  expect(labels[0].style.paddingLeft).toBe(listRowPad)
+  expect(labels[1].textContent).toContain('\u2514\u2500')
+  expect(labels[0].textContent).not.toContain('\u2514\u2500')
 })
