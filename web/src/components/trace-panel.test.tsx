@@ -35,3 +35,16 @@ it('renders every span name at the same left offset, guiding nested ones', () =>
   expect(childRow.textContent).toContain('\u2514\u2500')
   expect(parentRow.textContent).not.toContain('\u2514\u2500')
 })
+
+it('aligns the duration column across rows regardless of name length', () => {
+  render(<TracePanel spans={[
+    span({ spanId: 'a', name: 'x' }),
+    span({ spanId: 'b', name: 'a-very-long-span-name-indeed' }),
+  ]} />)
+  const widths = ['x', 'a-very-long-span-name-indeed'].map(
+    (n) => (screen.getByText(n).closest('[data-testid="span-label"]') as HTMLElement).className)
+  // Both names occupy the same track, so the duration beside them starts at
+  // the same x on every row.
+  expect(widths[0]).toBe(widths[1])
+  expect(widths[0]).toMatch(/\bw-/)
+})
