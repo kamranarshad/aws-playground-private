@@ -41,6 +41,53 @@ function main() {
       console.error(`aws-playground: \`npm install\` failed in ${dir} (${reason})`);
       process.exit(res.status || 1);
     }
+    buildFixture(root, dir);
+  }
+  buildJavaFixtures(root);
+}
+
+// The bundled dist/ output is no longer committed, so a fixture that declares
+// a build script has to run it here -- otherwise the tests that load
+// dist/index.js silently skip on a fresh clone, which reads as "passing".
+function buildFixture(root, dir) {
+  let pkg;
+  try {
+    pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  } catch {
+    return;
+  }
+  if (!pkg.scripts?.build) return;
+  console.log(`aws-playground: building ${path.relative(root, dir)}`);
+  const res = spawnSync('npm', ['run', 'build'], {
+    cwd: dir, stdio: 'inherit', shell: process.platform === 'win32',
+  });
+  if (res.status !== 0) {
+    console.error(`aws-playground: \`npm run build\` failed in ${dir}`);
+    process.exit(res.status || 1);
+  }
+}
+
+// Java fixtures build through their own build.sh rather than npm. A missing
+// JDK is not fatal here for the same reason it is not in scripts/prepare.js:
+// the Java tests already skip without one.
+function buildJavaFixtures(root) {
+  const javaDir = path.join(root, 'fixtures', 'java');
+  if (!fs.existsSync(javaDir)) return;
+  const probe = spawnSync('javac', ['-version'], {
+    stdio: 'ignore', shell: process.platform === 'win32',
+  });
+  if (probe.status !== 0) {
+    console.error('aws-playground: no JDK found — skipping the Java fixture builds.');
+    return;
+  }
+  for (const entry of fs.readdirSync(javaDir, { withFileTypes: true })) {
+    const build = path.join(javaDir, entry.name, 'build.sh');
+    if (!entry.isDirectory() || !fs.existsSync(build)) continue;
+    console.log(`aws-playground: building fixtures/java/${entry.name}`);
+    const res = spawnSync('sh', [build], { stdio: 'inherit' });
+    if (res.status !== 0) {
+      console.error(`aws-playground: the fixtures/java/${entry.name} build failed.`);
+    }
   }
 }
 

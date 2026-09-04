@@ -1,0 +1,16 @@
+{
+  "name": "@aws-playground/server",
+  "version": "0.1.0",
+  "private": true,
+  "main": "api/index.js",
+  "types": "types.d.ts",
+  "exports": {
+    ".": { "types": "./types.d.ts", "default": "./api/index.js" },
+    "./types": { "types": "./types.d.ts", "default": "./types.d.ts" },
+    "./bootstrap": "./bootstrap.js",
+    "./ports": "./ports.js"
+  },
+  "dependencies": {
+    "@aws-playground/shared": "*"
+  }
+}

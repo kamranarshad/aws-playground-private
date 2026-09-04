@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
-import { Check, ChevronRight, Copy } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { CopyIcon } from '@/components/copy-icon'
 import { cn } from '@/lib/utils'
 import { useCopy } from '@/lib/use-copy'
 
@@ -62,9 +63,9 @@ function NodeCopyButton({ value, label }: { value: unknown; label: string }) {
   return (
     <button
       type="button" onClick={() => copy(JSON.stringify(value))} aria-label={`Copy ${label}`}
-      className="mt-[3px] shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
+      className="mt-1 shrink-0 rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
     >
-      {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+      <CopyIcon copied={copied} className="size-3" />
     </button>
   )
 }
@@ -146,25 +147,26 @@ function Leaf({ value }: { value: unknown }) {
   return <Punct>{value === null ? 'null' : 'undefined'}</Punct>
 }
 
-function Branch({ kids, depth }: { kids: Children; depth: number }) {
+function Branch({ kids, depth, openDepth }: { kids: Children; depth: number; openDepth: number }) {
   return (
     <div className={BRANCH}>
       {kids.entries.map(([key, child]) => (
-        <Node key={key} label={key} index={kids.kind === 'array'} value={child} depth={depth + 1} />
+        <Node key={key} label={key} index={kids.kind === 'array'} value={child} depth={depth + 1} openDepth={openDepth} />
       ))}
     </div>
   )
 }
 
-function Node({ label, index, value, depth }: {
+function Node({ label, index, value, depth, openDepth }: {
   label?: string
   index?: boolean
   value: unknown
   depth: number
+  openDepth: number
 }) {
   const kids = childrenOf(value)
   const embedded = kids ? null : embeddedJson(value)
-  const [open, setOpen] = useState(depth < OPEN_DEPTH)
+  const [open, setOpen] = useState(depth < openDepth)
 
   const rowLabel = label ?? 'root'
   const copy = { value, label: rowLabel }
@@ -188,15 +190,20 @@ function Node({ label, index, value, depth }: {
           <span className="ml-2 text-[10px] text-muted-foreground/80 italic">parsed from string</span>
         )}
       </Row>
-      {open && <Branch kids={branch} depth={depth} />}
+      {open && <Branch kids={branch} depth={depth} openDepth={openDepth} />}
     </>
   )
 }
 
-export function JsonTree({ value, className }: { value: unknown; className?: string }) {
+export function JsonTree({ value, className, openDepth = OPEN_DEPTH }: {
+  value: unknown
+  className?: string
+  // Depths below this start collapsed; pass Infinity to expand everything.
+  openDepth?: number
+}) {
   return (
     <div className={cn('p-3 font-mono text-xs leading-6', className)}>
-      <Node value={value} depth={0} />
+      <Node value={value} depth={0} openDepth={openDepth} />
     </div>
   )
 }

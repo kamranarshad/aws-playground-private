@@ -9,11 +9,16 @@ vi.mock('@/lib/api', () => ({
       docker: { available: true },
       services: [],
     }),
+    listTriggerStatus: vi.fn().mockResolvedValue({}),
+    listHistory: vi.fn().mockResolvedValue({ entries: [] }),
+    getTrace: vi.fn().mockResolvedValue({ trace: { spans: [], pending: true } }),
   },
 }))
 
 import { api } from '@/lib/api'
-import { useReleaseSelectionOnUnload, useServices } from '@/lib/queries'
+import {
+  useHistoryQuery, useReleaseSelectionOnUnload, useServices, useTracePoll, useTriggerStatus,
+} from '@/lib/queries'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -71,4 +76,45 @@ it('stops releasing the selection once unmounted', () => {
   window.dispatchEvent(new Event('beforeunload'))
 
   expect(sendBeacon).not.toHaveBeenCalled()
+})
+
+it('polls the trigger status so a poller that errors out stops showing as healthy', async () => {
+  vi.useFakeTimers()
+  renderHook(() => useTriggerStatus(), { wrapper: makeWrapper() })
+
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(api.listTriggerStatus).toHaveBeenCalledTimes(1)
+
+  await act(() => vi.advanceTimersByTimeAsync(5_000))
+  expect(api.listTriggerStatus).toHaveBeenCalledTimes(2)
+})
+
+it('polls history so a trigger-caused run shows up without reselecting the function', async () => {
+  vi.useFakeTimers()
+  renderHook(() => useHistoryQuery('fn1'), { wrapper: makeWrapper() })
+
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(api.listHistory).toHaveBeenCalledTimes(1)
+
+  await act(() => vi.advanceTimersByTimeAsync(5_000))
+  expect(api.listHistory).toHaveBeenCalledTimes(2)
+})
+
+it('polls for a trace only while pending is true, and stops once told pending is false', async () => {
+  vi.useFakeTimers()
+  const { rerender } = renderHook(
+    ({ pending }: { pending: boolean }) => useTracePoll('fn-1', 'req-1', pending),
+    { wrapper: makeWrapper(), initialProps: { pending: true } },
+  )
+
+  await act(() => vi.advanceTimersByTimeAsync(0))
+  expect(api.getTrace).toHaveBeenCalledTimes(1)
+
+  await act(() => vi.advanceTimersByTimeAsync(1_500))
+  expect(api.getTrace).toHaveBeenCalledTimes(2)
+
+  rerender({ pending: false })
+  const callsAtStop = vi.mocked(api.getTrace).mock.calls.length
+  await act(() => vi.advanceTimersByTimeAsync(5_000))
+  expect(api.getTrace).toHaveBeenCalledTimes(callsAtStop)
 })

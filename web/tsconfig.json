@@ -9,7 +9,12 @@
     "strict": true,
     "noEmit": true,
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@aws-playground/server": ["../server/api/index.js"],
+      "@aws-playground/server/types": ["../server/types.d.ts"],
+      "@aws-playground/shared": ["../shared/index.d.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

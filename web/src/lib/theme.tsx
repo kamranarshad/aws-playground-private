@@ -8,15 +8,14 @@ const ThemeContext = createContext<{ theme: Theme; toggle: () => void }>({
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   // Dark is the fallback when no preference is stored; the pre-paint script in
-  // __root applies the same default to the DOM, and the effect below adopts
+  // __root applies the same default to the DOM, and this initializer adopts
   // whatever it resolved so the provider and the document never disagree.
-  const [theme, setTheme] = useState<Theme>('dark')
-
-  useEffect(() => {
-    // The pre-paint script in __root already resolved and applied the theme
-    // class. Adopt it so the provider and the DOM never disagree.
-    setTheme(document.documentElement.classList.contains('dark') ? 'dark' : 'light')
-  }, [])
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+    }
+    return 'dark'
+  })
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')

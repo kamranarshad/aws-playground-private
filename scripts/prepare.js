@@ -7,8 +7,14 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { nodeVersionOk, nodeVersionMessage } = require('../server/node-version');
+const { nodeVersionOk, nodeVersionMessage } = require('../server/runtime/node-version');
 
+// `web` is a workspace of the root package, so a plain `npm install` at the
+// root has already installed its dependencies (hoisted into the root
+// node_modules). Re-running an install inside web/ would duplicate all of
+// them into a nested tree for no benefit, so this only decides whether the
+// deps still need fetching at all -- which they do only when the root install
+// was skipped, e.g. a tarball with no web/ source.
 function planPrepare({ root, env }) {
   if (env.AWS_PLAYGROUND_SKIP_WEB_BUILD) {
     return { skip: 'AWS_PLAYGROUND_SKIP_WEB_BUILD is set' };
@@ -16,24 +22,61 @@ function planPrepare({ root, env }) {
   if (!fs.existsSync(path.join(root, 'web', 'package.json'))) {
     return { skip: 'no web/ source in this package' };
   }
+  if (isWorkspaceInstall(root)) return { install: null };
   return { install: env.CI ? 'ci' : 'install' };
 }
 
-function packageManagerBin(env) {
-  // nub fills npm_config_user_agent the same way npm does, so an install
-  // driven by `nub install` keeps using nub for the nested web/ install
-  // instead of silently switching back to npm. Anything unrecognised falls
-  // back to npm -- the one manager every contributor has.
-  return /^nub\//.test(env.npm_config_user_agent || '') ? 'nub' : 'npm';
+// Vite resolvable from web/ means the root workspace install already ran.
+function isWorkspaceInstall(root) {
+  try {
+    require.resolve('vite', { paths: [path.join(root, 'web')] });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-function run(bin, args, cwd) {
-  const res = spawnSync(bin, args, {
-    cwd, stdio: 'inherit', shell: process.platform === 'win32',
+function run(args, cwd) {
+  // npm exports its own flags as npm_config_* env vars for lifecycle scripts,
+  // and spawnSync inherits process.env by default -- so `npm install
+  // --omit=optional` at the root (skipping the root's optional AWS SDK/OTel
+  // packages) would otherwise leak into this nested install for web/ and
+  // make IT skip its own, unrelated build-tool optionalDependencies (e.g.
+  // rollup's platform-specific native binary), breaking the web build
+  // outright. web/'s install is independent of the root's optional-deps
+  // choice, so that var is stripped here.
+  // Destructured only to drop it; the underscore marks it as deliberately unused.
+  const { npm_config_omit: _omitted, ...env } = process.env;
+  const res = spawnSync('npm', args, {
+    cwd, env, stdio: 'inherit', shell: process.platform === 'win32',
   });
   if (res.status !== 0) {
-    console.error(`aws-playground: \`${bin} ${args.join(' ')}\` failed in ${cwd}`);
+    console.error(`aws-playground: \`npm ${args.join(' ')}\` failed in ${cwd}`);
     process.exit(res.status || 1);
+  }
+}
+
+// The harness jar ships in the npm tarball but is not committed, so a source
+// checkout builds it here. A missing JDK is not an error: the Java tests
+// already skip without one, and every other runtime still works. Never fatal
+// -- exiting here would let a missing JDK block the whole install.
+function buildJavaHarness(root) {
+  const jar = path.join(root, 'harnesses', 'java', 'harness.jar');
+  if (fs.existsSync(jar)) return;
+  const build = path.join(root, 'harnesses', 'java', 'build.sh');
+  if (!fs.existsSync(build)) return;
+  const probe = spawnSync('javac', ['-version'], {
+    stdio: 'ignore', shell: process.platform === 'win32',
+  });
+  if (probe.status !== 0) {
+    console.error('aws-playground: no JDK found — skipping the Java harness build. '
+      + 'Java functions will be unavailable; every other runtime works.');
+    return;
+  }
+  const res = spawnSync('sh', [build], { cwd: root, stdio: 'inherit' });
+  if (res.status !== 0) {
+    console.error('aws-playground: the Java harness build failed — Java functions '
+      + 'will be unavailable; every other runtime works.');
   }
 }
 
@@ -49,11 +92,11 @@ function main() {
     process.exit(1);
   }
   const web = path.join(root, 'web');
-  const bin = packageManagerBin(process.env);
-  run(bin, [plan.install], web);
-  run(bin, ['run', 'build'], web);
+  if (plan.install) run([plan.install], web);
+  run(['run', 'build'], web);
+  buildJavaHarness(root);
 }
 
 if (require.main === module) main();
 
-module.exports = { planPrepare, packageManagerBin };
+module.exports = { planPrepare };

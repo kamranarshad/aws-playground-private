@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { AddFunctionDialog } from '@/components/add-function-dialog'
@@ -9,32 +9,123 @@ import { EventPanel } from '@/components/event-panel'
 import { FunctionHeader } from '@/components/function-header'
 import { HealthChips } from '@/components/health-chips'
 import { HistoryList } from '@/components/history-list'
+import { LayoutToggle } from '@/components/layout-toggle'
 import { ResultPanel } from '@/components/result-panel'
 import { ThemeToggle } from '@/components/theme-toggle'
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable'
-import { useFunctions, useInvoke, useSelectionSync } from '@/lib/queries'
-import type { InvokeResult } from '@/lib/types'
+import { runAssertions, type AssertionRun } from '@/lib/assertions'
+import {
+  useFunctions, useInvoke, useSelectionSync, useTracePoll,
+} from '@/lib/queries'
+import { useLayout } from '@/lib/use-layout'
+import { RESULT_TABS, type InvokeResult, type ResultTab } from '@/lib/types'
+import type { TraceView } from '@/components/trace-tab'
+
+export function validateSearch(search: Record<string, unknown>): { function?: string; tab?: ResultTab; traceView?: 'timeline' } {
+  return {
+    function: typeof search.function === 'string' ? search.function : undefined,
+    tab: RESULT_TABS.includes(search.tab as ResultTab) ? (search.tab as ResultTab) : undefined,
+    traceView: search.traceView === 'timeline' ? 'timeline' : undefined,
+  }
+}
 
 export const Route = createFileRoute('/')({
   component: App,
+  validateSearch,
 })
 
-function App() {
+export function App() {
+  const search = Route.useSearch()
+  const navigate = Route.useNavigate()
   const { data: functions = [] } = useFunctions()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // The URL's pick, if it's still in the list; otherwise fall back to the
+  // first function. Deriving this during render (rather than via an effect
+  // that corrects a stale/unset id after the fact) means a function list
+  // that arrives or changes never renders a transient "nothing selected"
+  // frame first. A `function` param that doesn't match anything (renamed,
+  // deleted, typo'd) falls back silently — the URL is not rewritten to
+  // "fix" it.
+  const selectedId = (search.function && functions.find((f) => f.name === search.function)?.id)
+    ?? functions[0]?.id
+    ?? null
+  const activeTab = search.tab ?? 'response'
+
+  function onActiveTabChange(tab: ResultTab) {
+    navigate({ search: (prev) => ({ ...prev, tab }) })
+  }
+  const traceView: TraceView = search.traceView ?? 'list'
+
+  function onTraceViewChange(view: TraceView) {
+    navigate({ search: (prev) => ({ ...prev, traceView: view === 'timeline' ? 'timeline' : undefined }) })
+  }
+  const { layout, toggle: toggleLayout } = useLayout()
   const [addOpen, setAddOpen] = useState(false)
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try {
+      const stored = localStorage.getItem('awsplay_event_drafts')
+      return stored ? JSON.parse(stored) : {}
+    } catch {
+      return {}
+    }
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      localStorage.setItem('awsplay_event_drafts', JSON.stringify(drafts))
+    } catch {}
+  }, [drafts])
+
   const [result, setResult] = useState<InvokeResult | null>(null)
+  const [checkResults, setCheckResults] = useState<AssertionRun | null>(null)
+  // Mirrors EventPanel's own local script draft, so an invoke triggered from
+  // outside EventPanel (the window-level Cmd+Enter shortcut below) still
+  // knows whether a script is active and what it says.
+  const [currentScript, setCurrentScript] = useState('')
   const invoke = useInvoke()
+  const currentRequestId = result?.report.requestId ?? null
+  const tracePending = result?.trace?.pending === true
+  const tracePoll = useTracePoll(selectedId, currentRequestId, tracePending)
+  const effectiveResult = useMemo(() => {
+    if (!result) return null
+    if (tracePoll.data?.trace && result.report.requestId === currentRequestId) {
+      return { ...result, trace: tracePoll.data.trace }
+    }
+    return result
+  }, [result, tracePoll.data?.trace, currentRequestId])
   const selectionSync = useSelectionSync()
   const syncSelection = selectionSync.mutate
 
-  useEffect(() => {
-    if (selectedId && !functions.some((f) => f.id === selectedId)) setSelectedId(null)
-    if (!selectedId && functions.length > 0) setSelectedId(functions[0].id)
-  }, [functions, selectedId])
+  // Every path that changes the selection goes through here so the invoke
+  // result from the previous function never bleeds into the next one.
+  function selectFunction(id: string | null) {
+    const name = id ? functions.find((f) => f.id === id)?.name : undefined
+    selectByName(name)
+  }
+
+  // The create-dialog path already has the just-created function in hand
+  // (from its own mutation's onSuccess) and calls this directly, rather
+  // than going through selectFunction's id lookup — the function doesn't
+  // exist in `functions` (App's render-time list) yet at that point, since
+  // the query cache write that will eventually add it hasn't triggered a
+  // re-render of this component yet.
+  function selectByName(name: string | undefined) {
+    navigate({ search: (prev) => ({ ...prev, function: name, tab: undefined }) })
+    setResult(null)
+    setCheckResults(null)
+    setCurrentScript('')
+  }
+
+  // The script is checked against a specific response — once either one
+  // changes, a stale verdict would be misleading, so results are cleared
+  // and the button must be pressed again.
+  function onScriptChange(script: string) {
+    setCurrentScript(script)
+    setCheckResults(null)
+  }
 
   // Tell the server which function is active so playground.json services
   // auto-start on selection and auto-stop after the grace period.
@@ -42,9 +133,31 @@ function App() {
     syncSelection(selectedId)
   }, [selectedId, syncSelection])
 
+  // The Checks tab only exists while there are check results (see
+  // ResultPanel): the next invoke or a function switch clears them, and
+  // ResultPanel's own display already falls back to "Response" visually.
+  // This corrects the URL to match — via replace, since it's a passive
+  // consequence of state clearing, not a click, so it shouldn't add a
+  // Back-able history entry.
+  useEffect(() => {
+    if (activeTab === 'checks' && checkResults == null) {
+      navigate({ search: (prev) => ({ ...prev, tab: undefined }), replace: true })
+    }
+  }, [activeTab, checkResults, navigate])
+
+  // traceView is only meaningful while the Trace tab is active; leaving it
+  // in the URL after switching away would let a stale value silently apply
+  // the next time the Trace tab is reopened via the URL alone. Same
+  // replace-not-push justification as the Checks-tab effect above.
+  useEffect(() => {
+    if (activeTab !== 'trace' && search.traceView) {
+      navigate({ search: (prev) => ({ ...prev, traceView: undefined }), replace: true })
+    }
+  }, [activeTab, search.traceView, navigate])
+
   const selected = functions.find((f) => f.id === selectedId) ?? null
 
-  function runInvoke(functionId: string) {
+  function runInvoke(functionId: string, { forceCold = false } = {}) {
     let event: unknown
     try {
       event = JSON.parse(drafts[functionId] ?? '{}')
@@ -52,7 +165,23 @@ function App() {
       toast.error('Event is not valid JSON')
       return
     }
-    invoke.mutate({ functionId, event }, { onSuccess: setResult })
+    invoke.mutate({ functionId, event, forceCold }, {
+      onSuccess: (r) => {
+        setResult(r)
+        // A script already in the box gets checked automatically against
+        // this fresh response — no separate "Run checks" press needed.
+        setCheckResults(currentScript.trim() ? runAssertions(currentScript, {
+          response: r.response, error: r.error, report: r.report,
+        }) : null)
+      },
+    })
+  }
+
+  function runChecks(script: string) {
+    if (!result) return
+    setCheckResults(runAssertions(script, {
+      response: result.response, error: result.error, report: result.report,
+    }))
   }
 
   useEffect(() => {
@@ -68,8 +197,6 @@ function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  useEffect(() => setResult(null), [selectedId])
-
   return (
     <div className="flex h-full flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
@@ -77,32 +204,50 @@ function App() {
         <div className="flex items-center gap-3">
           <HealthChips />
           <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">⌘K</kbd>
+          <LayoutToggle layout={layout} onToggle={toggleLayout} />
           <ThemeToggle />
         </div>
       </header>
       <div className="flex min-h-0 flex-1">
         <AppSidebar functions={functions} selectedId={selectedId}
-          onSelect={setSelectedId} onAdd={() => setAddOpen(true)} />
+          onSelect={selectFunction} onAdd={() => setAddOpen(true)} />
         <main className="min-w-0 flex-1">
           {selected ? (
             <div className="flex h-full flex-col">
-              <FunctionHeader fn={selected} onDeleted={() => setSelectedId(null)} />
+              <FunctionHeader key={`header-${selected.id}`} fn={selected} onDeleted={() => selectFunction(null)} />
               <EnvEditor key={selected.id} fn={selected} />
-              <ResizablePanelGroup orientation="horizontal" className="min-h-0 flex-1">
+              <ResizablePanelGroup
+                orientation={layout === 'stacked' ? 'vertical' : 'horizontal'}
+                className="min-h-0 flex-1"
+              >
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <EventPanel
+                    // Function switches reset the inline script draft along
+                    // with everything else EventPanel owns locally — a check
+                    // written against one function's response shape rarely
+                    // applies to another's.
+                    key={selected.id}
                     fn={selected}
                     eventText={drafts[selected.id] ?? '{}'}
                     onEventTextChange={(text) =>
                       setDrafts((d) => ({ ...d, [selected.id]: text }))}
                     onInvoke={() => runInvoke(selected.id)}
+                    onInvokeCold={() => runInvoke(selected.id, { forceCold: true })}
                     invoking={invoke.isPending}
+                    onScriptChange={onScriptChange}
+                    hasResult={!!result}
+                    onRunChecks={runChecks}
                   />
                 </ResizablePanel>
                 <ResizableHandle withHandle />
                 <ResizablePanel defaultSize={50} minSize={25}>
                   <ResultPanel
-                    result={result}
+                    result={effectiveResult}
+                    checkResults={checkResults}
+                    activeTab={activeTab}
+                    onActiveTabChange={onActiveTabChange}
+                    traceView={traceView}
+                    onTraceViewChange={onTraceViewChange}
                     historyTab={
                       <HistoryList
                         key={selected.id}
@@ -132,11 +277,11 @@ function App() {
           )}
         </main>
       </div>
-      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={setSelectedId} />
+      <AddFunctionDialog open={addOpen} onOpenChange={setAddOpen} onCreated={(fn) => selectByName(fn.name)} />
       <CommandPalette
         functions={functions}
         canInvoke={!!selectedId}
-        onSelect={setSelectedId}
+        onSelect={selectFunction}
         onAdd={() => setAddOpen(true)}
         onInvoke={() => selectedId && runInvoke(selectedId)}
       />

@@ -1,0 +1,12 @@
+{
+  "name": "ts-dynamodb-trigger-fixture",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.9.0"
+  }
+}

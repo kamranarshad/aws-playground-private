@@ -1,0 +1,19 @@
+{
+  "name": "ts-otel-span-fixture",
+  "private": true,
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node18 --outfile=dist/index.js"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/context-async-hooks": "^2.10.0",
+    "@opentelemetry/resources": "^2.10.0",
+    "@opentelemetry/sdk-trace": "^2.10.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.221.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.9.0"
+  }
+}

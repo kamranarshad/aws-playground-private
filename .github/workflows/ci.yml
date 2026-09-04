@@ -25,11 +25,25 @@ jobs:
 
       # Language runtimes the harness tests exercise. python3 and java are
       # preinstalled on ubuntu-latest; the tests skip whatever is missing.
-      - name: Server tests
-        run: npm run test:server
+      # Two tiers: unit runs in parallel, integration is serial because the
+      # docker-backed tests share fixed container names and ports.
+      - name: Server tests (unit)
+        run: npm run test:unit
+
+      - name: Server tests (integration)
+        run: npm run test:integration
 
       - name: Web tests
         run: npm run test:web
 
       - name: Typecheck web
         run: npm --prefix web run typecheck
+
+      # checkJs over the CommonJS server. Not a full strict-mode migration --
+      # it catches the shape drift that the web's mirrored types would
+      # otherwise only reveal at runtime.
+      - name: Typecheck server
+        run: npm run typecheck:server
+
+      - name: Lint
+        run: npm run lint

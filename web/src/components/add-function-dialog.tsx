@@ -11,12 +11,12 @@ import {
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
 import { useCreateFunction } from '@/lib/queries'
-import type { Runtime } from '@/lib/types'
+import type { FunctionDef, Runtime } from '@/lib/types'
 
 export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onCreated: (id: string) => void
+  onCreated: (fn: FunctionDef) => void
 }) {
   const [dir, setDir] = useState('')
   const [name, setName] = useState('')
@@ -73,7 +73,7 @@ export function AddFunctionDialog({ open, onOpenChange, onCreated }: {
           reset()
           onOpenChange(false)
           toast.success(`Registered ${fn.name}`)
-          onCreated(fn.id)
+          onCreated(fn)
         },
         onError: (e) => setError(e.message),
       },

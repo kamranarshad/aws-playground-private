@@ -46,6 +46,15 @@ it('auto-expands the root plus two levels, no further', () => {
   expect(screen.getByLabelText('Expand c')).toBeInTheDocument()
 })
 
+it('expands every level when openDepth is passed as Infinity', () => {
+  render(<JsonTree value={{ a: { b: { c: { deep: 1 } } } }} openDepth={Infinity} />)
+
+  expect(screen.getByText('b')).toBeInTheDocument()
+  expect(screen.getByText('deep')).toBeInTheDocument()
+  expect(screen.getByText('1')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Expand c')).not.toBeInTheDocument()
+})
+
 it('numbers array entries and counts them when collapsed', async () => {
   render(<JsonTree value={{ items: ['a', 'b'] }} />)
   expect(screen.getByText('0')).toBeInTheDocument()

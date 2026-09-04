@@ -1,4 +1,6 @@
-import type { Detection, FunctionDef, Health, HistoryEntry, InvokeResult, ServicesStatus } from './types'
+import type {
+  Detection, FunctionDef, FunctionStats, Health, HistoryEntry, InvokeResult, ServicesStatus, Trace, TriggersStatus,
+} from './types'
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
@@ -24,6 +26,9 @@ export interface InvokePayload {
   envVars?: Record<string, string>
   timeoutMs?: number
   memoryMb?: number
+  /** Discard the warm execution environment before running, so module scope
+   *  and /tmp start empty the way they do on a real cold start. */
+  forceCold?: boolean
 }
 
 export const api = {
@@ -39,10 +44,19 @@ export const api = {
     request<Detection>('/api/detect', { method: 'POST', body: JSON.stringify({ path }) }),
   invoke: (payload: InvokePayload) =>
     request<InvokeResult>('/api/invoke', { method: 'POST', body: JSON.stringify(payload) }),
-  listHistory: (id: string) =>
-    request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history`),
+  listHistory: (id: string, opts?: { limit?: number; offset?: number }) => {
+    const params = new URLSearchParams()
+    if (opts?.limit !== undefined) params.set('limit', String(opts.limit))
+    if (opts?.offset !== undefined) params.set('offset', String(opts.offset))
+    const query = params.toString() ? `?${params.toString()}` : ''
+    return request<{ entries: HistoryEntry[] }>(`/api/functions/${id}/history${query}`)
+  },
+  getStats: (id: string) =>
+    request<FunctionStats>(`/api/functions/${id}/stats`),
   clearHistory: (id: string) =>
     request<void>(`/api/functions/${id}/history`, { method: 'DELETE' }),
+  getTrace: (id: string, requestId: string) =>
+    request<{ trace: Trace | null }>(`/api/functions/${id}/history/${requestId}/trace`),
   listServices: () => request<ServicesStatus>('/api/services'),
   setSelection: (functionId: string | null) =>
     request<{ started: string[]; scheduledStop: string[] }>('/api/selection', {
@@ -52,4 +66,5 @@ export const api = {
     request<{ state: string }>(`/api/services/${name}/start`, { method: 'POST' }),
   stopService: (name: string) =>
     request<{ state: string }>(`/api/services/${name}/stop`, { method: 'POST' }),
+  listTriggerStatus: () => request<TriggersStatus>('/api/triggers'),
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds the java-hello fixture as a fat jar (aws-lambda-java-core shaded
 # in, as real Lambda deployment jars are). target/java-hello.jar is
-# committed so tests never need this script.
+# built by scripts/install-fixtures.js, not committed.
 set -euo pipefail
 cd "$(dirname "$0")"
 CORE_VERSION=1.2.3
